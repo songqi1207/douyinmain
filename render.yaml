@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: dy-flask-app
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT app:app
+    autoDeploy: true
+    envVars:
+      - key: MIHE_KEY
+        sync: false
+      - key: PREVIEW_VIDEO_URL_BOOK
+        value: "https://pub-e79d6e86fa1f4195990ef274a10bb83b.r2.dev/V2/book.mp4"
+      - key: PREVIEW_VIDEO_URL_CIGARETTE
+        value: "https://pub-e79d6e86fa1f4195990ef274a10bb83b.r2.dev/V2/cigarette.mp4"
+      - key: PREVIEW_VIDEO_URL_GOD
+        value: "https://pub-e79d6e86fa1f4195990ef274a10bb83b.r2.dev/V2/god.mp4"

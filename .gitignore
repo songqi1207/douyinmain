@@ -1,0 +1,37 @@
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+
+# .venv/
+# venv/
+# ENV/
+# env/
+
+.env
+.env.*
+# large media
+*.mov
+*.mp4
+tmp_video_frames/
+
+# 生成的工作流文件（运行时产物）
+每天认识一个神_*.txt
+每天认识一本书_*.txt
+每天认识一款香烟_*.txt
+
+# 临时调试脚本
+_*.py
+
+# 嵌套的项目副本
+dy-tt-main/

@@ -1,0 +1,1596 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>一键工作流生成器</title>
+    <style>
+      :root {
+        --bg: #eef4fb;
+        --surface: rgba(255, 255, 255, 0.9);
+        --surface-strong: #ffffff;
+        --text: #162033;
+        --muted: #6d7a90;
+        --line: #dfe7f3;
+        --primary: #3b63ff;
+        --primary-dark: #284bd1;
+        --primary-soft: #eef4ff;
+        --success: #16a34a;
+        --danger: #ef4444;
+        --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.08);
+        --shadow-card: 0 10px 24px rgba(15, 23, 42, 0.06);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+        min-height: 100vh;
+        color: var(--text);
+        background:
+          radial-gradient(
+            circle at top left,
+            rgba(59, 99, 255, 0.14),
+            transparent 24%
+          ),
+          radial-gradient(
+            circle at top right,
+            rgba(96, 165, 250, 0.12),
+            transparent 20%
+          ),
+          linear-gradient(180deg, #f7faff 0%, var(--bg) 100%);
+      }
+
+      .page-container {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 32px;
+      }
+
+      .hero {
+        position: relative;
+        overflow: hidden;
+        min-height: 120px;
+        margin-bottom: 24px;
+        padding: 24px 28px;
+        border-radius: 28px;
+        background: linear-gradient(
+          135deg,
+          #3b63ff 0%,
+          #5b8cff 58%,
+          #9ec5ff 100%
+        );
+        box-shadow: 0 22px 48px rgba(45, 93, 220, 0.18);
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        right: -70px;
+        top: -40px;
+        width: 220px;
+        height: 220px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .hero h1 {
+        position: relative;
+        z-index: 1;
+        margin-bottom: 8px;
+        font-size: 30px;
+        line-height: 1.2;
+        color: #fff;
+        letter-spacing: -0.02em;
+      }
+
+      .hero p {
+        position: relative;
+        z-index: 1;
+        max-width: 720px;
+        font-size: 14px;
+        line-height: 1.7;
+        color: rgba(255, 255, 255, 0.84);
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+        gap: 24px;
+        align-items: start;
+      }
+
+      .side-panel,
+      .form-card,
+      .result-card,
+      .tips-card {
+        background: var(--surface);
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        border-radius: 24px;
+        box-shadow: var(--shadow-soft);
+        backdrop-filter: blur(10px);
+      }
+
+      .side-panel {
+        padding: 16px;
+        position: sticky;
+        top: 20px;
+      }
+
+      .side-panel h2 {
+        margin-bottom: 12px;
+        font-size: 14px;
+        color: var(--muted);
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .biz-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .biz-item {
+        width: 100%;
+        padding: 16px 18px;
+        border-radius: 18px;
+        border: 1px solid transparent;
+        background: rgba(255, 255, 255, 0.7);
+        color: var(--text);
+        text-align: left;
+        cursor: pointer;
+        transition: all 0.22s ease;
+        box-shadow: var(--shadow-card);
+      }
+
+      .biz-item:hover {
+        transform: translateY(-1px);
+        border-color: #c9dafd;
+        box-shadow: 0 14px 28px rgba(37, 99, 235, 0.08);
+      }
+
+      .biz-item.active {
+        background: linear-gradient(135deg, #eef4ff, #f6f9ff);
+        border: 1px solid #7ea6ff;
+        color: #2563eb;
+        box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+      }
+
+      .biz-item-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .biz-item-desc {
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+
+      .biz-item.active .biz-item-desc {
+        color: #4e6da8;
+      }
+
+      .main-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        min-width: 0;
+      }
+
+      .form-card {
+        padding: 28px;
+      }
+
+      .form-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+
+      .form-head h2 {
+        margin-bottom: 6px;
+        font-size: 24px;
+        line-height: 1.25;
+      }
+
+      .form-head p {
+        font-size: 14px;
+        line-height: 1.7;
+        color: var(--muted);
+      }
+
+      .form-section {
+        display: none;
+      }
+
+      .form-section.active {
+        display: block;
+        animation: fadeIn 0.24s ease;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .form-group {
+        margin-bottom: 18px;
+      }
+
+      .form-group:last-child {
+        margin-bottom: 0;
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #44536b;
+      }
+
+      .form-group label .required {
+        margin-left: 2px;
+        color: #ef4444;
+      }
+
+      .form-group input,
+      .form-group textarea {
+        width: 100%;
+        padding: 13px 16px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.92);
+        font-size: 15px;
+        font-family: inherit;
+        outline: none;
+        transition:
+          border-color 0.18s ease,
+          box-shadow 0.18s ease,
+          background 0.18s ease;
+        resize: vertical;
+      }
+
+      .form-group input:focus,
+      .form-group textarea:focus {
+        background: #fff;
+        border-color: rgba(59, 99, 255, 0.42);
+        box-shadow: 0 0 0 4px rgba(59, 99, 255, 0.1);
+      }
+
+      .form-group input::placeholder,
+      .form-group textarea::placeholder {
+        color: #a2aec2;
+      }
+
+      .search-result {
+        display: none;
+        margin-bottom: 18px;
+        padding: 18px;
+        border: 1px solid #d9e6fd;
+        border-radius: 18px;
+        background: linear-gradient(180deg, #f9fbff 0%, #f3f7ff 100%);
+      }
+
+      .search-result.show {
+        display: block;
+      }
+
+      .result-header {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+      }
+
+      .book-cover {
+        width: 80px;
+        height: 110px;
+        border-radius: 10px;
+        object-fit: cover;
+        background: #e8edf6;
+        flex-shrink: 0;
+        box-shadow: 0 10px 20px rgba(28, 45, 78, 0.1);
+      }
+
+      .book-info h4 {
+        margin-bottom: 4px;
+        font-size: 16px;
+      }
+
+      .book-info p {
+        margin-bottom: 3px;
+        font-size: 13px;
+        line-height: 1.55;
+        color: var(--muted);
+      }
+
+      .result-tip {
+        margin-top: 10px;
+        font-size: 13px;
+        color: #2b63da;
+      }
+
+      .supplement-info {
+        margin-bottom: 18px;
+        padding-top: 16px;
+        border-top: 1px dashed #d7e0ee;
+      }
+
+      .cover-section {
+        margin-top: 12px;
+      }
+
+      .cover-section > label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #44536b;
+      }
+
+      .cover-tabs {
+        display: flex;
+        margin-bottom: 12px;
+      }
+
+      .cover-tab {
+        flex: 1;
+        padding: 10px 14px;
+        border: 1px solid var(--line);
+        background: #f5f7fb;
+        color: var(--muted);
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.18s ease;
+      }
+
+      .cover-tab:first-child {
+        border-radius: 12px 0 0 12px;
+      }
+
+      .cover-tab:last-child {
+        border-left: none;
+        border-radius: 0 12px 12px 0;
+      }
+
+      .cover-tab.active {
+        background: var(--primary-soft);
+        color: #2563eb;
+        border-color: #a7c2ff;
+      }
+
+      .cover-tab.active:last-child {
+        border-left: 1px solid #a7c2ff;
+      }
+
+      .cover-input-mode input {
+        width: 100%;
+      }
+
+      .upload-area {
+        padding: 22px;
+        border: 1.5px dashed #c9d6ea;
+        border-radius: 16px;
+        background: rgba(248, 250, 253, 0.95);
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.18s ease;
+      }
+
+      .upload-area:hover {
+        border-color: #8db0ff;
+        background: #f7faff;
+      }
+
+      .upload-icon {
+        margin-bottom: 8px;
+        font-size: 28px;
+      }
+
+      .upload-area p {
+        margin: 0;
+        font-size: 14px;
+        color: #66758b;
+      }
+
+      .upload-tip {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #a0acc0;
+      }
+
+      .upload-preview {
+        position: relative;
+        margin-top: 12px;
+      }
+
+      .upload-preview img {
+        width: 100%;
+        max-height: 220px;
+        border-radius: 12px;
+        border: 1px solid #e7edf7;
+        object-fit: cover;
+      }
+
+      .btn-remove {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        padding: 6px 12px;
+        border: none;
+        border-radius: 8px;
+        background: var(--danger);
+        color: #fff;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .btn-remove:hover {
+        background: #dc2626;
+      }
+
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border: none;
+        cursor: pointer;
+        transition:
+          transform 0.18s ease,
+          box-shadow 0.18s ease,
+          background 0.18s ease;
+        font-size: 15px;
+        font-weight: 600;
+        font-family: inherit;
+      }
+
+      .primary-btn {
+        height: 48px;
+        padding: 0 22px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #3b63ff, #5b8cff);
+        color: #fff;
+        box-shadow: 0 12px 24px rgba(59, 99, 255, 0.18);
+      }
+
+      .primary-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 16px 28px rgba(59, 99, 255, 0.24);
+      }
+
+      .primary-btn:disabled {
+        background: #b0bef5;
+        box-shadow: none;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .secondary-btn {
+        height: 44px;
+        padding: 0 18px;
+        border-radius: 14px;
+        background: #f8fafc;
+        border: 1px solid #dbeafe;
+        color: #2563eb;
+      }
+
+      .secondary-btn:hover {
+        background: #eff6ff;
+      }
+
+      .full-width {
+        width: 100%;
+      }
+
+      .result-card {
+        display: none;
+        padding: 24px 28px;
+      }
+
+      .result-card.show {
+        display: block;
+      }
+
+      .result-icon {
+        margin-bottom: 10px;
+        font-size: 40px;
+      }
+
+      .result-card h3 {
+        margin-bottom: 8px;
+        font-size: 22px;
+      }
+
+      .result-card p {
+        margin-bottom: 16px;
+        font-size: 14px;
+        line-height: 1.65;
+        color: var(--muted);
+      }
+
+      .tips-card {
+        padding: 16px 20px;
+      }
+
+      .tips-card h4 {
+        margin-bottom: 8px;
+        font-size: 14px;
+        color: #d48806;
+      }
+
+      .tips-card ul {
+        padding-left: 18px;
+        color: #76849a;
+        font-size: 13px;
+        line-height: 1.75;
+      }
+
+      .mihe-key-banner {
+        margin-bottom: 18px;
+        padding: 12px 16px;
+        border-radius: 14px;
+        font-size: 13px;
+        line-height: 1.65;
+        color: #1e3a5f;
+        background: rgba(59, 99, 255, 0.08);
+        border: 1px solid rgba(59, 99, 255, 0.22);
+      }
+
+      .mihe-key-banner.mihe-key-banner--warn {
+        color: #92400e;
+        background: rgba(245, 158, 11, 0.12);
+        border-color: rgba(217, 119, 6, 0.35);
+      }
+
+      .loading {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        border: 2px solid currentColor;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .toast {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%) translateY(-100px);
+        max-width: 90%;
+        padding: 12px 24px;
+        border-radius: 14px;
+        background: #1f2c40;
+        color: #fff;
+        font-size: 14px;
+        z-index: 9999;
+        box-shadow: 0 16px 28px rgba(12, 22, 40, 0.2);
+        transition: transform 0.3s ease;
+      }
+
+      .toast.show {
+        transform: translateX(-50%) translateY(0);
+      }
+
+      .toast.error {
+        background: #f56c6c;
+      }
+
+      .toast.success {
+        background: #22c55e;
+      }
+
+      .video-modal {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(12, 18, 30, 0.68);
+        backdrop-filter: blur(8px);
+        z-index: 9998;
+      }
+
+      .video-modal.show {
+        display: flex;
+      }
+
+      .video-modal-panel {
+        width: min(980px, 100%);
+        border-radius: 24px;
+        overflow: hidden;
+        background: #0f1728;
+        box-shadow: 0 28px 60px rgba(10, 18, 34, 0.3);
+      }
+
+      .video-modal-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 18px 20px;
+        color: #fff;
+        background: rgba(255, 255, 255, 0.04);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .video-modal-head h3 {
+        font-size: 18px;
+      }
+
+      .video-close {
+        width: 40px;
+        height: 40px;
+        border: none;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        cursor: pointer;
+        font-size: 18px;
+      }
+
+      .video-close:hover {
+        background: rgba(255, 255, 255, 0.14);
+      }
+
+      .video-modal-body {
+        padding: 20px;
+      }
+
+      .video-modal video {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        display: block;
+        border-radius: 18px;
+        background: #000;
+      }
+
+      @media (max-width: 980px) {
+        .page-container {
+          padding: 20px;
+        }
+
+        .hero {
+          padding: 22px 20px;
+        }
+
+        .hero h1 {
+          font-size: 26px;
+        }
+
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+
+        .side-panel {
+          position: static;
+        }
+
+        .biz-nav {
+          gap: 10px;
+        }
+
+        .form-head {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .button-row {
+          flex-direction: column;
+        }
+
+        .primary-btn,
+        .secondary-btn,
+        .full-width {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-container">
+      <header class="hero">
+        <h1>一键工作流生成器</h1>
+        <p>
+          选择业务类型，填写关键信息，直接生成可下载的流程文件。页面只保留生成主链路，示例视频改成按钮弹窗，不再常驻占位。
+        </p>
+      </header>
+
+      <div class="workspace">
+        <aside class="side-panel">
+          <h2>业务类型</h2>
+          <div class="biz-nav">
+            <button
+              class="biz-item"
+              data-type="book"
+              onclick="selectBiz('book')"
+            >
+              <div class="biz-item-title">📘 每天认识一本书</div>
+              <div class="biz-item-desc">
+                输入书名后自动抓取基础信息，再生成对应工作流。
+              </div>
+            </button>
+            <button
+              class="biz-item"
+              data-type="cigarette"
+              onclick="selectBiz('cigarette')"
+            >
+              <div class="biz-item-title">🚬 每天认识一款香烟</div>
+              <div class="biz-item-desc">
+                输入香烟名称，一键生成模板化工作流文件。
+              </div>
+            </button>
+            <button class="biz-item" data-type="god" onclick="selectBiz('god')">
+              <div class="biz-item-title">🏛 每天认识一个神</div>
+              <div class="biz-item-desc">
+                输入神名、分镜数和文案，生成神话题材工作流。
+              </div>
+            </button>
+          </div>
+        </aside>
+
+        <main class="main-panel">
+          <section class="form-card">
+            <div class="form-head">
+              <div>
+                <h2 id="currentBizTitle">每天认识一本书</h2>
+                <p id="currentBizDesc">
+                  输入书名后先搜索基础信息，再补充作者和封面，最后生成流程文件。
+                </p>
+              </div>
+              <button
+                class="btn secondary-btn"
+                type="button"
+                onclick="openSampleVideo()"
+              >
+                查看示例视频
+              </button>
+            </div>
+
+            <div
+              id="miheKeyBanner"
+              class="mihe-key-banner"
+              style="display: none"
+              role="status"
+            ></div>
+
+            <div class="form-section" id="bookForm">
+              <div class="form-group">
+                <label>书名 <span class="required">*</span></label>
+                <input
+                  type="text"
+                  id="bookName"
+                  placeholder="请输入书名，如：三体"
+                  onkeydown="if (event.key === 'Enter') searchBook();"
+                />
+              </div>
+
+              <div class="button-row" style="margin-bottom: 18px">
+                <button
+                  class="btn secondary-btn"
+                  id="searchBtn"
+                  type="button"
+                  onclick="searchBook()"
+                >
+                  搜索书籍信息
+                </button>
+              </div>
+
+              <div class="search-result" id="bookSearchResult">
+                <div class="result-header">
+                  <img
+                    class="book-cover"
+                    id="resultCover"
+                    src=""
+                    alt=""
+                    style="display: none"
+                  />
+                  <div class="book-info">
+                    <h4 id="resultTitle"></h4>
+                    <p id="resultAuthor"></p>
+                    <p id="resultSummary"></p>
+                  </div>
+                </div>
+                <div class="result-tip" id="resultTip"></div>
+                <div
+                  class="fetch-trace-block"
+                  id="bookFetchTrace"
+                  style="display: none; margin-top: 12px"
+                >
+                  <div
+                    style="
+                      font-size: 12px;
+                      font-weight: 600;
+                      color: #555;
+                      margin-bottom: 6px;
+                    "
+                  >
+                    抓取过程（与运行 Flask 的终端日志对应）
+                  </div>
+                  <pre
+                    id="bookFetchTracePre"
+                    style="
+                      white-space: pre-wrap;
+                      margin: 0;
+                      max-height: 220px;
+                      overflow: auto;
+                      background: #f4f4f5;
+                      padding: 10px 12px;
+                      border-radius: 8px;
+                      font-size: 12px;
+                      color: #333;
+                      line-height: 1.45;
+                    "
+                  ></pre>
+                </div>
+              </div>
+
+              <div class="supplement-info" id="bookSupplement">
+                <div class="form-group">
+                  <label>作者</label>
+                  <input
+                    type="text"
+                    id="bookAuthor"
+                    placeholder="请输入作者名称"
+                  />
+                </div>
+
+                <div class="cover-section">
+                  <label>封面图片</label>
+                  <div class="cover-tabs">
+                    <div
+                      class="cover-tab active"
+                      data-mode="url"
+                      onclick="switchCoverMode('url')"
+                    >
+                      URL 链接
+                    </div>
+                    <div
+                      class="cover-tab"
+                      data-mode="upload"
+                      onclick="switchCoverMode('upload')"
+                    >
+                      本地上传
+                    </div>
+                  </div>
+
+                  <div class="cover-input-mode" id="urlMode">
+                    <input
+                      type="text"
+                      id="bookCoverUrl"
+                      placeholder="粘贴封面图片 URL"
+                    />
+                  </div>
+
+                  <div
+                    class="cover-input-mode"
+                    id="uploadMode"
+                    style="display: none"
+                  >
+                    <div
+                      class="upload-area"
+                      id="uploadArea"
+                      onclick="document.getElementById('coverFile').click()"
+                    >
+                      <div class="upload-icon">🖼</div>
+                      <p id="uploadText">点击上传封面图片</p>
+                      <p class="upload-tip">支持 JPG、PNG、WEBP，最大 5MB</p>
+                    </div>
+                    <input
+                      type="file"
+                      id="coverFile"
+                      accept="image/*"
+                      style="display: none"
+                      onchange="uploadCover(this)"
+                    />
+                    <div
+                      class="upload-preview"
+                      id="uploadPreview"
+                      style="display: none"
+                    >
+                      <img id="previewImg" src="" alt="封面预览" />
+                      <button
+                        class="btn-remove"
+                        type="button"
+                        onclick="removeUploadedCover()"
+                      >
+                        移除
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                class="btn primary-btn full-width"
+                id="generateBookBtn"
+                type="button"
+                onclick="generateBook()"
+              >
+                生成书籍工作流
+              </button>
+            </div>
+
+            <div class="form-section" id="cigaretteForm">
+              <div class="form-group">
+                <label>香烟名称 <span class="required">*</span></label>
+                <input
+                  type="text"
+                  id="cigaretteName"
+                  placeholder="请输入香烟名称，如：中华"
+                  onkeydown="if (event.key === 'Enter') generateCigarette();"
+                />
+              </div>
+
+              <button
+                class="btn primary-btn full-width"
+                id="generateCigaretteBtn"
+                type="button"
+                onclick="generateCigarette()"
+              >
+                生成香烟工作流
+              </button>
+            </div>
+
+            <div class="form-section" id="godForm">
+              <div class="form-group">
+                <label>神名 <span class="required">*</span></label>
+                <input
+                  type="text"
+                  id="godName"
+                  placeholder="请输入神名，如：哪吒"
+                  onkeydown="if (event.key === 'Enter') generateGod();"
+                />
+              </div>
+              <div class="form-group">
+                <label>AI生图数量</label>
+                <input
+                  type="number"
+                  id="godCount"
+                  placeholder="生成几张AI图片"
+                  min="1"
+                  max="22"
+                  value="15"
+                />
+                <p style="margin-top:6px;font-size:12px;color:#6d7a90;">参考：1分钟≈8~10张，2分钟≈15~18张，3分钟≈20~22张。默认15张约2分钟视频</p>
+              </div>
+              <div class="form-group">
+                <label>配音声线</label>
+                <select id="godVoice" style="width:100%;padding:13px 16px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,0.92);font-size:15px;font-family:inherit;outline:none;">
+                  <optgroup label="🔥 大模型2.0（支持情感,推荐）">
+                    <option value="7568423452617588790">儒雅逸辰</option>
+                    <option value="7566481398970712100">vivi 女声</option>
+                    <option value="7568423452617506870">大壹 男声</option>
+                    <option value="7568423452617572406">流畅女声</option>
+                    <option value="7620288417930297386" selected>邻家女孩 2.0（默认）</option>
+                  </optgroup>
+                  <optgroup label="📖 大模型1.0（自然流畅）">
+                    <option value="7468512265151528987">磁性解说男声</option>
+                    <option value="7426725529589645339">解说小明</option>
+                    <option value="7426720361733193737">阳光青年</option>
+                    <option value="7426720361733177353">渊博小叔</option>
+                    <option value="7468512265134932019">悬疑解说</option>
+                    <option value="7468512265134899251">知性女声</option>
+                    <option value="7620302716920971318">温柔女神</option>
+                    <option value="7426720361732980745">少年梓辛</option>
+                  </optgroup>
+                  <optgroup label="⚡ 小模型（成本低）">
+                    <option value="7481299960424644662">擎苍</option>
+                    <option value="7481299960424824886">阳光男声</option>
+                    <option value="7481299960424808502">影视解说小美</option>
+                    <option value="7481299960424841270">活泼女声</option>
+                  </optgroup>
+                </select>
+                <p style="margin-top:6px;font-size:12px;color:#6d7a90;">选择配音音色，推荐解说类声线</p>
+              </div>
+              <div class="form-group">
+                <label>背景音乐 URL</label>
+                <input
+                  type="text"
+                  id="godAudio"
+                  placeholder="可选，留空则使用默认背景音乐"
+                />
+              </div>
+              <div class="form-group">
+                <label>解说文案</label>
+                <textarea
+                  id="godScript"
+                  rows="5"
+                  placeholder="可选。输入人物来历、成名经历、黑历史、能力象征和文化影响，系统会按约 3 分钟、6 大段结构拆成视频文案。"
+                ></textarea>
+              </div>
+              <div class="form-group">
+                <label>画面风格</label>
+                <input
+                  type="text"
+                  id="godStyle"
+                  placeholder="可选，如：神话史诗插画、电影级光影、三分构图、庄严神性"
+                />
+              </div>
+
+              <button
+                class="btn primary-btn full-width"
+                id="generateGodBtn"
+                type="button"
+                onclick="generateGod()"
+              >
+                生成神明工作流
+              </button>
+            </div>
+          </section>
+
+          <section class="result-card" id="resultSection">
+            <div class="result-icon">✓</div>
+            <h3 id="resultTitle2">工作流生成成功</h3>
+            <p id="resultDesc">
+              点击下方按钮下载工作流文件，导入剪映即可使用。
+            </p>
+            <div class="button-row">
+              <button
+                class="btn primary-btn"
+                id="downloadBtn"
+                type="button"
+                onclick="downloadFile()"
+              >
+                下载工作流文件
+              </button>
+              <button
+                class="btn secondary-btn"
+                type="button"
+                onclick="openSampleVideo()"
+              >
+                查看示例视频
+              </button>
+            </div>
+          </section>
+
+          <section class="tips-card">
+            <h4>使用说明</h4>
+            <ul>
+              <li>下载的工作流文件为 JSON 格式文本，可直接导入剪映使用。</li>
+              <li>
+                书籍业务支持自动抓取书名、作者与封面，也支持手动补充和本地上传封面。
+              </li>
+              <li>
+                示例视频不再常驻页面，统一通过“查看示例视频”按钮弹窗查看。
+              </li>
+              <li>
+                <strong>米核额度：</strong
+                >本页只打包工作流，不调用即梦，因此<strong>不会</strong>在这里提示「Key
+                用完」。是否欠费请在 Coze 跑生图时看报错，或登录 miheai.com
+                查余额；出错后请充值/换 Key，并更新服务端 MIHE_KEY
+                与流程「开始」节点。
+              </li>
+            </ul>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <div
+      class="video-modal"
+      id="videoModal"
+      onclick="handleModalBackdrop(event)"
+    >
+      <div class="video-modal-panel">
+        <div class="video-modal-head">
+          <h3 id="videoModalTitle">示例视频</h3>
+          <button
+            class="video-close"
+            type="button"
+            onclick="closeSampleVideo()"
+          >
+            ×
+          </button>
+        </div>
+        <div class="video-modal-body">
+          <video
+            id="sampleVideoPlayer"
+            controls
+            preload="metadata"
+            playsinline
+          ></video>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let currentBiz = "";
+      let currentDownloadUrl = "";
+      let currentPreviewVideoUrl = "";
+      let uploadedCoverUrl = "";
+
+      const bizMeta = {
+        book: {
+          title: "每天认识一本书",
+          desc: "输入书名后先搜索基础信息，再补充作者和封面，最后生成流程文件。",
+          previewTitle: "每天认识一本书 示例视频",
+          previewUrl: "/api/preview_video/book",
+        },
+        cigarette: {
+          title: "每天认识一款香烟",
+          desc: "输入香烟名称即可一键生成工作流文件，适合快速出片。",
+          previewTitle: "每天认识一款香烟 示例视频",
+          previewUrl: "/api/preview_video/cigarette",
+        },
+        god: {
+          title: "每天认识一个神",
+          desc: "输入神名、分镜数量、文案和画面风格，生成神话主题工作流。",
+          previewTitle: "每天认识一个神 示例视频",
+          previewUrl: "/api/preview_video/god",
+        },
+      };
+
+      async function loadRuntimeConfig() {
+        const banner = document.getElementById("miheKeyBanner");
+        try {
+          const resp = await fetch("/api/config");
+          const data = await resp.json();
+          const urls = data.preview_video_urls || {};
+          if (urls.book) bizMeta.book.previewUrl = urls.book;
+          if (urls.cigarette) bizMeta.cigarette.previewUrl = urls.cigarette;
+          if (urls.god) bizMeta.god.previewUrl = urls.god;
+
+          if (banner) {
+            let text = data.mihe_key_hint || "";
+            if (!data.mihe_key_configured) {
+              text =
+                "当前未配置服务端 MIHE_KEY，生成的流程里米核 Key 为空，导入后请在「开始」节点自行填写。" +
+                (text ? " " + text : "");
+              banner.classList.add("mihe-key-banner--warn");
+            } else {
+              banner.classList.remove("mihe-key-banner--warn");
+            }
+            banner.textContent = text;
+            // 无论是否已配置 Key，都展示说明（含「本站无法检测额度」）
+            banner.style.display = text ? "block" : "none";
+          }
+        } catch (e) {
+          if (banner) {
+            banner.style.display = "none";
+          }
+        }
+      }
+
+      function selectBiz(type) {
+        currentBiz = type;
+
+        document.querySelectorAll(".biz-item").forEach((item) => {
+          item.classList.toggle("active", item.dataset.type === type);
+        });
+
+        document
+          .getElementById("bookForm")
+          .classList.toggle("active", type === "book");
+        document
+          .getElementById("cigaretteForm")
+          .classList.toggle("active", type === "cigarette");
+        document
+          .getElementById("godForm")
+          .classList.toggle("active", type === "god");
+
+        const meta = bizMeta[type] || bizMeta.book;
+        document.getElementById("currentBizTitle").textContent = meta.title;
+        document.getElementById("currentBizDesc").textContent = meta.desc;
+        currentPreviewVideoUrl =
+          meta.previewUrl || `/api/preview_video/${type}`;
+
+        document.getElementById("resultSection").classList.remove("show");
+
+        if (type === "book") {
+          document.getElementById("bookName").focus();
+        } else if (type === "cigarette") {
+          document.getElementById("cigaretteName").focus();
+        } else {
+          document.getElementById("godName").focus();
+        }
+      }
+
+      function showToast(msg, type = "") {
+        const toast = document.getElementById("toast");
+        toast.textContent = msg;
+        toast.className = "toast " + type + " show";
+        setTimeout(() => toast.classList.remove("show"), 3000);
+      }
+
+      function openSampleVideo() {
+        if (!currentBiz) {
+          showToast("请先选择业务类型", "error");
+          return;
+        }
+
+        const modal = document.getElementById("videoModal");
+        const player = document.getElementById("sampleVideoPlayer");
+        const title = document.getElementById("videoModalTitle");
+        const meta = bizMeta[currentBiz] || {};
+        const src = `${currentPreviewVideoUrl || `/api/preview_video/${currentBiz}`}?t=${Date.now()}`;
+
+        title.textContent = meta.previewTitle || "示例视频";
+        player.onerror = function () {
+          closeSampleVideo();
+          showToast("当前业务暂无示例视频", "error");
+        };
+        player.src = src;
+        player.load();
+        modal.classList.add("show");
+      }
+
+      function closeSampleVideo() {
+        const modal = document.getElementById("videoModal");
+        const player = document.getElementById("sampleVideoPlayer");
+        modal.classList.remove("show");
+        player.pause();
+        player.removeAttribute("src");
+        player.load();
+      }
+
+      function handleModalBackdrop(event) {
+        if (event.target.id === "videoModal") {
+          closeSampleVideo();
+        }
+      }
+
+      function switchCoverMode(mode) {
+        document.querySelectorAll(".cover-tab").forEach((tab) => {
+          tab.classList.toggle("active", tab.dataset.mode === mode);
+        });
+        document.getElementById("urlMode").style.display =
+          mode === "url" ? "block" : "none";
+        document.getElementById("uploadMode").style.display =
+          mode === "upload" ? "block" : "none";
+      }
+
+      async function uploadCover(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        if (!file.type.startsWith("image/")) {
+          showToast("请上传图片文件", "error");
+          return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+          showToast("图片大小不能超过 5MB", "error");
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          document.getElementById("previewImg").src = e.target.result;
+          document.getElementById("uploadArea").style.display = "none";
+          document.getElementById("uploadPreview").style.display = "block";
+        };
+        reader.readAsDataURL(file);
+
+        const formData = new FormData();
+        formData.append("cover", file);
+        formData.append(
+          "book_name",
+          document.getElementById("bookName").value.trim() || "cover",
+        );
+
+        try {
+          const resp = await fetch("/api/upload_cover", {
+            method: "POST",
+            body: formData,
+          });
+          const data = await resp.json();
+
+          if (data.success) {
+            uploadedCoverUrl = (data.cover_path || data.cover_url || "").trim();
+            showToast("封面上传成功", "success");
+          } else {
+            showToast(data.error || "上传失败", "error");
+            removeUploadedCover();
+          }
+        } catch (e) {
+          showToast("网络错误，请重试", "error");
+          removeUploadedCover();
+        }
+      }
+
+      function removeUploadedCover() {
+        uploadedCoverUrl = "";
+        document.getElementById("coverFile").value = "";
+        document.getElementById("uploadArea").style.display = "block";
+        document.getElementById("uploadPreview").style.display = "none";
+        document.getElementById("previewImg").src = "";
+      }
+
+      function getCoverUrl() {
+        const urlModeVisible =
+          document.getElementById("urlMode").style.display !== "none";
+        if (urlModeVisible) {
+          return document.getElementById("bookCoverUrl").value.trim();
+        }
+        return uploadedCoverUrl;
+      }
+
+      async function searchBook() {
+        const bookName = document.getElementById("bookName").value.trim();
+        if (!bookName) {
+          showToast("请输入书名", "error");
+          return;
+        }
+
+        const btn = document.getElementById("searchBtn");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading"></span> 搜索中...';
+
+        try {
+          const resp = await fetch("/api/search_book", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ book_name: bookName, trace: true }),
+          });
+          const data = await resp.json();
+
+          if (data.success) {
+            const info = data.book_info;
+            const resultDiv = document.getElementById("bookSearchResult");
+            resultDiv.classList.add("show");
+
+            const coverImg = document.getElementById("resultCover");
+            const coverForPreview = (
+              info.cover_preview_url ||
+              info.cover ||
+              ""
+            ).trim();
+            if (coverForPreview) {
+              coverImg.src = coverForPreview;
+              coverImg.style.display = "block";
+            } else {
+              coverImg.style.display = "none";
+            }
+
+            document.getElementById("resultTitle").textContent =
+              info.title || "";
+            document.getElementById("resultAuthor").textContent = info.author
+              ? `作者：${info.author}`
+              : "作者：未找到";
+            document.getElementById("resultSummary").textContent =
+              info.summary || "";
+            document.getElementById("resultTip").textContent = info.found
+              ? "已自动获取书籍信息"
+              : "未找到完整信息，请在下方手动补充";
+
+            const traceBox = document.getElementById("bookFetchTrace");
+            const tracePre = document.getElementById("bookFetchTracePre");
+            const lines = info._fetch_trace;
+            if (traceBox && tracePre && Array.isArray(lines) && lines.length) {
+              tracePre.textContent = lines.join("\n");
+              traceBox.style.display = "block";
+            } else if (traceBox) {
+              traceBox.style.display = "none";
+            }
+
+            if (info.author) {
+              document.getElementById("bookAuthor").value = info.author;
+            }
+            if (info.cover) {
+              document.getElementById("bookCoverUrl").value = info.cover;
+            }
+            window._bookCoverSourceUrl = info.cover_source_url || "";
+          } else {
+            showToast(data.error || "搜索失败", "error");
+          }
+        } catch (e) {
+          showToast("网络错误，请重试", "error");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "搜索书籍信息";
+        }
+      }
+
+      async function generateBook() {
+        const bookName = document.getElementById("bookName").value.trim();
+        if (!bookName) {
+          showToast("请输入书名", "error");
+          return;
+        }
+
+        const author = document.getElementById("bookAuthor").value.trim();
+        const cover = getCoverUrl();
+        const btn = document.getElementById("generateBookBtn");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading"></span> 生成中...';
+
+        try {
+          const resp = await fetch("/api/generate_book", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              book_name: bookName,
+              author: author,
+              cover: cover,
+              cover_source_url: window._bookCoverSourceUrl || "",
+            }),
+          });
+          const data = await resp.json();
+
+          if (data.success) {
+            currentDownloadUrl = data.download_url;
+            currentPreviewVideoUrl =
+              data.preview_video_url ||
+              bizMeta.book.previewUrl ||
+              "/api/preview_video/book";
+            showResult(
+              "书籍工作流生成成功",
+              `《${bookName}》${author ? " - " + author : ""} 的工作流已就绪。`,
+            );
+            showToast("生成成功", "success");
+          } else {
+            showToast(data.error || "生成失败", "error");
+          }
+        } catch (e) {
+          showToast("网络错误，请重试", "error");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "生成书籍工作流";
+        }
+      }
+
+      async function generateCigarette() {
+        const cigaretteName = document
+          .getElementById("cigaretteName")
+          .value.trim();
+        if (!cigaretteName) {
+          showToast("请输入香烟名称", "error");
+          return;
+        }
+
+        const btn = document.getElementById("generateCigaretteBtn");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading"></span> 生成中...';
+
+        try {
+          const resp = await fetch("/api/generate_cigarette", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cigarette_name: cigaretteName }),
+          });
+          const data = await resp.json();
+
+          if (data.success) {
+            currentDownloadUrl = data.download_url;
+            currentPreviewVideoUrl =
+              data.preview_video_url ||
+              bizMeta.cigarette.previewUrl ||
+              "/api/preview_video/cigarette";
+            showResult(
+              "香烟工作流生成成功",
+              `${cigaretteName} 的工作流已就绪。`,
+            );
+            showToast("生成成功", "success");
+          } else {
+            showToast(data.error || "生成失败", "error");
+          }
+        } catch (e) {
+          showToast("网络错误，请重试", "error");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "生成香烟工作流";
+        }
+      }
+
+      async function generateGod() {
+        const godName = document.getElementById("godName").value.trim();
+        if (!godName) {
+          showToast("请输入神名", "error");
+          return;
+        }
+
+        const godCountRaw = document.getElementById("godCount").value.trim();
+        const godCount = godCountRaw === "" ? "10" : godCountRaw;
+        const godAudio = document.getElementById("godAudio").value.trim();
+        const godScript = document.getElementById("godScript").value.trim();
+        const godStyle = document.getElementById("godStyle").value.trim();
+        const godVoice = document.getElementById("godVoice").value;
+        const btn = document.getElementById("generateGodBtn");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading"></span> 生成中...';
+
+        try {
+          const resp = await fetch("/api/generate_god", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              god_name: godName,
+              shuliang: godCount,
+              audio: godAudio,
+              god_script: godScript,
+              visual_style: godStyle,
+              voice_id: godVoice,
+            }),
+          });
+          const data = await resp.json();
+
+          if (data.success) {
+            currentDownloadUrl = data.download_url;
+            currentPreviewVideoUrl =
+              data.preview_video_url ||
+              bizMeta.god.previewUrl ||
+              "/api/preview_video/god";
+            showToast("生成成功", "success");
+            showResult(
+              "神明工作流生成成功",
+              `${godName} 的解说分镜工作流已就绪。`,
+            );
+          } else {
+            showToast(data.error || "生成失败", "error");
+          }
+        } catch (e) {
+          showToast("网络错误，请重试", "error");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "生成神明工作流";
+        }
+      }
+
+      function showResult(title, desc) {
+        document.getElementById("resultTitle2").textContent = title;
+        document.getElementById("resultDesc").textContent = desc;
+        document.getElementById("resultSection").classList.add("show");
+        setTimeout(() => {
+          document
+            .getElementById("resultSection")
+            .scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }, 100);
+      }
+
+      function downloadFile() {
+        if (currentDownloadUrl) {
+          window.location.href = currentDownloadUrl;
+        }
+      }
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          closeSampleVideo();
+        }
+      });
+
+      window.addEventListener("DOMContentLoaded", async function () {
+        await loadRuntimeConfig();
+        selectBiz("book");
+      });
+    </script>
+  </body>
+</html>

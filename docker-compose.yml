@@ -1,0 +1,10 @@
+# 使用前复制 env.example 为 .env 并填写 MIHE_KEY（.env 勿提交 Git）
+services:
+  web:
+    build: .
+    ports:
+      - "${HOST_PORT:-7860}:7860"
+    environment:
+      PORT: "7860"
+    env_file:
+      - .env

@@ -1,0 +1,273 @@
+{
+  "add_images": {
+    "icon": "https://p26-bot-workflow-sign.byteimg.com/tos-cn-i-mdko3gqilj/6f1b953f1c7e44c481bb65a45a7d5f38.png~tplv-mdko3gqilj-image.image?rk3s=81d4c505&x-expires=1803123948&x-signature=462GTXip8Ms2DDetgR%2Bq8QQ%2Bnik%3D",
+    "apiName": "add_images",
+    "pluginID": "7522412867740565513",
+    "pluginProductStatus": 1,
+    "pluginProductUnlistType": 0,
+    "pluginType": 1,
+    "spaceID": "7522406276270358566",
+    "inputs": [
+      {
+        "description": "草稿ID，使用create_draft输出的draft_id即可",
+        "input": {},
+        "name": "draft_id",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "description": "使用imgs_infos输出",
+        "input": {},
+        "name": "image_infos",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "description": "x缩放",
+        "input": {},
+        "name": "scale_x",
+        "required": false,
+        "type": "float"
+      },
+      {
+        "description": "y缩放",
+        "input": {},
+        "name": "scale_y",
+        "required": false,
+        "type": "float"
+      },
+      {
+        "description": "移动transform_x",
+        "input": {},
+        "name": "transform_x",
+        "required": false,
+        "type": "float"
+      },
+      {
+        "description": "移动transform_y",
+        "input": {},
+        "name": "transform_y",
+        "required": false,
+        "type": "float"
+      },
+      {
+        "description": "图片透明度，值0-1",
+        "input": {},
+        "name": "alpha",
+        "required": false,
+        "type": "float"
+      }
+    ],
+    "outputs": [
+      {
+        "description": "segment_ids",
+        "input": {},
+        "name": "segment_infos",
+        "required": false,
+        "schema": {
+          "schema": [
+            {
+              "input": {},
+              "name": "end",
+              "required": false,
+              "type": "integer"
+            },
+            {
+              "input": {},
+              "name": "id",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "input": {},
+              "name": "start",
+              "required": false,
+              "type": "integer"
+            }
+          ],
+          "type": "object"
+        },
+        "type": "list"
+      },
+      {
+        "description": "草稿ID",
+        "input": {},
+        "name": "draft_id",
+        "required": false,
+        "type": "string"
+      },
+      {
+        "description": "消息",
+        "input": {},
+        "name": "message",
+        "required": false,
+        "type": "string"
+      },
+      {
+        "input": {},
+        "name": "segment_ids",
+        "required": false,
+        "schema": {
+          "assistType": 0,
+          "type": "string"
+        },
+        "type": "list"
+      }
+    ],
+    "updateTime": 1772715636,
+    "channel_id": 2,
+    "commercial_setting": {},
+    "latestVersionTs": "0",
+    "latestVersionName": "",
+    "versionName": "",
+    "description": "批量添加图片",
+    "title": "add_images",
+    "mainColor": "#CA61FF"
+  },
+  "keyframes_infos": {
+    "icon": "https://p9-bot-workflow-sign.byteimg.com/tos-cn-i-mdko3gqilj/aa9b1df2fda04cf4ad1e0114f67a905e.png~tplv-mdko3gqilj-image.image?rk3s=81d4c505&x-expires=1803125523&x-signature=QtSwJfDF5L4mOmfU0s7ZDT%2FLxPw%3D",
+    "apiName": "keyframes_infos",
+    "pluginID": "7522412867740565513",
+    "pluginProductStatus": 1,
+    "pluginProductUnlistType": 0,
+    "pluginType": 1,
+    "spaceID": "7522406276270358566",
+    "inputs": [
+      {
+        "description": "关键帧类型： KFTypePositionX: X轴移动，需要提供width参数，值会被除以width进行归一化 KFTypePositionY: Y轴移动，需要提供height参数，值会被除以height进行归一化 KFTypeRotation: 旋转角度，值范围必须在0-360度之间 UNIFORM_SCALE: 均匀缩放，值范围必须在0.01-5之间 KFTypeAlpha: 透明度，值范围必须在0-1之间",
+        "input": {},
+        "name": "ctype",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "description": "视频高度",
+        "input": {},
+        "name": "height",
+        "required": false,
+        "type": "integer"
+      },
+      {
+        "description": "需要放置关键帧的位置比例，eg：0|100 这个就是代表在开始和结尾放置，0|50|100代表在开头，中间，结尾放置3个关键帧",
+        "input": {},
+        "name": "offsets",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "description": "add_images节点输出",
+        "input": {},
+        "name": "segment_infos",
+        "required": true,
+        "schema": {
+          "schema": [
+            {
+              "description": "结束时间",
+              "input": {},
+              "name": "end",
+              "required": true,
+              "type": "integer"
+            },
+            {
+              "description": "id",
+              "input": {},
+              "name": "id",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "description": "开始时间",
+              "input": {},
+              "name": "start",
+              "required": true,
+              "type": "integer"
+            }
+          ],
+          "type": "object"
+        },
+        "type": "list"
+      },
+      {
+        "description": "对应offsets的值，长度要一致，比如1|2，或者1|2|1",
+        "input": {},
+        "name": "values",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "description": "视频宽度",
+        "input": {},
+        "name": "width",
+        "required": false,
+        "type": "integer"
+      }
+    ],
+    "outputs": [
+      {
+        "input": {},
+        "name": "keyframes_infos",
+        "required": false,
+        "type": "string"
+      }
+    ],
+    "updateTime": 1772715636,
+    "channel_id": 2,
+    "commercial_setting": {},
+    "latestVersionTs": "0",
+    "latestVersionName": "",
+    "versionName": "",
+    "description": "关键帧数据生成器",
+    "title": "keyframes_infos",
+    "mainColor": "#CA61FF"
+  },
+  "add_keyframes": {
+    "icon": "https://p9-bot-workflow-sign.byteimg.com/tos-cn-i-mdko3gqilj/e642a25aa359491aab27bc56b8eed70a.png~tplv-mdko3gqilj-image.image?rk3s=81d4c505&x-expires=1803125498&x-signature=2GcQckopFJY%2BRrNwsgYpNGCsAu0%3D",
+    "apiName": "add_keyframes",
+    "pluginID": "7522412867740565513",
+    "pluginProductStatus": 1,
+    "pluginProductUnlistType": 0,
+    "pluginType": 1,
+    "spaceID": "7522406276270358566",
+    "inputs": [
+      {
+        "description": "草稿id，使用create_draft输出的draft_id即可",
+        "input": {},
+        "name": "draft_id",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "description": "关键帧数据，格式： [ { \"offset\": 5000000, \"property\": \"KFTypePositionX\", \"segment_id\": \"acc5b516-046b-4eae-a179-f686f35e70a8\", \"value\": 0 } ]  可以使用keyframes_infos生成",
+        "input": {},
+        "name": "keyframes",
+        "required": true,
+        "type": "string"
+      }
+    ],
+    "outputs": [
+      {
+        "description": "草稿ID",
+        "input": {},
+        "name": "draft_id",
+        "required": false,
+        "type": "string"
+      },
+      {
+        "description": "消息",
+        "input": {},
+        "name": "message",
+        "required": false,
+        "type": "string"
+      }
+    ],
+    "updateTime": 1772715636,
+    "channel_id": 2,
+    "commercial_setting": {},
+    "latestVersionTs": "0",
+    "latestVersionName": "",
+    "versionName": "",
+    "description": "添加关键帧",
+    "title": "add_keyframes",
+    "mainColor": "#CA61FF"
+  }
+}
