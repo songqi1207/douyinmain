@@ -8,6 +8,7 @@ from config import MIHE_KEY, MIHE_KEY_OUTPUT_DESC, is_hotlink_protected_url
 from utils.template_loader import load_template
 from utils.cover import cover_url_for_coze_workflow
 from utils.sanitize import sanitize_template_media_urls
+from workflows.god.canvas import ensure_coze_temp_metadata
 
 
 def _safe_public_url(url, fallback):
@@ -18,16 +19,7 @@ def _safe_public_url(url, fallback):
     return (fallback or "").strip()
 
 
-def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_url=None, book_script="", visual_style="", voice_id=""):
-    """
-    生成书籍工作流。
-    public_base_url：生成 pic 字段用（Coze 需 http 图链；本地路径会转成 /api/cover/…）。
-    shuliang：AI 生图数量（分镜数）。
-    audio_url：背景音乐 URL。
-    book_script：用户自定义解说文案。
-    visual_style：画面风格描述。
-    voice_id：配音声线 ID。
-    """
+def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_url=None, book_script="", visual_style="", voice_id="", from_link=False, url=""):
     from config import BGM_DEFAULT
     template = load_template(os.path.join("temp", "template", "书单带货1.txt"))
 
@@ -35,9 +27,8 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
     summary = (book_info.get("summary") or "").strip()
     content_in = (book_info.get("content") or "").strip()
     if not content_in:
-        content_in = summary  # 有摘要就填，没有就留空让 LLM 自行生成
+        content_in = summary
 
-    # 处理新参数
     audio_url = (audio_url or BGM_DEFAULT or "").strip()
     book_script = (book_script or "").strip()
     visual_style = (visual_style or "").strip() or (
@@ -56,14 +47,12 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
     summary = (book_info.get("summary") or "").strip()
     content_in = (book_info.get("content") or "").strip()
     if not content_in:
-        content_in = summary  # 有摘要就填，没有就留空让 LLM 自行生成
+        content_in = summary
 
     pic_for_coze = cover_url_for_coze_workflow(book_info.get("cover", ""), public_base_url)
     cover_source_url = (book_info.get("cover_source_url") or "").strip()
-    # 优先用 CDN 公网 URL（boltp/OL 等）；豆瓣 doubanio / 百度 bkimg 反盗链，Coze 侧 403，一律剔除后回退本服务 URL
     safe_source = _safe_public_url(cover_source_url, "")
     pic_for_coze_safe = safe_source if safe_source.startswith("https://") else pic_for_coze
-    # 再兜一刀：pic_for_coze 理论上是自家 /api/cover 或已过滤外链，但仍防御性剔除反盗链
     if is_hotlink_protected_url(pic_for_coze_safe):
         pic_for_coze_safe = cover_url_for_coze_workflow(book_info.get("cover", ""), public_base_url)
 
@@ -95,8 +84,6 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
                 output['description'] = MIHE_KEY_OUTPUT_DESC
 
     # ── 171617（大模型：书籍文案生成）──
-    # 将 input 从 ref(book_name) 改为 ref(content)，让 LLM 拿到摘要作为上下文
-    # 同时提升 maxTokens 以输出更长文案
     n171617 = nodes.get('171617')
     if n171617:
         inp171 = n171617['data'].get('inputs') or {}
@@ -113,7 +100,6 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
                 p['input']['value'] = {'type': 'literal', 'content': 8192, 'rawMeta': {'type': 4}}
             if isinstance(p, dict) and p.get('name') == 'systemPrompt':
                 orig = (p['input']['value'].get('content') or '')
-                # 注入用户自定义文案和画面风格
                 extra_context = ""
                 if book_script:
                     extra_context += f"\n\n## 用户提供的解说文案（请据此整理分镜，保留核心信息）\n{book_script}"
@@ -125,8 +111,6 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
                 p['input']['value']['content'] = orig + extra_context
 
     # ── 删除图片封面节点（type='23'，但保留有 'book' 文本输入的数据节点）──
-    # Coze 封面节点只支持 ByteDance CDN，外链始终报错
-    # 119951 等有 book 参数的节点是书名查询节点，不能删
     def _is_image_fengmian(node):
         if node.get('type') != '23':
             return False
@@ -139,13 +123,10 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
                                   if e.get('sourceNodeID') not in fengmian_node_ids
                                   and e.get('targetNodeID') not in fengmian_node_ids]
 
-    # ── 所有依赖封面节点的文本处理节点 ──
-    # String1 改为 ref(100001.tupian)，并补一条 100001→节点 的边
     _TU_TEXT_NODES = [
         '143515', '162525', '181688', '146851', '109466', '130579',
         '185147', '195811', '199046', '194563', '140765', '195939',
         '127901', '112474',
-        # 152360 不在此列：它引用的是 119951（书名查询节点），应保留原始引用
     ]
     existing_edges = {(e.get('sourceNodeID'), e.get('targetNodeID')) for e in template['json']['edges']}
     for tnid in _TU_TEXT_NODES:
@@ -165,14 +146,11 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
         if ('100001', tnid) not in existing_edges:
             template['json']['edges'].append({'sourceNodeID': '100001', 'targetNodeID': tnid})
             existing_edges.add(('100001', tnid))
-        # 补执行链路边：文本处理节点 → 代码节点(188031)
         if (tnid, '188031') not in existing_edges:
             template['json']['edges'].append({'sourceNodeID': tnid, 'targetNodeID': '188031'})
             existing_edges.add((tnid, '188031'))
 
-    # ── 网感优化：字幕样式 + 配音声线 + 图片铺满 + 竖屏 ──
-
-    # 画布改竖屏 9:16（190830 create_draft）
+    # ── 竖屏 9:16 ──
     n_draft = nodes.get('190830')
     if n_draft:
         for p in (n_draft['data']['inputs'].get('inputParameters') or []):
@@ -181,26 +159,19 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
             elif p.get('name') == 'height':
                 p['input']['value'] = {'type': 'literal', 'content': 1920, 'rawMeta': {'type': 2}}
 
-    # 生图比例改 9:16（136028 jimeng_generate_image）
     n_img = nodes.get('136028')
     if n_img:
         for p in (n_img['data']['inputs'].get('inputParameters') or []):
             if p.get('name') == 'ratio':
                 p['input']['value'] = {'type': 'literal', 'content': '9:16', 'rawMeta': {'type': 1}}
 
-    # 去掉背景图层（104801 正文背景 + 112769 画面背景 + 101422/137249 add_images + 118395/127866 keyframes）
-    # 原链路: 126702 → 104801 → 112769 → 196077
-    #         011558 → 101422 → 137249 → 118395 → 127866 → 131346
-    # 改为:   126702 → 196077, 011558 → 131346
     _bg_node_ids = {'104801', '112769', '101422', '137249', '118395', '127866'}
     template['json']['nodes'] = [n for n in template['json']['nodes'] if n.get('id') not in _bg_node_ids]
     template['json']['edges'] = [e for e in template['json']['edges']
                                   if e.get('sourceNodeID') not in _bg_node_ids
                                   and e.get('targetNodeID') not in _bg_node_ids]
-    # 补边
     template['json']['edges'].append({'sourceNodeID': '126702', 'targetNodeID': '196077'})
     template['json']['edges'].append({'sourceNodeID': '011558', 'targetNodeID': '131346'})
-    # 修复 131346(add_audios) 的 draft_id 引用：从被删的 127866 改为 190830(create_draft)
     n_audios = nodes.get('131346')
     if n_audios:
         for p in (n_audios['data']['inputs'].get('inputParameters') or []):
@@ -212,15 +183,10 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
                 }
                 break
 
-    # 字幕样式（173584 add_captions）
-    # 字幕样式（173584 add_captions）
+    # ── 字幕样式 ──
     n_caption = nodes.get('173584')
     if n_caption:
-        _book_caption_style = {
-            "font_size": 10,
-            "text_color": "#FFFFFF",
-            "border_color": "#000000",
-        }
+        _book_caption_style = {"font_size": 10, "text_color": "#FFFFFF", "border_color": "#000000"}
         for p in (n_caption['data']['inputs'].get('inputParameters') or []):
             name = p.get('name')
             if name in _book_caption_style:
@@ -230,8 +196,7 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
                     'rawMeta': {'type': 1 if isinstance(_book_caption_style[name], str) else 2},
                 }
 
-    # 配音声线 + 情感（162109, 554922）
-    _book_voice_id = voice_id
+    # ── 配音声线 ──
     for tts_id in ['162109', '554922']:
         tts_node = nodes.get(tts_id)
         if not tts_node:
@@ -239,22 +204,13 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
         params_list = tts_node['data']['inputs'].get('inputParameters') or []
         for p in params_list:
             if p.get('name') == 'voice_id':
-                p['input']['value'] = {'type': 'literal', 'content': _book_voice_id, 'rawMeta': {'type': 1}}
-        # 追加 emotion
-        has_emotion = any(p.get('name') == 'emotion' for p in params_list)
-        if not has_emotion:
-            params_list.append({
-                "name": "emotion",
-                "input": {"type": "string", "value": {"type": "literal", "content": "excited", "rawMeta": {"type": 1}}},
-            })
-            params_list.append({
-                "name": "emotion_scale",
-                "input": {"type": "integer", "value": {"type": "literal", "content": 3, "rawMeta": {"type": 2}}},
-            })
+                p['input']['value'] = {'type': 'literal', 'content': voice_id, 'rawMeta': {'type': 1}}
+        if not any(p.get('name') == 'emotion' for p in params_list):
+            params_list.append({"name": "emotion", "input": {"type": "string", "value": {"type": "literal", "content": "excited", "rawMeta": {"type": 1}}}})
+            params_list.append({"name": "emotion_scale", "input": {"type": "integer", "value": {"type": "literal", "content": 3, "rawMeta": {"type": 2}}}})
 
-    # 图片铺满（所有 add_images 节点的 scale 改成 1）
-    _img_nodes = ['165842', '722699', '889090', '556513', '007293', '011558']
-    for img_id in _img_nodes:
+    # ── 图片铺满 ──
+    for img_id in ['165842', '722699', '889090', '556513', '007293', '011558']:
         img_node = nodes.get(img_id)
         if not img_node:
             continue
@@ -262,4 +218,98 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
             if p.get('name') in ('scale_x', 'scale_y'):
                 p['input']['value'] = {'type': 'literal', 'content': 1, 'rawMeta': {'type': 2}}
 
+    # ── from_link 模式：注入「抖音/小红书取链 → 字幕获取 → LLM 改写」管线 ──
+    if from_link:
+        url_value = (url or "").strip()
+        start_outputs = nodes["100001"]["data"]["outputs"]
+        if not any(o.get("name") == "url" for o in start_outputs):
+            start_outputs.append({"name": "url", "type": "string", "required": False, "value": url_value, "defaultValue": url_value})
+        else:
+            for o in start_outputs:
+                if o.get("name") == "url":
+                    o["value"] = o["defaultValue"] = url_value
+        start_triggers = nodes["100001"]["data"].setdefault("trigger_parameters", [])
+        if not any(tp.get("name") == "url" for tp in start_triggers):
+            start_triggers.append({"name": "url", "type": "string", "required": False, "value": url_value, "defaultValue": url_value})
+        else:
+            for tp in start_triggers:
+                if tp.get("name") == "url":
+                    tp["value"] = tp["defaultValue"] = url_value
+
+        node_198838 = {
+            "id": "198838",
+            "type": "4",
+            "meta": {"position": {"x": -8944.79967642455, "y": -3803.628616631093}},
+            "data": {
+                "nodeMeta": {"description": "抖音提取小红书提取链接集合", "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Plugin-v2.jpg", "title": "dou_book_main"},
+                "inputs": {
+                    "apiParam": [
+                        {"input": {"type": "string", "value": {"content": "7512671564416958464", "type": "literal"}}, "name": "apiID"},
+                        {"input": {"type": "string", "value": {"content": "dou_book_main", "type": "literal"}}, "name": "apiName"},
+                        {"input": {"type": "string", "value": {"content": "7512671564416942080", "type": "literal"}}, "name": "pluginID"},
+                        {"input": {"type": "string", "value": {"content": "抖音小红书提取链接", "type": "literal"}}, "name": "pluginName"},
+                    ],
+                    "inputParameters": [
+                        {"name": "url", "input": {"type": "string", "value": {"type": "ref", "content": {"source": "block-output", "blockID": "100001", "name": "url"}, "rawMeta": {"type": 1}}}},
+                    ],
+                    "settingOnError": {"processType": 1, "timeoutMs": 180000, "retryTimes": 0},
+                },
+                "outputs": [{"type": "string", "name": "response", "required": True, "description": "视频地址"}],
+            },
+        }
+        node_1347033 = {
+            "id": "1347033",
+            "type": "4",
+            "meta": {"position": {"x": -8944.79967642455, "y": -3647.826833423813}},
+            "data": {
+                "nodeMeta": {"description": "根据视频的语音来生成字幕", "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Plugin-v2.jpg", "title": "generate_video_captions_sync_1"},
+                "inputs": {
+                    "apiParam": [
+                        {"input": {"type": "string", "value": {"content": "7403656762315948070", "type": "literal"}}, "name": "apiID"},
+                        {"input": {"type": "string", "value": {"content": "generate_video_captions_sync", "type": "literal"}}, "name": "apiName"},
+                        {"input": {"type": "string", "value": {"content": "7403656762315915302", "type": "literal"}}, "name": "pluginID"},
+                        {"input": {"type": "string", "value": {"content": "字幕获取", "type": "literal"}}, "name": "pluginName"},
+                    ],
+                    "inputParameters": [
+                        {"name": "url", "input": {"type": "string", "value": {"type": "ref", "content": {"source": "block-output", "blockID": "198838", "name": "response"}, "rawMeta": {"type": 1}}}},
+                    ],
+                    "settingOnError": {"processType": 1, "timeoutMs": 180000, "retryTimes": 0},
+                },
+                "outputs": [
+                    {"type": "object", "name": "data", "required": False, "schema": [
+                        {"type": "string", "name": "content", "required": False},
+                        {"type": "list", "name": "content_chunks", "required": False, "schema": {"type": "object", "schema": [
+                            {"type": "float", "name": "end_time", "required": False},
+                            {"type": "float", "name": "start_time", "required": False},
+                            {"type": "string", "name": "text", "required": False},
+                        ]}},
+                    ]},
+                    {"type": "string", "name": "msg", "required": False},
+                ],
+            },
+        }
+        existing_ids = {n["id"] for n in template["json"]["nodes"]}
+        for new_node in (node_198838, node_1347033):
+            if new_node["id"] not in existing_ids:
+                template["json"]["nodes"].append(new_node)
+                nodes[new_node["id"]] = new_node
+
+        # 改写 171617 的 input 入参：从 100001.book_name 改为 1347033.data.content
+        if n171617:
+            for p in (n171617['data'].get('inputs', {}).get('inputParameters') or []):
+                if p.get('name') == 'input':
+                    p['input']['value'] = {
+                        'type': 'ref',
+                        'content': {'source': 'block-output', 'blockID': '1347033', 'name': 'data.content'},
+                        'rawMeta': {'type': 1},
+                    }
+                    break
+
+        edges = template["json"].setdefault("edges", [])
+        existing_edge_keys = {(e.get("sourceNodeID"), e.get("targetNodeID")) for e in edges}
+        for src, tgt in (("100001", "198838"), ("198838", "1347033"), ("1347033", "171617")):
+            if (src, tgt) not in existing_edge_keys:
+                edges.append({"sourceNodeID": src, "targetNodeID": tgt})
+
+    ensure_coze_temp_metadata(template)
     return sanitize_template_media_urls(template, "book", book_info.get("title", ""))

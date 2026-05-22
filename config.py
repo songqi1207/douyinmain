@@ -86,7 +86,7 @@ BOOK_ILLUSTRATION_SYSTEM_PROMPT = (
 # 默认音乐
 # ------------------------------------------------------------------
 BGM_DEFAULT = ""
-CIGARETTE_BGM_DEFAULT = "https://p26-bot-workflow-sign.byteimg.com/tos-cn-i-mdko3gqilj/f3c5163a0ad44d06a296a26f48a2dd99.MP3~tplv-mdko3gqilj-image.image?rk3s=81d4c505&x-expires=1803121266&x-signature=UMnUkC%2BoKa7YB9YS1Rt2%2BRuwYyo%3D"
+GOD_BGM_DEFAULT = "https://pub-e79d6e86fa1f4195990ef274a10bb83b.r2.dev/music/Emperor%20-%20Bless%20The%20Lords%20(%E7%BA%AF%E9%9F%B3%E4%B9%90_%E7%BF%BB%E5%A5%8F_%20mu22a)_L%20(mp3cut.net).mp3"
 
 # ------------------------------------------------------------------
 # 封面图片保存目录

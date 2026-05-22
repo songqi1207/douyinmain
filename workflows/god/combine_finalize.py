@@ -4,22 +4,21 @@
 
 def apply_canonical_combine_node_175205(workflow: dict) -> bool:
     """
-    将节点 175205 的 code 替换为 myth_combine_coze_code 中的全文。
-    若模块不存在（旧部署），返回 False 且不修改。
+    V5 模板已包含最终版代码，不再覆盖。
+    只确保 outputs 里有 bg_imgs。
     """
-    try:
-        from workflows.god.myth_combine_coze_code import COZE_COMBINE_CODE_175205
-    except ImportError:
-        return False
     for n in workflow.get("json", {}).get("nodes", []):
         if n.get("id") == "175205":
-            ins = n.setdefault("data", {}).setdefault("inputs", {})
-            ins["code"] = COZE_COMBINE_CODE_175205
-            params = ins.get("inputParameters")
-            if isinstance(params, list):
-                ins["inputParameters"] = [
-                    p for p in params if p.get("name") != "god_intro_images"
-                ]
+            # 不覆盖 code，保持模板原样
+            # 只确保 outputs 里有 bg_imgs
+            outputs = n.setdefault("data", {}).get("outputs", [])
+            if not any(o.get("name") == "bg_imgs" for o in outputs):
+                outputs.append({
+                    "type": "string",
+                    "name": "bg_imgs",
+                    "required": False,
+                    "description": "静态背景图层JSON"
+                })
             return True
     return False
 

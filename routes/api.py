@@ -31,6 +31,32 @@ from workflows.god.builder import generate_god_workflow
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
 
+@api_bp.route("/generate_flip_intro", methods=["POST"])
+def api_generate_flip_intro():
+    """生成翻书片头帧序列，返回帧图片 URL 列表。"""
+    data = request.json or {}
+    god_name = data.get("god_name", "").strip()
+    if not god_name:
+        return jsonify({"error": "请输入神名"}), 400
+
+    try:
+        from utils.flip_frames import generate_flip_frames
+        from workflows.god.intro_images import resolve_god_intro_images
+
+        image_urls = resolve_god_intro_images(god_name)
+        frame_urls = generate_flip_frames(image_urls)
+
+        return jsonify({
+            "success": True,
+            "god_name": god_name,
+            "frame_count": len(frame_urls),
+            "frame_urls": frame_urls,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"生成失败: {str(e)}"}), 500
+
+
 @api_bp.route("/search_book", methods=["POST"])
 def api_search_book():
     data = request.json
@@ -59,6 +85,14 @@ def api_generate_book():
     if not book_name:
         return jsonify({"error": "请输入书名"}), 400
 
+    shuliang = str(data.get("shuliang", "10")).strip() or "10"
+    audio_url = str(data.get("audio", "")).strip() or None
+    book_script = str(data.get("book_script", "")).strip()
+    visual_style = str(data.get("visual_style", "")).strip()
+    voice_id = str(data.get("voice_id", "")).strip()
+    url = str(data.get("url", "")).strip()
+    from_link = bool(url)
+
     try:
         need_fetch = not author or not cover
         fetched = get_book_info(book_name) if need_fetch else {}
@@ -71,7 +105,17 @@ def api_generate_book():
             "summary": (fetched.get("summary") or "").strip(),
         }
         pub = workflow_public_base(request.host_url.rstrip("/"))
-        workflow = generate_book_workflow(book_info, public_base_url=pub)
+        workflow = generate_book_workflow(
+            book_info,
+            public_base_url=pub,
+            shuliang=shuliang,
+            audio_url=audio_url,
+            book_script=book_script,
+            visual_style=visual_style,
+            voice_id=voice_id,
+            from_link=from_link,
+            url=url,
+        )
         book_info["cover_workflow_url"] = cover_url_for_coze_workflow(
             book_info.get("cover", ""), pub
         )
@@ -135,6 +179,8 @@ def api_generate_god():
     god_script = str(data.get("god_script", "")).strip()
     visual_style = str(data.get("visual_style", "")).strip()
     voice_id = str(data.get("voice_id", "")).strip()
+    url = str(data.get("url", "")).strip()
+    from_link = bool(url)  # url 非空就是链接改写模式
 
     try:
         pub = workflow_public_base(request.host_url.rstrip("/"))
@@ -146,6 +192,8 @@ def api_generate_god():
             visual_style=visual_style,
             public_base_url=pub,
             voice_id=voice_id,
+            from_link=from_link,
+            url=url,
         )
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

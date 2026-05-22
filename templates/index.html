@@ -727,7 +727,7 @@
       <header class="hero">
         <h1>一键工作流生成器</h1>
         <p>
-          选择业务类型，填写关键信息，直接生成可下载的流程文件。页面只保留生成主链路，示例视频改成按钮弹窗，不再常驻占位。
+          选择业务类型，填写关键信息，直接生成可下载的流程文件。
         </p>
       </header>
 
@@ -770,7 +770,7 @@
               <div>
                 <h2 id="currentBizTitle">每天认识一本书</h2>
                 <p id="currentBizDesc">
-                  输入书名后先搜索基础信息，再补充作者和封面，最后生成流程文件。
+                  输入书名、分镜数量、文案和画面风格，生成书籍主题工作流。
                 </p>
               </div>
               <button
@@ -936,6 +936,72 @@
                 </div>
               </div>
 
+              <div class="form-group">
+                <label>AI生图数量</label>
+                <input
+                  type="number"
+                  id="bookCount"
+                  placeholder="生成几张AI图片"
+                  min="1"
+                  max="22"
+                  value="10"
+                />
+                <p style="margin-top:6px;font-size:12px;color:#6d7a90;">参考：1分钟≈8~10张，2分钟≈15~18张，3分钟≈20~22张。默认10张约1.5分钟视频</p>
+              </div>
+              <div class="form-group">
+                <label>配音声线</label>
+                <select id="bookVoice" style="width:100%;padding:13px 16px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,0.92);font-size:15px;font-family:inherit;outline:none;">
+                  <optgroup label="🔥 大模型2.0（支持情感,推荐）">
+                    <option value="7568423452617588790">儒雅逸辰</option>
+                    <option value="7566481398970712100">vivi 女声</option>
+                    <option value="7568423452617506870">大壹 男声</option>
+                    <option value="7568423452617572406">流畅女声</option>
+                    <option value="7620288417930297386" selected>邻家女孩 2.0（默认）</option>
+                  </optgroup>
+                  <optgroup label="📖 大模型1.0（自然流畅）">
+                    <option value="7468512265151528987">磁性解说男声</option>
+                    <option value="7426725529589645339">解说小明</option>
+                    <option value="7426720361733193737">阳光青年</option>
+                    <option value="7426720361733177353">渊博小叔</option>
+                    <option value="7468512265134932019">悬疑解说</option>
+                    <option value="7468512265134899251">知性女声</option>
+                    <option value="7620302716920971318">温柔女神</option>
+                    <option value="7426720361732980745">少年梓辛</option>
+                  </optgroup>
+                  <optgroup label="⚡ 小模型（成本低）">
+                    <option value="7481299960424644662">擎苍</option>
+                    <option value="7481299960424824886">阳光男声</option>
+                    <option value="7481299960424808502">影视解说小美</option>
+                    <option value="7481299960424841270">活泼女声</option>
+                  </optgroup>
+                </select>
+                <p style="margin-top:6px;font-size:12px;color:#6d7a90;">选择配音音色，推荐知性/深情类声线</p>
+              </div>
+              <div class="form-group">
+                <label>背景音乐 URL</label>
+                <input
+                  type="text"
+                  id="bookAudio"
+                  placeholder="可选，留空则使用默认背景音乐"
+                />
+              </div>
+              <div class="form-group">
+                <label>解说文案</label>
+                <textarea
+                  id="bookScript"
+                  rows="5"
+                  placeholder="可选。输入书评、读后感或核心情节，系统会按约3分钟、四阶段情感弧结构拆成视频文案。留空则由AI根据书名自动生成。"
+                ></textarea>
+              </div>
+              <div class="form-group">
+                <label>画面风格</label>
+                <input
+                  type="text"
+                  id="bookStyle"
+                  placeholder="可选，如：电影级光影、文艺胶片质感、水彩插画、暖色调"
+                />
+              </div>
+
               <button
                 class="btn primary-btn full-width"
                 id="generateBookBtn"
@@ -1027,11 +1093,29 @@
                 />
               </div>
               <div class="form-group">
+                <label>智能改写链接（可选）</label>
+                <input
+                  type="text"
+                  id="godRewriteUrl"
+                  placeholder="粘贴讲【神话人物】的抖音/小红书链接 → 服务端自动取字幕 + 70% 改写"
+                />
+                <p style="margin-top:6px;font-size:12px;color:#6d7a90;">填写后将忽略下方解说文案，由 Coze 工作流从链接抓取字幕并按营销号腔调改写，适合二创发布。与上方"从链接提取文案"是两种模式：上方是提取到本地编辑，本字段是端到端自动改写。</p>
+                <p style="margin-top:4px;font-size:12px;color:#b8862a;line-height:1.6;">⚠️ 链接内容要求：①必须是讲<b>神话人物</b>的视频（聊美食、影视剧情、健身类不行，会被强行套进神话框架，结果跑题）；②建议时长 <b>1 分钟以上</b>，太短素材不够，模型需要凑够 900 字会大量虚构；③语音清晰、神名/法器名要念准，ASR 错字会被 LLM"合理化"写进分镜。</p>
+              </div>
+              <div class="form-group">
+                <label>你的需求/要求</label>
+                <textarea
+                  id="godRequirement"
+                  rows="2"
+                  placeholder="可选。如：重点讲黑历史、风格搞笑一点、多讲和其他神的关系"
+                ></textarea>
+              </div>
+              <div class="form-group">
                 <label>解说文案</label>
                 <textarea
                   id="godScript"
                   rows="5"
-                  placeholder="可选。输入人物来历、成名经历、黑历史、能力象征和文化影响，系统会按约 3 分钟、6 大段结构拆成视频文案。"
+                  placeholder="可选。输入人物来历、成名经历、黑历史、能力象征和文化影响，系统会按约 3 分钟、6 大段结构拆成视频文案。留空则AI自动生成。"
                 ></textarea>
               </div>
               <div class="form-group">
@@ -1140,7 +1224,7 @@
       const bizMeta = {
         book: {
           title: "每天认识一本书",
-          desc: "输入书名后先搜索基础信息，再补充作者和封面，最后生成流程文件。",
+          desc: "输入书名、分镜数量、文案和画面风格，生成书籍主题工作流。",
           previewTitle: "每天认识一本书 示例视频",
           previewUrl: "/api/preview_video/book",
         },
@@ -1428,6 +1512,12 @@
 
         const author = document.getElementById("bookAuthor").value.trim();
         const cover = getCoverUrl();
+        const bookCountRaw = document.getElementById("bookCount").value.trim();
+        const bookCount = bookCountRaw === "" ? "10" : bookCountRaw;
+        const bookAudio = document.getElementById("bookAudio").value.trim();
+        const bookScript = document.getElementById("bookScript").value.trim();
+        const bookStyle = document.getElementById("bookStyle").value.trim();
+        const bookVoice = document.getElementById("bookVoice").value;
         const btn = document.getElementById("generateBookBtn");
         btn.disabled = true;
         btn.innerHTML = '<span class="loading"></span> 生成中...';
@@ -1441,6 +1531,11 @@
               author: author,
               cover: cover,
               cover_source_url: window._bookCoverSourceUrl || "",
+              shuliang: bookCount,
+              audio: bookAudio,
+              book_script: bookScript,
+              visual_style: bookStyle,
+              voice_id: bookVoice,
             }),
           });
           const data = await resp.json();
@@ -1510,6 +1605,7 @@
         }
       }
 
+
       async function generateGod() {
         const godName = document.getElementById("godName").value.trim();
         if (!godName) {
@@ -1521,8 +1617,24 @@
         const godCount = godCountRaw === "" ? "10" : godCountRaw;
         const godAudio = document.getElementById("godAudio").value.trim();
         const godScript = document.getElementById("godScript").value.trim();
+        const godRequirement = document.getElementById("godRequirement").value.trim();
         const godStyle = document.getElementById("godStyle").value.trim();
         const godVoice = document.getElementById("godVoice").value;
+        const godRewriteUrl = document.getElementById("godRewriteUrl").value.trim();
+        
+        // 把文案和需求合并传给工作流
+        let finalScript = godScript;
+        if (godRequirement && godScript) {
+          finalScript = godScript + "\n\n【用户要求】" + godRequirement;
+        } else if (godRequirement && !godScript) {
+          finalScript = "【用户要求】" + godRequirement;
+        }
+        
+        // 智能改写模式：URL 非空时清空文案，让 180385:false 分支触发 137312 LLM 改写
+        if (godRewriteUrl) {
+          finalScript = "";
+        }
+
         const btn = document.getElementById("generateGodBtn");
         btn.disabled = true;
         btn.innerHTML = '<span class="loading"></span> 生成中...';
@@ -1535,9 +1647,10 @@
               god_name: godName,
               shuliang: godCount,
               audio: godAudio,
-              god_script: godScript,
+              god_script: finalScript,
               visual_style: godStyle,
               voice_id: godVoice,
+              url: godRewriteUrl,
             }),
           });
           const data = await resp.json();
