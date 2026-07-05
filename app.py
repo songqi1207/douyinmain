@@ -13,7 +13,8 @@ from flask import Flask
 from flask_cors import CORS
 
 from config import print_startup_info
-from routes import api_bp, views_bp
+from routes.api import api_bp
+from routes.views import views_bp
 
 
 def create_app():

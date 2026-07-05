@@ -11,6 +11,7 @@ import os
 import random
 
 GOD_IMAGE_MAP = {
+    "孙悟空": "https://a1.boltp.com/2026/05/11/6a01e4247bf71.jpg",  # 暂用哪吒图，后续替换
     "二郎神": "https://a1.boltp.com/2026/05/11/6a01e41b5704f.jpg",
     "何仙姑": "https://a1.boltp.com/2026/05/11/6a01e41d8ae6a.jpg",
     "关圣帝君": "https://a1.boltp.com/2026/05/11/6a01e41fbd47c.jpg",
@@ -30,32 +31,35 @@ GOD_IMAGE_MAP = {
     "瑶池金母": "https://a1.boltp.com/2026/05/11/6a01e441014b3.jpg",
     "真武大帝": "https://a1.boltp.com/2026/05/11/6a01e45b33205.jpg",
     "观音菩萨": "https://a1.boltp.com/2026/05/11/6a01e45d9c78a.jpg",
-    "财神": "https://a1.boltp.com/2026/05/11/6a01e45fd3c54.jpg",
+    "财神": "https://a1.boltp.com/2026/06/10/6a290570703ae.png",
     "铁拐李": "https://a1.boltp.com/2026/05/11/6a01e46266591.jpg",
 }
 
 # 指定神明的固定轮播图集（复刻已调优模板的视觉顺序）
 # 未列入此处的神明，继续沿用 GOD_IMAGE_MAP + 随机填充逻辑
-# 主神固定放在 index 4（8 张图的中间槽位），与 builder.py 轮播落定逻辑配套
+# 主神固定放在 index 9（第10张），左右汇聚效果的最终位置
 GOD_INTRO_IMAGE_OVERRIDES = {
     "王母娘娘": [
         "https://a1.boltp.com/2026/05/11/6a01e42d9d996.jpg",
         "https://a1.boltp.com/2026/05/11/6a01e41d8ae6a.jpg",
         "https://a1.boltp.com/2026/05/11/6a01e4247bf71.jpg",
         "https://a1.boltp.com/2026/05/11/6a01e43b37e14.jpg",
-        "https://a1.boltp.com/2026/05/11/6a01e43e55e1f.jpg",
         "https://a1.boltp.com/2026/05/11/6a01e43909c61.jpg",
         "https://a1.boltp.com/2026/05/11/6a01e4300f632.jpg",
         "https://a1.boltp.com/2026/05/11/6a01e45d9c78a.jpg",
+        "https://a1.boltp.com/2026/05/11/6a01e436b76ea.jpg",
+        "https://a1.boltp.com/2026/05/11/6a01e4322d6a5.jpg",
+        "https://a1.boltp.com/2026/05/11/6a01e43e55e1f.jpg",
     ],
 }
 
 
-GOD_INTRO_CENTER_INDEX = 4
+GOD_INTRO_CENTER_INDEX = 9  # 主神放在第10位（index 9），左右汇聚效果的最终位置
 
 # 神明形象档案：用于强制 LLM 生图时贴合传统形象（防止哪吒画成大叔、嫦娥画成大妈等）。
 # 每条用一句话锁定关键外貌：年龄段 + 服饰 + 法器 + 标志特征。
 GOD_APPEARANCE_TRAITS = {
+    "孙悟空": "年轻猴王形象，毛脸雷公嘴，火眼金睛，身穿锁子黄金甲，头戴凤翅紫金冠，手持金箍棒，威风凛凛",
     "二郎神": "年轻俊朗武将，额生第三只天眼，金盔银甲，手持三尖两刃刀，身旁可有哮天犬",
     "何仙姑": "年轻清丽女仙，淡彩素衣或天青色仙裙，手持荷花或笊篱，发髻簪花，气质飘逸",
     "关圣帝君": "红脸长髯凤眼蚕眉，身着绿色战袍金色铠甲，手持青龙偃月刀，威严正气",
@@ -164,13 +168,13 @@ def _generate_intro_placeholder(god_name, public_base_url):
     return f"{public_base_url.rstrip('/')}/{_PLACEHOLDER_REL_DIR}/{filename}"
 
 
-def resolve_god_intro_images(god_name, public_base_url=None, max_images=8):
+def resolve_god_intro_images(god_name, public_base_url=None, max_images=10):
     """
-    返回开场轮播图 URL 列表。
+    返回开场轮播图 URL 列表（10张，左右汇聚效果）。
 
-    - god 在 GOD_INTRO_IMAGE_OVERRIDES → 直接返回固定列表（god 已在 index 4）
-    - god 在 GOD_IMAGE_MAP → 随机填充其他 7 张，god 插入 index 4
-    - god 都不在：用 PIL 生成同尺寸占位图，仍插入 index 4（需 public_base_url）
+    - 前9张：从其他神明随机选取，交替从左右飞入
+    - 第10张（index 9）：主神图，最后飞入到中心
+    - god 在 GOD_INTRO_IMAGE_OVERRIDES → 直接返回固定列表
     """
     override = GOD_INTRO_IMAGE_OVERRIDES.get(god_name)
     if override:
@@ -182,11 +186,13 @@ def resolve_god_intro_images(god_name, public_base_url=None, max_images=8):
 
     others = [url for name, url in GOD_IMAGE_MAP.items() if name != god_name]
     random.shuffle(others)
-    slots = max_images - (1 if matched_url else 0)
-    selected = others[:max(slots, 0)]
 
+    # 前9张从others选取，主神放最后（index 9）
+    selected = others[:max_images - 1]
     if matched_url:
-        insert_at = min(GOD_INTRO_CENTER_INDEX, len(selected))
-        selected.insert(insert_at, matched_url)
+        selected.append(matched_url)  # index 9
 
-    return selected
+    while len(selected) < max_images:
+        selected.append(selected[-1] if selected else matched_url)
+
+    return selected[:max_images]
