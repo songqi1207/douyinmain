@@ -230,7 +230,7 @@
                                     "type": "string",
                                     "value": {
                                         "type": "literal",
-                                        "content": "# 角色\n你是中国神话题材的长叙事解说文案作者。你写的是可以直接配音的连续神话讲述，不写短视频爆款钩子，不写百科词条，但最终结尾需要保留一小句互动收口。\n\n## 输出格式\n只输出 JSON，无其他文字：\n{\n  \"title\": \"{{zhuti}}\",\n  \"author\": \"神话人物解说\",\n  \"contentList\": [\"文案1\", \"文案2\"]\n}\n\n## 总体目标\n- 围绕 {{zhuti}} 写成一段完整、连贯、庄重、有画面感的神话叙事。\n- 最终效果要像一篇被自然切分成若干段的神话纪录片旁白。\n- `contentList` 不是彼此独立的短句，而是同一篇长文的连续分段；前后必须自然衔接，拼接后应成为一篇完整文章。\n- `contentList` 数量必须严格等于 {{shuliang}}。\n\n## 结构要求\n整篇文案必须尽量按以下顺序展开：\n1. 先铺开宏大背景、时代环境、天地秩序或神话语境。\n2. 再引出 {{zhuti}} 的出现、身份、来历或所居之处。\n3. 接着展开其关键经历、权柄来源、重要事件或核心传说。\n4. 然后写其影响三界、众神、人间或秩序的具体体现。\n5. 再落到这一神话形象的精神象征、文化意味或古老隐喻。\n6. 最后一段才允许从叙事自然收束到互动句：评论区打下{{zhuti}}，并给出与 {{zhuti}} 神格、神职、权柄强相关的祝福与明确结果。\n\n## 连贯性要求\n- 每一段都必须紧接上一段继续往下讲，禁止每段重新起头、重新介绍人物、重新起势。\n- 相邻两段之间要有明显承接关系，可自然使用“于是、后来、自此、也正因如此、直到、从那以后”这类连接，但不要机械重复。\n- 前一段抛出的信息，后一段必须接着展开，不要跳话题，不要像多条独立短视频文案拼接在一起。\n- 除最后一段外，前面所有段落都必须保持纯叙事，不要提前进入评论区互动和祝福。\n\n## 文风要求\n- 文风必须是连续叙事、庄重、厚重、具有史诗感和画面感。\n- 允许长句，但句子要顺畅，适合中文口播。\n- 不要使用“有人问、你真以为、有网友说、问题来了、听好了”这类短视频爆款口头模板。\n- 不要写成分点总结，不要写成资料卡，不要写成现代鸡汤。\n- 不要强行制造争议反转，不要故意猎奇，不要用网感热词。\n- 允许适度文学表达，但神话设定必须稳，语气要像讲古老传说。\n- 为了配合每张画面约3.5秒的节奏，常规段落严格控制在 16 到 24 字之间；最后一段可放宽到 30 字，但也不要过长。\n\n## 内容要求\n- 神话术语要准确，不要乱编现代设定。\n- 可以结合 {{wenan}} 作为方向，但必须把它扩写成完整叙事，而不是简单罗列关键词。\n- 如果 {{zhuti}} 是高位神祇，重点写其神格、统御、法度、天庭秩序、象征意义。\n- 如果存在经典传说、重要神职、典型法器、标志性场景，应自然写入叙事。\n- 最后一段必须包含“评论区打下{{zhuti}}”这句话，并给出符合该神职的祝福，不准写万能好运模板。\n- 祝福必须写清结果，例如护佑平安、贵人扶持、诸事顺遂、事业稳进、家宅安宁、心神清明，但必须和 {{zhuti}} 的神格匹配。\n\n## 参考节奏\n你要模仿的是这种写法：先从宏大背景写起，再引出神祇登场，然后展开关键行为与世界变化，最后落到精神象征与文化隐喻，结尾再补一小句和该神强相关的互动祝福。整体像一段完整神话长旁白，而不是若干条互不相连的爆款句子。\n\n## {{zhuti}} 专用方向\n请把 {{zhuti}} 写成一篇完整神话解说，并按 `contentList` 分段输出。\n\n## 参考方向\n{{wenan}}\n",
+                                        "content": "# 角色\n你是中国神话题材的长叙事解说文案作者。你写的是可以直接配音的连续神话讲述，不写短视频爆款钩子，不写百科词条，结尾用总结升华收束全篇。\n\n## 输出格式\n只输出 JSON，无其他文字：\n{\n  \"title\": \"{{zhuti}}\",\n  \"author\": \"神话人物解说\",\n  \"contentList\": [\"文案1\", \"文案2\"]\n}\n\n## 总体目标\n- 围绕 {{zhuti}} 写成一段完整、连贯、庄重、有画面感的神话叙事。\n- 最终效果要像一篇被自然切分成若干段的神话纪录片旁白。\n- `contentList` 不是彼此独立的短句，而是同一篇长文的连续分段；前后必须自然衔接，拼接后应成为一篇完整文章。\n- `contentList` 数量必须严格等于 {{shuliang}}。\n\n## 结构要求\n整篇文案必须尽量按以下顺序展开：\n1. 先铺开宏大背景、时代环境、天地秩序或神话语境。\n2. 再引出 {{zhuti}} 的出现、身份、来历或所居之处。\n3. 接着展开其关键经历、权柄来源、重要事件或核心传说。\n4. 然后写其影响三界、众神、人间或秩序的具体体现。\n5. 再落到这一神话形象的精神象征、文化意味或古老隐喻。\n6. 最后两段做总结升华：倒数第二段用“{{zhuti}}的故事，不仅仅是……”句式点题，最后一段落到 {{zhuti}} 的精神内核与文化意义，庄重收束全篇。\n\n## 连贯性要求\n- 每一段都必须紧接上一段继续往下讲，禁止每段重新起头、重新介绍人物、重新起势。\n- 相邻两段之间要有明显承接关系，可自然使用“于是、后来、自此、也正因如此、直到、从那以后”这类连接，但不要机械重复。\n- 前一段抛出的信息，后一段必须接着展开，不要跳话题，不要像多条独立短视频文案拼接在一起。\n- 除最后两段外，前面所有段落都必须保持纯叙事，不要提前进入总结升华。\n\n## 文风要求\n- 文风必须是连续叙事、庄重、厚重、具有史诗感和画面感。\n- 允许长句，但句子要顺畅，适合中文口播。\n- 不要使用“有人问、你真以为、有网友说、问题来了、听好了”这类短视频爆款口头模板。\n- 不要写成分点总结，不要写成资料卡，不要写成现代鸡汤。\n- 不要强行制造争议反转，不要故意猎奇，不要用网感热词。\n- 允许适度文学表达，但神话设定必须稳，语气要像讲古老传说。\n- 为了配合每张画面约3.5秒的节奏，常规段落严格控制在 16 到 24 字之间；最后一段可放宽到 30 字，但也不要过长。\n\n## 内容要求\n- 神话术语要准确，不要乱编现代设定。\n- 可以结合 {{wenan}} 作为方向，但必须把它扩写成完整叙事，而不是简单罗列关键词。\n- 如果 {{zhuti}} 是高位神祇，重点写其神格、统御、法度、天庭秩序、象征意义。\n- 如果存在经典传说、重要神职、典型法器、标志性场景，应自然写入叙事。\n- 倒数第二段必须用“{{zhuti}}的故事，不仅仅是……”句式点题，把全篇收拢到一个主题上。\n- 最后一段必须落到 {{zhuti}} 的精神内核或文化意义，用一句有分量的短句收束全篇；禁止出现评论区、点赞、关注等引导词，禁止任何祝福和求好运话术，不写万能鸡汤。\n\n## 参考节奏\n你要模仿的是这种写法：先从宏大背景写起，再引出神祇登场，然后展开关键行为与世界变化，最后落到精神象征与文化隐喻，结尾用总结升华把整篇收拢到精神象征与文化意义上。整体像一段完整神话长旁白，而不是若干条互不相连的爆款句子。\n\n## {{zhuti}} 专用方向\n请把 {{zhuti}} 写成一篇完整神话解说，并按 `contentList` 分段输出。\n\n## 参考方向\n{{wenan}}\n",
                                         "rawMeta": {
                                             "type": 1
                                         }
@@ -2146,7 +2146,7 @@
                                 }
                             }
                         ],
-                                "code": "import json\nimport re\n\n\ndef dedupe_image_urls(urls):\n    if urls is None:\n        return []\n    if isinstance(urls, str):\n        u = urls.strip()\n        urls = [u] if u else []\n    elif not isinstance(urls, (list, tuple)):\n        return []\n    out = []\n    seen = set()\n    for item in urls:\n        if isinstance(item, dict):\n            item = item.get('image_url') or item.get('url') or item.get('src') or ''\n        u = str(item or '').strip()\n        if not u or u in seen:\n            continue\n        out.append(u)\n        seen.add(u)\n    return out\n\n\ndef pick_next_image(pool, pointer, last_image):\n    if not pool:\n        return '', pointer\n    for i in range(len(pool)):\n        idx = (pointer + i) % len(pool)\n        candidate = pool[idx]\n        if candidate != last_image or len(pool) == 1:\n            return candidate, idx + 1\n    return pool[pointer % len(pool)], pointer + 1\n\n\ndef normalize_scene_image_sequence(items, fallback_image=''):\n    sequence = []\n    if items is None:\n        items = []\n    elif isinstance(items, str):\n        u = items.strip()\n        items = [u] if u else []\n    elif not isinstance(items, (list, tuple)):\n        items = []\n    for item in items:\n        if isinstance(item, dict):\n            item = item.get('image_url') or item.get('url') or item.get('src') or ''\n        u = str(item or '').strip()\n        if u == '__MISSING_SCENE_IMAGE__':\n            u = ''\n        sequence.append(u)\n    if not sequence and fallback_image:\n        sequence.append(str(fallback_image).strip())\n    return sequence\n\n\ndef split_intro_caption_text(text):\n    parts = re.split(r'[，,。！？!?；;、：:…]+', str(text or '').strip())\n    return [part.strip() for part in parts if part and part.strip()]\n\n\nasync def main(args: Args) -> Output:\n    params = getattr(args, 'params', None) or {}\n    cover_image = params.get('pic') or params.get('bg_pic')\n    bg_image = params.get('bg_pic') or cover_image\n    toptitle = params.get('toptitle', '')\n    width = int(params.get('width', 1920) or 1920)\n    height = int(params.get('height', 1080) or 1080)\n    pre_time = int(params.get('pre_time', 0) or 0)\n    title = params.get('title', '')\n    bgm = params.get('bgm', '')\n    title_len = len(str(title or '').strip())\n    if title_len == 1:\n        title_font_size = 34\n    elif 2 <= title_len <= 4:\n        title_font_size = 30\n    else:\n        title_font_size = 26\n\n    scene_images = params.get('image_list')\n    if scene_images is None:\n        scene_images = []\n    elif isinstance(scene_images, str):\n        u = scene_images.strip()\n        scene_images = [u] if u else []\n    elif not isinstance(scene_images, (list, tuple)):\n        scene_images = []\n\n    audios = params.get('audio_list')\n    if not isinstance(audios, (list, tuple)):\n        audios = []\n\n    valid_tracks = []\n    for audio_obj in audios:\n        if not isinstance(audio_obj, dict):\n            continue\n        start = int(audio_obj.get('start', 0) or 0)\n        end = int(audio_obj.get('end', start) or start)\n        if end <= start:\n            continue\n        valid_tracks.append({'start': start, 'end': end})\n\n    intro_lead_end = valid_tracks[0]['end'] if len(valid_tracks) >= 1 else 0\n    title_start = valid_tracks[1]['start'] if len(valid_tracks) >= 2 else intro_lead_end\n    title_end = valid_tracks[1]['end'] if len(valid_tracks) >= 2 else title_start\n    body_start = valid_tracks[2]['start'] if len(valid_tracks) >= 3 else max(title_end + 300000, intro_lead_end + 300000)\n    body_start = max(body_start, 6100000)\n    hero_reveal_start = max(int(intro_lead_end * 0.6), max(intro_lead_end - 900000, 0)) if intro_lead_end > 0 else title_start\n    roll_count = 9\n    opening_window = 6100000\n    final_hold = 800000\n    item_duration = max(int((opening_window - final_hold) / max(roll_count, 1)), 1)\n    title_stage_total = opening_window\n    title_phase_start = 0\n    title_phase_available = opening_window\n    title_phase_end = title_phase_start + title_stage_total\n    intro_duration = max(opening_window, title_end, intro_lead_end, 1)\n\n    title_captions = []\n    title_slide_1 = []\n    title_slide_2 = []\n    title_slide_3 = []\n    title_slide_4 = []\n    title_frame_captions = []\n    title_frame_images = []\n    topcaptions = []\n    fixed_scroll_title_items = ['盘古', '女娲', '伏羲', '神农', '共工', '祝融', '后土', '帝俊', '东皇太一', '昊天', '西王母', '玉帝']\n    fixed_lock_title = '昊天｜玉帝'\n\n    bgm_audios = []\n    if bgm:\n        bgm_audios.append({\n            'audio_url': bgm,\n            'duration': pre_time,\n            'start': 0,\n            'end': pre_time,\n        })\n\n    intro_raw = params.get('intro_image_list')\n    if isinstance(intro_raw, (list, tuple)):\n        intro_pool = dedupe_image_urls(intro_raw)\n    elif isinstance(intro_raw, str):\n        intro_pool = dedupe_image_urls([u.strip() for u in intro_raw.split('。') if u.strip()])\n    else:\n        intro_pool = []\n    if not intro_pool:\n        intro_pool = [cover_image] if cover_image else []\n\n    opening_fallback = intro_pool[0] if intro_pool else ''\n    opening_image = cover_image or bg_image or opening_fallback\n    opening_images = [opening_image] if opening_image else []\n    imgs1 = []\n    title_image = opening_image or ''\n\n    if opening_image:\n        imgs1.append({\n            'image_url': opening_image,\n            'width': width,\n            'height': height,\n            'start': 0,\n            'end': int(body_start),\n            'scale_x': 1,\n            'scale_y': 1,\n            'transform_x': 0,\n            'transform_y': 0,\n            'in_animation': 'Kira游动',\n            'in_animation_duration': int(body_start),\n        })\n\n    if True:\n        selected_title = str(title or '').strip() or '\\u7389\\u5e1d'\n        base_items = [\n            '\\u9ec4\\u5e1d', '\\u5988\\u7956', '\\u5973\\u5a32', '\\u76d8\\u53e4',\n            '\\u4f0f\\u7fb2', '\\u795e\\u519c', '\\u5171\\u5de5', '\\u795d\\u878d',\n            '\\u540e\\u571f', '\\u5e1d\\u4fca', '\\u4e1c\\u7687\\u592a\\u4e00',\n            '\\u660a\\u5929', '\\u897f\\u738b\\u6bcd', '\\u7389\\u5e1d',\n            '\\u5211\\u5929', '\\u5938\\u7236'\n        ]\n        scroll_candidates = []\n        for item in base_items:\n            if item and item != selected_title and item not in scroll_candidates:\n                scroll_candidates.append(item)\n\n        scroll_candidates = scroll_candidates[:roll_count]\n        cursor = title_phase_start\n        for text in scroll_candidates:\n            item_end = cursor + item_duration\n            slide_item = {\n                'text': text,\n                'start': int(cursor),\n                'end': int(item_end),\n                'in_animation': '滚入',\n                'in_animation_duration': item_duration,\n            }\n            title_slide_1.append(slide_item)\n            title_slide_3.append(dict(slide_item))\n            cursor = item_end\n\n        lock_title_item = {\n            'text': selected_title,\n            'start': int(cursor),\n            'end': int(cursor + final_hold),\n            'in_animation': '放大',\n            'in_animation_duration': final_hold,\n        }\n        title_captions.append(lock_title_item)\n        title_slide_4.append(dict(lock_title_item))\n\n        if title_len <= 2:\n            frame_scale = 0.54\n            frame_x = -42\n        elif title_len == 3:\n            frame_scale = 0.60\n            frame_x = -34\n        else:\n            frame_scale = 0.66\n            frame_x = -26\n        title_frame_images.append({\n            'image_url': 'https://a1.boltp.com/2026/06/25/6a3ccfa071856.png',\n            'width': 1557,\n            'height': 934,\n            'start': 0,\n            'end': opening_window,\n            'transform_x': frame_x,\n            'transform_y': 108,\n            'scale_x': frame_scale,\n            'scale_y': frame_scale,\n            'alpha': 1,\n        })\n\n    bg_imgs = [{\n        'image_url': 'https://a1.boltp.com/2026/06/24/6a3b3393de4fb.png',\n        'width': width,\n        'height': height,\n        'start': 0,\n        'end': int(pre_time),\n        'scale_x': 1,\n        'scale_y': 1,\n    }]\n\n    imgs2 = []\n    carousel_imgs = []\n\n    raw_scene_sequence = normalize_scene_image_sequence(scene_images, bg_image or cover_image)\n    scene_sequence = list(raw_scene_sequence)\n\n    focus_imgs = []\n    focus_captions = []\n    focus_dim_captions = []\n    pending_effects = []\n\n    body_audios = []\n    for audio_obj in valid_tracks:\n        if audio_obj['start'] >= body_start:\n            body_audios.append(audio_obj)\n    # 正文配音全部早于开场窗口时(如 shuliang=1 且开场较短),钳制到 body_start 而不是丢弃\n    if not body_audios and len(valid_tracks) >= 3:\n        for audio_obj in valid_tracks[2:]:\n            if audio_obj['end'] > body_start:\n                body_audios.append({'start': max(audio_obj['start'], body_start), 'end': audio_obj['end']})\n\n    scene_fallback_reason = ''\n    if scene_sequence and body_audios:\n        fallback_image = bg_image or cover_image or next((u for u in scene_sequence if u), '')\n        image_index = 0\n        last_image = None\n        scene_anim_idx = 0\n        image_hold_count = 1\n        total_scene_slots = len(body_audios)\n\n        emotion_anim_map = {\n            0: ('模糊出现', {'scale': 1.8, 'x': 0, 'y': 0}, '柔光'),\n            1: ('渐显', {'scale': 1.85, 'x': 0, 'y': 0}, '光晕'),\n            2: ('模糊出现', {'scale': 1.7, 'x': 0, 'y': 0}, '梦幻'),\n            3: ('渐显', {'scale': 1.8, 'x': 0, 'y': 0}, '柔光'),\n            4: ('模糊出现', {'scale': 1.9, 'x': 0, 'y': 0}, '光晕'),\n            5: ('模糊出现', {'scale': 1.75, 'x': 0, 'y': 0}, '梦幻'),\n            6: ('渐显', {'scale': 1.8, 'x': 0, 'y': 0}, '柔光'),\n        }\n        default_emotion = ('模糊出现', {'scale': 1.8, 'x': 0, 'y': 0}, '柔光')\n        anim_pool = ['动感缩小', '轻微放大', '缩小', '轻微放大']\n\n        for scene_slot_idx in range(0, total_scene_slots, image_hold_count):\n            audio_group = body_audios[scene_slot_idx:scene_slot_idx + image_hold_count]\n            if not audio_group:\n                continue\n\n            segment_start = int(audio_group[0]['start'])\n            segment_end = int(audio_group[-1]['end'])\n            if segment_end <= segment_start:\n                continue\n\n            image_slot_idx = scene_slot_idx // image_hold_count\n            slot_us = min(2200000, max(int((segment_end - segment_start) * 0.75), 800000))\n\n            _anim_name, motion_vals, effect_name = emotion_anim_map.get(image_slot_idx, default_emotion)\n            pending_effects.append({'effect_title': effect_name, 'start': segment_start, 'end': min(segment_start + slot_us, segment_end)})\n\n            candidate = scene_sequence[image_slot_idx] if image_slot_idx < len(scene_sequence) else ''\n            image_url = candidate or fallback_image\n            last_image = image_url\n            fallback_image = image_url or fallback_image\n\n            anim_name = anim_pool[scene_anim_idx % len(anim_pool)]\n            scene_anim_idx += 1\n            anim_dur = segment_end - segment_start\n\n            scene_img = {\n                'image_url': image_url or bg_image,\n                'width': width,\n                'height': height,\n                'start': segment_start,\n                'end': segment_end,\n                'in_animation': anim_name,\n                'in_animation_duration': anim_dur,\n                'scale_x': motion_vals['scale'],\n                'scale_y': motion_vals['scale'],\n                'transform_x': motion_vals['x'],\n                'transform_y': motion_vals['y'],\n            }\n            imgs2.append(scene_img)\n    else:\n        if not scene_sequence:\n            scene_fallback_reason = 'no_scene_images_from_loop'\n        elif not body_audios:\n            scene_fallback_reason = 'no_body_audios_after_intro'\n        else:\n            scene_fallback_reason = 'unknown_scene_fallback'\n        fallback_scene_image = next((u for u in scene_sequence if u), '')\n        imgs2.append({\n            'image_url': fallback_scene_image or bg_image or cover_image,\n            'width': width,\n            'height': height,\n            'start': body_start,\n            'end': pre_time,\n            'in_animation': '渐显',\n            'in_animation_duration': 400000,\n            'out_animation': '渐隐',\n            'out_animation_duration': 300000,\n            'scale_x': 1.1,\n            'scale_y': 1.1,\n            'transform_x': -12,\n            'transform_y': -12,\n        })\n\n    i0 = int(intro_duration)\n    p0 = int(pre_time)\n    q_intro = max(i0 // 3, 1)\n    effects = []\n    intro_specs = [\n        ('柔光', 0, min(q_intro, i0)),\n        ('光晕', min(q_intro, i0), min(2 * q_intro, i0)),\n        ('梦幻', min(2 * q_intro, i0), i0),\n    ]\n    for title_name, start, end in intro_specs:\n        if end > start:\n            effects.append({'effect_title': title_name, 'start': start, 'end': end})\n\n    span_body = max(p0 - i0, 1)\n    q_body = max(span_body // 6, 1)\n    body_specs = ['柔光', '光晕', '梦幻', '柔光', '光晕', '梦幻', '柔光']\n    effects2 = []\n    effects2.extend(pending_effects)\n    for idx, title_name in enumerate(body_specs):\n        start = i0 + min(idx * q_body, span_body)\n        end = p0 if idx >= len(body_specs) - 1 else i0 + min((idx + 1) * q_body, p0)\n        if end > start:\n            effects2.append({'effect_title': title_name, 'start': start, 'end': end})\n    if p0 > i0:\n        gs = i0 + span_body // 3\n        ge = min(i0 + 2 * span_body // 3, p0)\n        if ge > gs:\n            effects2.append({'effect_title': '光晕', 'start': gs, 'end': ge})\n\n    final_fx_start = max(i0, int(p0 - 1800000))\n    effect_titles_all = ['金粉闪闪', '金粉闪闪']\n    effect_timelines_all = [\n        {'start': 0, 'end': int(p0)},\n        {'start': final_fx_start, 'end': int(p0)},\n    ]\n\n    debug_info = {\n        'opening_images': opening_images,\n        'title_roll_count': len(title_slide_1),\n        'title_image': title_image,\n        'intro_lead_end': intro_lead_end,\n        'hero_reveal_start': hero_reveal_start,\n        'title_phase_start': title_phase_start,\n        'title_phase_end': title_phase_end,\n        'body_start': body_start,\n        'raw_scene_image_count': len(raw_scene_sequence),\n        'usable_scene_image_count': len(scene_sequence),\n        'body_audio_count': len(body_audios),\n        'scene_fallback_reason': scene_fallback_reason,\n        'scene_sequence': scene_sequence[:5],\n        'raw_scene_sequence': raw_scene_sequence[:5],\n        'slide_preview_1': title_slide_1[:3],\n        'slide_preview_2': title_slide_2[:3],\n        'slide_preview_3': title_slide_3[:3],\n        'slide_preview_4': title_slide_4[:3],\n        'title_caption_preview': title_captions[:3],\n    }\n\n    return {\n        'captions': json.dumps(params.get('caption_list') or []),\n        'audios': json.dumps(audios),\n        'bgm_audios': json.dumps(bgm_audios),\n        'imgs1': json.dumps(imgs1),\n        'imgs2': json.dumps(imgs2),\n        'bg_imgs': json.dumps(bg_imgs),\n        'carousel_imgs': json.dumps(carousel_imgs),\n        'focus_imgs': json.dumps(focus_imgs),\n        'focusCaptions': json.dumps(focus_captions),\n        'focusDimCaptions': json.dumps(focus_dim_captions),\n        'effects': json.dumps(effects),\n        'effects2': json.dumps(effects2),\n        'effect_titles_all': effect_titles_all,\n        'effect_timelines_all': effect_timelines_all,\n        'titleCaptions': json.dumps(title_captions),\n        'titleFrameCaptions': json.dumps(title_frame_captions),\n        'titleFrameImages': json.dumps(title_frame_images),\n        'titleSlide1': json.dumps(title_slide_1),\n        'titleSlide2': json.dumps(title_slide_2),\n        'titleSlide3': json.dumps(title_slide_3),\n        'titleSlide4': json.dumps(title_slide_4),\n        'title_font_size': title_font_size,\n        'topcaptions': json.dumps(topcaptions),\n        'csl_singles': '',\n        'csl_positions': '',\n        'csl_values': '',\n        'intro_urls': json.dumps([img['image_url'] for img in imgs1]),\n        'intro_timelines': json.dumps([{'start': img['start'], 'end': img['end']} for img in imgs1]),\n        'progress_imgs': json.dumps([{'image_url': 'https://free.boltp.com/2026/05/04/69f8123eb20f5.webp', 'width': 1, 'height': 1, 'start': 0, 'end': 1000000, 'alpha': 0}]),\n        '_debug_info': json.dumps(debug_info, ensure_ascii=False),\n    }\n",
+                                "code": "import json\nimport re\n\n\ndef dedupe_image_urls(urls):\n    if urls is None:\n        return []\n    if isinstance(urls, str):\n        u = urls.strip()\n        urls = [u] if u else []\n    elif not isinstance(urls, (list, tuple)):\n        return []\n    out = []\n    seen = set()\n    for item in urls:\n        if isinstance(item, dict):\n            item = item.get('image_url') or item.get('url') or item.get('src') or ''\n        u = str(item or '').strip()\n        if not u or u in seen:\n            continue\n        out.append(u)\n        seen.add(u)\n    return out\n\n\ndef pick_next_image(pool, pointer, last_image):\n    if not pool:\n        return '', pointer\n    for i in range(len(pool)):\n        idx = (pointer + i) % len(pool)\n        candidate = pool[idx]\n        if candidate != last_image or len(pool) == 1:\n            return candidate, idx + 1\n    return pool[pointer % len(pool)], pointer + 1\n\n\ndef normalize_scene_image_sequence(items, fallback_image=''):\n    sequence = []\n    if items is None:\n        items = []\n    elif isinstance(items, str):\n        u = items.strip()\n        items = [u] if u else []\n    elif not isinstance(items, (list, tuple)):\n        items = []\n    for item in items:\n        if isinstance(item, dict):\n            item = item.get('image_url') or item.get('url') or item.get('src') or ''\n        u = str(item or '').strip()\n        if u == '__MISSING_SCENE_IMAGE__':\n            u = ''\n        sequence.append(u)\n    if not sequence and fallback_image:\n        sequence.append(str(fallback_image).strip())\n    return sequence\n\n\ndef split_intro_caption_text(text):\n    parts = re.split(r'[，,。！？!?；;、：:…]+', str(text or '').strip())\n    return [part.strip() for part in parts if part and part.strip()]\n\n\nasync def main(args: Args) -> Output:\n    params = getattr(args, 'params', None) or {}\n    cover_image = params.get('pic') or params.get('bg_pic')\n    bg_image = params.get('bg_pic') or cover_image\n    toptitle = params.get('toptitle', '')\n    width = int(params.get('width', 1920) or 1920)\n    height = int(params.get('height', 1080) or 1080)\n    pre_time = int(params.get('pre_time', 0) or 0)\n    title = params.get('title', '')\n    bgm = params.get('bgm', '')\n    title_len = len(str(title or '').strip())\n    if title_len == 1:\n        title_font_size = 34\n    elif 2 <= title_len <= 4:\n        title_font_size = 30\n    else:\n        title_font_size = 26\n\n    scene_images = params.get('image_list')\n    if scene_images is None:\n        scene_images = []\n    elif isinstance(scene_images, str):\n        u = scene_images.strip()\n        scene_images = [u] if u else []\n    elif not isinstance(scene_images, (list, tuple)):\n        scene_images = []\n\n    audios = params.get('audio_list')\n    if not isinstance(audios, (list, tuple)):\n        audios = []\n\n    valid_tracks = []\n    for audio_obj in audios:\n        if not isinstance(audio_obj, dict):\n            continue\n        start = int(audio_obj.get('start', 0) or 0)\n        end = int(audio_obj.get('end', start) or start)\n        if end <= start:\n            continue\n        valid_tracks.append({'start': start, 'end': end})\n\n    intro_lead_end = valid_tracks[0]['end'] if len(valid_tracks) >= 1 else 0\n    title_start = valid_tracks[1]['start'] if len(valid_tracks) >= 2 else intro_lead_end\n    title_end = valid_tracks[1]['end'] if len(valid_tracks) >= 2 else title_start\n    body_start = valid_tracks[2]['start'] if len(valid_tracks) >= 3 else max(title_end + 300000, intro_lead_end + 300000)\n    body_start = max(body_start, 6100000)\n    hero_reveal_start = max(int(intro_lead_end * 0.6), max(intro_lead_end - 900000, 0)) if intro_lead_end > 0 else title_start\n    roll_count = 9\n    opening_window = 6100000\n    final_hold = 800000\n    lock_start = title_start if 0 < title_start < opening_window - 300000 else opening_window - final_hold\n    item_duration = max(int(lock_start / max(roll_count, 1)), 1)\n    title_stage_total = opening_window\n    title_phase_start = 0\n    title_phase_available = opening_window\n    title_phase_end = title_phase_start + title_stage_total\n    intro_duration = max(opening_window, title_end, intro_lead_end, 1)\n\n    title_captions = []\n    title_slide_1 = []\n    title_slide_2 = []\n    title_slide_3 = []\n    title_slide_4 = []\n    title_frame_captions = []\n    title_frame_images = []\n    topcaptions = []\n    fixed_scroll_title_items = ['盘古', '女娲', '伏羲', '神农', '共工', '祝融', '后土', '帝俊', '东皇太一', '昊天', '西王母', '玉帝']\n    fixed_lock_title = '昊天｜玉帝'\n\n    bgm_audios = []\n    sfx_audios = []\n    if bgm:\n        bgm_audios.append({\n            'audio_url': bgm,\n            'duration': pre_time,\n            'start': 0,\n            'end': pre_time,\n        })\n\n    intro_raw = params.get('intro_image_list')\n    if isinstance(intro_raw, (list, tuple)):\n        intro_pool = dedupe_image_urls(intro_raw)\n    elif isinstance(intro_raw, str):\n        intro_pool = dedupe_image_urls([u.strip() for u in intro_raw.split('。') if u.strip()])\n    else:\n        intro_pool = []\n    if not intro_pool:\n        intro_pool = [cover_image] if cover_image else []\n\n    opening_fallback = intro_pool[0] if intro_pool else ''\n    opening_image = cover_image or bg_image or opening_fallback\n    opening_images = [opening_image] if opening_image else []\n    imgs1 = []\n    title_image = opening_image or ''\n\n    if opening_image:\n        imgs1.append({\n            'image_url': opening_image,\n            'width': width,\n            'height': height,\n            'start': 0,\n            'end': int(body_start),\n            'scale_x': 1,\n            'scale_y': 1,\n            'transform_x': 0,\n            'transform_y': 0,\n            'in_animation': 'Kira游动',\n            'in_animation_duration': int(body_start),\n        })\n\n    if True:\n        selected_title = str(title or '').strip() or '\\u7389\\u5e1d'\n        base_items = [\n            '\\u9ec4\\u5e1d', '\\u5988\\u7956', '\\u5973\\u5a32', '\\u76d8\\u53e4',\n            '\\u4f0f\\u7fb2', '\\u795e\\u519c', '\\u5171\\u5de5', '\\u795d\\u878d',\n            '\\u540e\\u571f', '\\u5e1d\\u4fca', '\\u4e1c\\u7687\\u592a\\u4e00',\n            '\\u660a\\u5929', '\\u897f\\u738b\\u6bcd', '\\u7389\\u5e1d',\n            '\\u5211\\u5929', '\\u5938\\u7236'\n        ]\n        scroll_candidates = []\n        for item in base_items:\n            if item and item != selected_title and item not in scroll_candidates:\n                scroll_candidates.append(item)\n\n        scroll_candidates = scroll_candidates[:roll_count]\n        cursor = title_phase_start\n        for text in scroll_candidates:\n            item_end = cursor + item_duration\n            slide_item = {\n                'text': text,\n                'start': int(cursor),\n                'end': int(item_end),\n                'in_animation': '滚入',\n                'in_animation_duration': item_duration,\n            }\n            title_slide_1.append(slide_item)\n            title_slide_3.append(dict(slide_item))\n            cursor = item_end\n\n        lock_title_item = {\n            'text': selected_title,\n            'start': int(cursor),\n            'end': int(body_start),\n            'in_animation': '放大',\n            'in_animation_duration': final_hold,\n        }\n        title_captions.append(lock_title_item)\n        title_slide_4.append(dict(lock_title_item))\n\n        SFX_TICK_URL = 'https://assets.mixkit.co/active_storage/sfx/1117/1117-preview.mp3'\n        SFX_LOCK_URL = 'https://assets.mixkit.co/active_storage/sfx/619/619-preview.mp3'\n        SFX_TICK_DUR = 120000\n        SFX_LOCK_DUR = 2400000\n        if SFX_TICK_URL:\n            for _slide in title_slide_1:\n                _tick_start = int(_slide['start'])\n                _tick_end = min(_tick_start + SFX_TICK_DUR, int(_slide['end']))\n                if _tick_end > _tick_start:\n                    sfx_audios.append({'audio_url': SFX_TICK_URL, 'duration': _tick_end - _tick_start, 'start': _tick_start, 'end': _tick_end})\n        if SFX_LOCK_URL:\n            _lock_sfx_start = int(cursor)\n            _lock_sfx_end = min(_lock_sfx_start + SFX_LOCK_DUR, int(body_start))\n            if _lock_sfx_end > _lock_sfx_start:\n                sfx_audios.append({'audio_url': SFX_LOCK_URL, 'duration': _lock_sfx_end - _lock_sfx_start, 'start': _lock_sfx_start, 'end': _lock_sfx_end})\n\n        if title_len <= 2:\n            frame_scale = 0.54\n            frame_x = -42\n        elif title_len == 3:\n            frame_scale = 0.60\n            frame_x = -34\n        else:\n            frame_scale = 0.66\n            frame_x = -26\n        title_frame_images.append({\n            'image_url': 'https://a1.boltp.com/2026/06/25/6a3ccfa071856.png',\n            'width': 1557,\n            'height': 934,\n            'start': 0,\n            'end': int(body_start),\n            'transform_x': frame_x,\n            'transform_y': 108,\n            'scale_x': frame_scale,\n            'scale_y': frame_scale,\n            'alpha': 1,\n        })\n\n    bg_imgs = [{\n        'image_url': 'https://a1.boltp.com/2026/06/24/6a3b3393de4fb.png',\n        'width': width,\n        'height': height,\n        'start': 0,\n        'end': int(pre_time),\n        'scale_x': 1,\n        'scale_y': 1,\n    }]\n\n    imgs2 = []\n    carousel_imgs = []\n\n    raw_scene_sequence = normalize_scene_image_sequence(scene_images, bg_image or cover_image)\n    scene_sequence = list(raw_scene_sequence)\n\n    focus_imgs = []\n    focus_captions = []\n    focus_dim_captions = []\n    pending_effects = []\n\n    body_audios = []\n    for audio_obj in valid_tracks:\n        if audio_obj['start'] >= body_start:\n            body_audios.append(audio_obj)\n    # 正文配音全部早于开场窗口时(如 shuliang=1 且开场较短),钳制到 body_start 而不是丢弃\n    if not body_audios and len(valid_tracks) >= 3:\n        for audio_obj in valid_tracks[2:]:\n            if audio_obj['end'] > body_start:\n                body_audios.append({'start': max(audio_obj['start'], body_start), 'end': audio_obj['end']})\n\n    scene_fallback_reason = ''\n    if scene_sequence and body_audios:\n        fallback_image = bg_image or cover_image or next((u for u in scene_sequence if u), '')\n        image_index = 0\n        last_image = None\n        scene_anim_idx = 0\n        image_hold_count = 1\n        total_scene_slots = len(body_audios)\n\n        emotion_anim_map = {\n            0: ('模糊出现', {'scale': 1.8, 'x': 0, 'y': 0}, '柔光'),\n            1: ('渐显', {'scale': 1.85, 'x': 0, 'y': 0}, '光晕'),\n            2: ('模糊出现', {'scale': 1.7, 'x': 0, 'y': 0}, '梦幻'),\n            3: ('渐显', {'scale': 1.8, 'x': 0, 'y': 0}, '柔光'),\n            4: ('模糊出现', {'scale': 1.9, 'x': 0, 'y': 0}, '光晕'),\n            5: ('模糊出现', {'scale': 1.75, 'x': 0, 'y': 0}, '梦幻'),\n            6: ('渐显', {'scale': 1.8, 'x': 0, 'y': 0}, '柔光'),\n        }\n        default_emotion = ('模糊出现', {'scale': 1.8, 'x': 0, 'y': 0}, '柔光')\n        anim_pool = ['动感缩小', '轻微放大', '缩小', '轻微放大']\n\n        for scene_slot_idx in range(0, total_scene_slots, image_hold_count):\n            audio_group = body_audios[scene_slot_idx:scene_slot_idx + image_hold_count]\n            if not audio_group:\n                continue\n\n            segment_start = int(audio_group[0]['start'])\n            segment_end = int(audio_group[-1]['end'])\n            if segment_end <= segment_start:\n                continue\n\n            image_slot_idx = scene_slot_idx // image_hold_count\n            slot_us = min(2200000, max(int((segment_end - segment_start) * 0.75), 800000))\n\n            _anim_name, motion_vals, effect_name = emotion_anim_map.get(image_slot_idx, default_emotion)\n            pending_effects.append({'effect_title': effect_name, 'start': segment_start, 'end': min(segment_start + slot_us, segment_end)})\n\n            candidate = scene_sequence[image_slot_idx] if image_slot_idx < len(scene_sequence) else ''\n            image_url = candidate or fallback_image\n            last_image = image_url\n            fallback_image = image_url or fallback_image\n\n            anim_name = anim_pool[scene_anim_idx % len(anim_pool)]\n            scene_anim_idx += 1\n            anim_dur = segment_end - segment_start\n\n            scene_img = {\n                'image_url': image_url or bg_image,\n                'width': width,\n                'height': height,\n                'start': segment_start,\n                'end': segment_end,\n                'in_animation': anim_name,\n                'in_animation_duration': anim_dur,\n                'scale_x': motion_vals['scale'],\n                'scale_y': motion_vals['scale'],\n                'transform_x': motion_vals['x'],\n                'transform_y': motion_vals['y'],\n            }\n            imgs2.append(scene_img)\n    else:\n        if not scene_sequence:\n            scene_fallback_reason = 'no_scene_images_from_loop'\n        elif not body_audios:\n            scene_fallback_reason = 'no_body_audios_after_intro'\n        else:\n            scene_fallback_reason = 'unknown_scene_fallback'\n        fallback_scene_image = next((u for u in scene_sequence if u), '')\n        imgs2.append({\n            'image_url': fallback_scene_image or bg_image or cover_image,\n            'width': width,\n            'height': height,\n            'start': body_start,\n            'end': pre_time,\n            'in_animation': '渐显',\n            'in_animation_duration': 400000,\n            'out_animation': '渐隐',\n            'out_animation_duration': 300000,\n            'scale_x': 1.1,\n            'scale_y': 1.1,\n            'transform_x': -12,\n            'transform_y': -12,\n        })\n\n    i0 = int(intro_duration)\n    p0 = int(pre_time)\n    q_intro = max(i0 // 3, 1)\n    effects = []\n    intro_specs = [\n        ('柔光', 0, min(q_intro, i0)),\n        ('光晕', min(q_intro, i0), min(2 * q_intro, i0)),\n        ('梦幻', min(2 * q_intro, i0), i0),\n    ]\n    for title_name, start, end in intro_specs:\n        if end > start:\n            effects.append({'effect_title': title_name, 'start': start, 'end': end})\n\n    span_body = max(p0 - i0, 1)\n    q_body = max(span_body // 6, 1)\n    body_specs = ['柔光', '光晕', '梦幻', '柔光', '光晕', '梦幻', '柔光']\n    effects2 = []\n    effects2.extend(pending_effects)\n    for idx, title_name in enumerate(body_specs):\n        start = i0 + min(idx * q_body, span_body)\n        end = p0 if idx >= len(body_specs) - 1 else i0 + min((idx + 1) * q_body, p0)\n        if end > start:\n            effects2.append({'effect_title': title_name, 'start': start, 'end': end})\n    if p0 > i0:\n        gs = i0 + span_body // 3\n        ge = min(i0 + 2 * span_body // 3, p0)\n        if ge > gs:\n            effects2.append({'effect_title': '光晕', 'start': gs, 'end': ge})\n\n    final_fx_start = max(i0, int(p0 - 1800000))\n    effect_titles_all = ['金粉闪闪', '金粉闪闪']\n    effect_timelines_all = [\n        {'start': 0, 'end': int(p0)},\n        {'start': final_fx_start, 'end': int(p0)},\n    ]\n\n    debug_info = {\n        'opening_images': opening_images,\n        'title_roll_count': len(title_slide_1),\n        'title_image': title_image,\n        'intro_lead_end': intro_lead_end,\n        'hero_reveal_start': hero_reveal_start,\n        'title_phase_start': title_phase_start,\n        'title_phase_end': title_phase_end,\n        'body_start': body_start,\n        'raw_scene_image_count': len(raw_scene_sequence),\n        'usable_scene_image_count': len(scene_sequence),\n        'body_audio_count': len(body_audios),\n        'scene_fallback_reason': scene_fallback_reason,\n        'scene_sequence': scene_sequence[:5],\n        'raw_scene_sequence': raw_scene_sequence[:5],\n        'slide_preview_1': title_slide_1[:3],\n        'slide_preview_2': title_slide_2[:3],\n        'slide_preview_3': title_slide_3[:3],\n        'slide_preview_4': title_slide_4[:3],\n        'title_caption_preview': title_captions[:3],\n    }\n\n    return {\n        'captions': json.dumps(params.get('caption_list') or []),\n        'audios': json.dumps(audios),\n        'bgm_audios': json.dumps(bgm_audios),\n        'sfx_audios': json.dumps(sfx_audios),\n        'imgs1': json.dumps(imgs1),\n        'imgs2': json.dumps(imgs2),\n        'bg_imgs': json.dumps(bg_imgs),\n        'carousel_imgs': json.dumps(carousel_imgs),\n        'focus_imgs': json.dumps(focus_imgs),\n        'focusCaptions': json.dumps(focus_captions),\n        'focusDimCaptions': json.dumps(focus_dim_captions),\n        'effects': json.dumps(effects),\n        'effects2': json.dumps(effects2),\n        'effect_titles_all': effect_titles_all,\n        'effect_timelines_all': effect_timelines_all,\n        'titleCaptions': json.dumps(title_captions),\n        'titleFrameCaptions': json.dumps(title_frame_captions),\n        'titleFrameImages': json.dumps(title_frame_images),\n        'titleSlide1': json.dumps(title_slide_1),\n        'titleSlide2': json.dumps(title_slide_2),\n        'titleSlide3': json.dumps(title_slide_3),\n        'titleSlide4': json.dumps(title_slide_4),\n        'title_font_size': title_font_size,\n        'topcaptions': json.dumps(topcaptions),\n        'csl_singles': '',\n        'csl_positions': '',\n        'csl_values': '',\n        'intro_urls': json.dumps([img['image_url'] for img in imgs1]),\n        'intro_timelines': json.dumps([{'start': img['start'], 'end': img['end']} for img in imgs1]),\n        'progress_imgs': json.dumps([{'image_url': 'https://free.boltp.com/2026/05/04/69f8123eb20f5.webp', 'width': 1, 'height': 1, 'start': 0, 'end': 1000000, 'alpha': 0}]),\n        '_debug_info': json.dumps(debug_info, ensure_ascii=False),\n    }\n",
                         "language": 3,
                         "settingOnError": {
                             "switch": false,
@@ -2169,6 +2169,11 @@
                         {
                             "type": "string",
                             "name": "bgm_audios",
+                            "required": false
+                        },
+                        {
+                            "type": "string",
+                            "name": "sfx_audios",
                             "required": false
                         },
                         {
@@ -6162,6 +6167,337 @@
                 }
             },
             {
+                "id": "178583",
+                "type": "4",
+                "meta": {
+                    "position": {
+                        "x": 2158,
+                        "y": 320
+                    }
+                },
+                "data": {
+                    "nodeMeta": {
+                        "description": "免费领取永久剪映会员：微信Yk8889d，备用号at880p",
+                        "icon": "https://pub-e79d6e86fa1f4195990ef274a10bb83b.r2.dev/image/god/%E5%A6%88%E7%A5%96.png",
+                        "subtitle": "视频合成_剪映小助手:add_audios",
+                        "title": "添加轮盘音效"
+                    },
+                    "inputs": {
+                        "apiParam": [
+                            {
+                                "input": {
+                                    "type": "string",
+                                    "value": {
+                                        "content": "7457837925833834536",
+                                        "rawMeta": {
+                                            "type": 1
+                                        },
+                                        "type": "literal"
+                                    }
+                                },
+                                "name": "apiID"
+                            },
+                            {
+                                "input": {
+                                    "type": "string",
+                                    "value": {
+                                        "content": "add_audios",
+                                        "rawMeta": {
+                                            "type": 1
+                                        },
+                                        "type": "literal"
+                                    }
+                                },
+                                "name": "apiName"
+                            },
+                            {
+                                "input": {
+                                    "type": "string",
+                                    "value": {
+                                        "content": "7522412867740565513",
+                                        "rawMeta": {
+                                            "type": 1
+                                        },
+                                        "type": "literal"
+                                    }
+                                },
+                                "name": "pluginID"
+                            },
+                            {
+                                "input": {
+                                    "type": "string",
+                                    "value": {
+                                        "content": "视频合成_剪映小助手",
+                                        "rawMeta": {
+                                            "type": 1
+                                        },
+                                        "type": "literal"
+                                    }
+                                },
+                                "name": "pluginName"
+                            },
+                            {
+                                "input": {
+                                    "type": "string",
+                                    "value": {
+                                        "content": "",
+                                        "rawMeta": {
+                                            "type": 1
+                                        },
+                                        "type": "literal"
+                                    }
+                                },
+                                "name": "pluginVersion"
+                            },
+                            {
+                                "input": {
+                                    "type": "string",
+                                    "value": {
+                                        "content": "",
+                                        "rawMeta": {
+                                            "type": 1
+                                        },
+                                        "type": "literal"
+                                    }
+                                },
+                                "name": "tips"
+                            },
+                            {
+                                "input": {
+                                    "type": "string",
+                                    "value": {
+                                        "content": "",
+                                        "rawMeta": {
+                                            "type": 1
+                                        },
+                                        "type": "literal"
+                                    }
+                                },
+                                "name": "outDocLink"
+                            }
+                        ],
+                        "inputParameters": [
+                            {
+                                "name": "audio_infos",
+                                "input": {
+                                    "type": "string",
+                                    "value": {
+                                        "type": "ref",
+                                        "content": {
+                                            "source": "block-output",
+                                            "blockID": "175205",
+                                            "name": "sfx_audios"
+                                        },
+                                        "rawMeta": {
+                                            "type": 1
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                "name": "draft_id",
+                                "input": {
+                                    "type": "string",
+                                    "value": {
+                                        "type": "ref",
+                                        "content": {
+                                            "source": "block-output",
+                                            "blockID": "119835",
+                                            "name": "draft_id"
+                                        },
+                                        "rawMeta": {
+                                            "type": 1
+                                        }
+                                    }
+                                }
+                            }
+                        ],
+                        "settingOnError": {
+                            "processType": 1,
+                            "timeoutMs": 180000,
+                            "retryTimes": 0
+                        }
+                    },
+                    "outputs": [
+                        {
+                            "type": "list",
+                            "name": "segment_ids",
+                            "schema": {
+                                "type": "string"
+                            },
+                            "required": false
+                        },
+                        {
+                            "type": "list",
+                            "name": "segment_infos",
+                            "schema": {
+                                "type": "object",
+                                "schema": [
+                                    {
+                                        "type": "integer",
+                                        "name": "end",
+                                        "required": false
+                                    },
+                                    {
+                                        "type": "string",
+                                        "name": "id",
+                                        "required": false
+                                    },
+                                    {
+                                        "type": "integer",
+                                        "name": "start",
+                                        "required": false
+                                    }
+                                ]
+                            },
+                            "required": false
+                        },
+                        {
+                            "type": "string",
+                            "name": "track_id",
+                            "required": false,
+                            "description": "track_id"
+                        },
+                        {
+                            "type": "list",
+                            "name": "audio_ids",
+                            "schema": {
+                                "type": "string"
+                            },
+                            "required": false,
+                            "description": "音频ID列表"
+                        },
+                        {
+                            "type": "string",
+                            "name": "draft_id",
+                            "required": false,
+                            "description": "草稿ID"
+                        },
+                        {
+                            "type": "string",
+                            "name": "message",
+                            "required": false,
+                            "description": "信息"
+                        }
+                    ]
+                },
+                "_temp": {
+                    "bounds": {
+                        "x": 1978,
+                        "y": 320,
+                        "width": 360,
+                        "height": 135.3
+                    },
+                    "externalData": {
+                        "icon": "https://lf3-appstore-sign.oceancloudapi.com/ocean-cloud-tos/plugin_icon/2109334276542960_1751437477703179450_OPDhBx8e0v.png?lk3s=cd508e2b&x-expires=1785682386&x-signature=%2Fb3ez3IL3AdFf68BjhZFLUSp4xA%3D",
+                        "apiName": "add_audios",
+                        "pluginID": "7522412867740565513",
+                        "pluginProductStatus": 1,
+                        "pluginProductUnlistType": 0,
+                        "pluginType": 1,
+                        "spaceID": "7522406276270358566",
+                        "inputs": [
+                            {
+                                "description": "[{\"audio_url\": \"http://example.com/audio1.mp3\",\"duration\":120,\"start\":0,\"end\":12000000,\"audio_effect\":\"教堂\"}]",
+                                "input": {},
+                                "name": "audio_infos",
+                                "required": true,
+                                "type": "string"
+                            },
+                            {
+                                "description": "草稿ID，使用create_draft输出的draft_id即可",
+                                "input": {},
+                                "name": "draft_id",
+                                "required": true,
+                                "type": "string"
+                            }
+                        ],
+                        "outputs": [
+                            {
+                                "description": "草稿ID",
+                                "input": {},
+                                "name": "draft_id",
+                                "required": false,
+                                "type": "string"
+                            },
+                            {
+                                "description": "信息",
+                                "input": {},
+                                "name": "message",
+                                "required": false,
+                                "type": "string"
+                            },
+                            {
+                                "input": {},
+                                "name": "segment_ids",
+                                "required": false,
+                                "schema": {
+                                    "assistType": 0,
+                                    "type": "string"
+                                },
+                                "type": "list"
+                            },
+                            {
+                                "input": {},
+                                "name": "segment_infos",
+                                "required": false,
+                                "schema": {
+                                    "schema": [
+                                        {
+                                            "input": {},
+                                            "name": "end",
+                                            "required": false,
+                                            "type": "integer"
+                                        },
+                                        {
+                                            "input": {},
+                                            "name": "id",
+                                            "required": false,
+                                            "type": "string"
+                                        },
+                                        {
+                                            "input": {},
+                                            "name": "start",
+                                            "required": false,
+                                            "type": "integer"
+                                        }
+                                    ],
+                                    "type": "object"
+                                },
+                                "type": "list"
+                            },
+                            {
+                                "description": "track_id",
+                                "input": {},
+                                "name": "track_id",
+                                "required": false,
+                                "type": "string"
+                            },
+                            {
+                                "description": "音频ID列表",
+                                "input": {},
+                                "name": "audio_ids",
+                                "required": false,
+                                "schema": {
+                                    "assistType": 0,
+                                    "type": "string"
+                                },
+                                "type": "list"
+                            }
+                        ],
+                        "updateTime": 1783067363,
+                        "channel_id": 2,
+                        "commercial_setting": {},
+                        "latestVersionTs": "0",
+                        "latestVersionName": "",
+                        "versionName": "",
+                        "description": "批量添加音频",
+                        "title": "add_audios",
+                        "mainColor": "#CA61FF"
+                    }
+                }
+            },
+            {
                 "id": "196678",
                 "type": "5",
                 "meta": {
@@ -9112,7 +9448,7 @@
                                     "type": "string",
                                     "value": {
                                         "type": "literal",
-                                        "content": "# 角色\n你是抖音神话赛道的爆款文案作者。你只写能让人停下来的口播，不写任何百科资料卡。\n\n## 输出格式\n只输出 JSON，无其他文字：\n{\n  \"title\": \"{{zhuti}}\",\n  \"author\": \"神话人物口播\",\n  \"contentList\": [\"文案1\", \"文案2\"]\n}\n\n## 爆款模板（必须严格模仿这个节奏）\n以下是二郎神的爆款文案，每条都是真人口播节奏，短句、短段、强钩子：\n\n你真以为孙悟空能打赢二郎神？\n很多人被电视剧骗了二十年。\n西游记原著里。\n真正把孙悟空打到破防的人。\n只有一个。\n二郎神杨戬。\n当年花果山大战。\n十万天兵拿不下猴子。\n托塔李天王拿不下。\n四大天王拿不下。\n最后。\n玉帝直接点名：叫杨戬来。\n结果杨戬一到。\n孙悟空马上就遇到了职业生涯最强对手。\n两个人都会七十二变。\n你变鱼，我也变鱼。\n你变鸟，我也变鸟。\n你变庙，我直接发现你尾巴没藏好。\n一路斗智斗勇。\n最后，哮天犬偷袭。\n杨戬补刀。\n猴哥第一次被天庭活捉。\n注意，这里最恐怖的不是杨戬能打。\n而是玉帝对他的信任。\n为什么整个天庭没人能上，偏偏让杨戬上？\n因为杨戬有个隐藏身份。\n听好了。\n他不是普通神仙。\n他是天庭最特殊的存在。\n母亲是玉帝妹妹。\n自己肉身成圣。\n师父是玉鼎真人。\n背景、实力、战绩全拉满。\n所以很多神话研究者认为。\n杨戬根本不是战神。\n而是天庭太子级人物。\n难怪连孙悟空都拿他没办法。\n评论区打下杨戬。\n你觉得杨戬和孙悟空谁更强？\n\n## 写作规则（必须严格执行）\n- 严格模仿上面二郎神文案的节奏：短句、短段、每条16到24字、有停顿感\n- 开头可以用\"你真以为...\"\"很多人以为...其实...\"这类反认知钩子，也可以用\"有网友说...\"\"有人问...\"这类带争议感、举例感的引子\n- 中间用\"结果\"\"最后\"\"注意\"\"听好了\"\"问题来了\"推进剧情\n- 开头前3句必须连续抛钩子、铺悬念；如果用了“有网友说/有人问”这类引子，第1到2句内必须立刻转入反认知或悬念，不能铺垫太久\n- 结尾必须用强互动收口，最后1到2句必须出现“评论区”三个字\n- 结尾优先写成“评论区打下这句祝福”或“评论区留下这句祝福”这类动作句，祝福必须符合该神的神格、神职或权能，也可以把{{zhuti}}自然带进去\n- 祝福后面必须紧跟明确结果，写清打下这句祝福会得到什么、守住什么，或避开什么，比如贵人扶持、事业顺进、学业开窍、姻缘顺遂、平安护体、财路打开，但必须和该神匹配\n- 神话术语必须用字准确，像“历劫”“劫数”“劫难”这类词不能误写成“历节”“节数”“节难”\n- 禁止只写空泛祝福，不写结果；也禁止乱套万能好运模板\n- 禁止百科腔：不要写\"身份背景源自...\"\"象征能力为...\"\"文化影响深远\"这类资料卡句式\n- 禁止AI套话：不要写\"首先其次最后\"\"值得一提的是\"\"体现了\"\"不仅如此\"这类模板句\n- contentList 数量等于 {{shuliang}}\n- 每条只写口播文案，不写镜头说明、不写括号解释\n\n## {{zhuti}} 专用方向\n根据 {{zhuti}} 的特点，参照二郎神模板节奏来写：\n- 找一个最强的反认知点开场，也可以先借“有网友说/有人问”抛出争议\n- 讲出隐藏身份或隐藏战绩\n- 用对话感推进，每条都有记忆点\n- 结尾要让观众立刻参与，优先落成“评论区打下这句祝福，愿你……”或“评论区留下这句祝福，你会……”这类互动\n- 必须把打下祝福后会得到什么写清楚，祝福要具体，不能空泛\n\n## 参考方向\n{{wenan}}",
+                                        "content": "# 角色\n你是抖音神话赛道的爆款文案作者。你只写能让人停下来的口播，不写任何百科资料卡。\n\n## 输出格式\n只输出 JSON，无其他文字：\n{\n  \"title\": \"{{zhuti}}\",\n  \"author\": \"神话人物口播\",\n  \"contentList\": [\"文案1\", \"文案2\"]\n}\n\n## 爆款模板（必须严格模仿这个节奏）\n以下是二郎神的爆款文案，每条都是真人口播节奏，短句、短段、强钩子：\n\n你真以为孙悟空能打赢二郎神？\n很多人被电视剧骗了二十年。\n西游记原著里。\n真正把孙悟空打到破防的人。\n只有一个。\n二郎神杨戬。\n当年花果山大战。\n十万天兵拿不下猴子。\n托塔李天王拿不下。\n四大天王拿不下。\n最后。\n玉帝直接点名：叫杨戬来。\n结果杨戬一到。\n孙悟空马上就遇到了职业生涯最强对手。\n两个人都会七十二变。\n你变鱼，我也变鱼。\n你变鸟，我也变鸟。\n你变庙，我直接发现你尾巴没藏好。\n一路斗智斗勇。\n最后，哮天犬偷袭。\n杨戬补刀。\n猴哥第一次被天庭活捉。\n注意，这里最恐怖的不是杨戬能打。\n而是玉帝对他的信任。\n为什么整个天庭没人能上，偏偏让杨戬上？\n因为杨戬有个隐藏身份。\n听好了。\n他不是普通神仙。\n他是天庭最特殊的存在。\n母亲是玉帝妹妹。\n自己肉身成圣。\n师父是玉鼎真人。\n背景、实力、战绩全拉满。\n所以很多神话研究者认为。\n杨戬根本不是战神。\n而是天庭太子级人物。\n难怪连孙悟空都拿他没办法。\n杨戬的故事，不仅仅是一场胜负。\n他把桀骜活成了本事，把孤傲守成了底线。\n\n## 写作规则（必须严格执行）\n- 严格模仿上面二郎神文案的节奏：短句、短段、每条16到24字、有停顿感\n- 开头可以用\"你真以为...\"\"很多人以为...其实...\"这类反认知钩子，也可以用\"有网友说...\"\"有人问...\"这类带争议感、举例感的引子\n- 中间用\"结果\"\"最后\"\"注意\"\"听好了\"\"问题来了\"推进剧情\n- 开头前3句必须连续抛钩子、铺悬念；如果用了“有网友说/有人问”这类引子，第1到2句内必须立刻转入反认知或悬念，不能铺垫太久\n- 结尾必须用总结升华收口：最后2条不再抛互动，改为点题与收束\n- 倒数第2条用“{{zhuti}}的故事，不仅仅是……”句式点题，把整篇故事收拢到一个更高的主题\n- 最后1条落到{{zhuti}}的精神内核或文化意义，用一句有分量的短句收束全篇\n- 神话术语必须用字准确，像“历劫”“劫数”“劫难”这类词不能误写成“历节”“节数”“节难”\n- 禁止出现评论区、点赞、关注等引导词，禁止任何祝福和求好运模板\n- 禁止百科腔：不要写\"身份背景源自...\"\"象征能力为...\"\"文化影响深远\"这类资料卡句式\n- 禁止AI套话：不要写\"首先其次最后\"\"值得一提的是\"\"体现了\"\"不仅如此\"这类模板句\n- contentList 数量等于 {{shuliang}}\n- 每条只写口播文案，不写镜头说明、不写括号解释\n\n## {{zhuti}} 专用方向\n根据 {{zhuti}} 的特点，参照二郎神模板节奏来写：\n- 找一个最强的反认知点开场，也可以先借“有网友说/有人问”抛出争议\n- 讲出隐藏身份或隐藏战绩\n- 用对话感推进，每条都有记忆点\n- 结尾用两条总结升华收束：先用“{{zhuti}}的故事，不仅仅是……”点题，再落到精神内核收尾\n- 升华必须扣住{{zhuti}}自己的故事与神格，具体不空泛，不写万能鸡汤\n\n## 参考方向\n{{wenan}}",
                                         "rawMeta": {
                                             "type": 1
                                         }
@@ -15595,6 +15931,10 @@
             },
             {
                 "sourceNodeID": "178582",
+                "targetNodeID": "178583"
+            },
+            {
+                "sourceNodeID": "178583",
                 "targetNodeID": "117759"
             },
             {
