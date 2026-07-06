@@ -5,6 +5,7 @@
 import json
 import os
 import re
+import subprocess
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -26,9 +27,11 @@ from utils.cover import (
 from utils.template_loader import find_preview_video, get_preview_video_url
 from workflows.book import generate_book_workflow
 from workflows.cigarette import generate_cigarette_workflow
-from workflows.god.builder import generate_god_workflow
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+GOD_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-god-template.js"
 
 
 @api_bp.route("/generate_flip_intro", methods=["POST"])
@@ -170,38 +173,58 @@ def api_generate_cigarette():
 
 @api_bp.route("/generate_god", methods=["POST"])
 def api_generate_god():
-    data = request.json
+    """以 v7 剪贴板模板为母版换神（调用 generate-god-template.js 做字节级定点替换）。"""
+    data = request.json or {}
     god_name = data.get("god_name", "").strip()
     if not god_name:
         return jsonify({"error": "请输入神名"}), 400
-    shuliang = str(data.get("shuliang", "20")).strip() or "20"
-    audio_url = str(data.get("audio", "")).strip() or None
-    god_script = str(data.get("god_script", "")).strip()
-    visual_style = str(data.get("visual_style", "")).strip()
+    desc = str(data.get("desc", "")).strip()
+    wenan = str(data.get("wenan", "")).strip()
+    cankao = str(data.get("cankao", "")).strip()
+    shuliang = str(data.get("shuliang", "")).strip()
+    audio_url = str(data.get("audio", "")).strip()
     voice_id = str(data.get("voice_id", "")).strip()
-    url = str(data.get("url", "")).strip()
-    from_link = bool(url)  # url 非空就是链接改写模式
 
     try:
-        pub = workflow_public_base(request.host_url.rstrip("/"))
-        workflow = generate_god_workflow(
-            god_name,
-            shuliang=shuliang,
-            audio_url=audio_url,
-            god_script=god_script,
-            visual_style=visual_style,
-            public_base_url=pub,
-            voice_id=voice_id,
-            from_link=from_link,
-            url=url,
-        )
-
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_name = re.sub(r'[^\w\u4e00-\u9fff]', '', god_name)[:20]
         filename = f"每天认识一个神_{safe_name}_{timestamp}.txt"
 
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(workflow, f, ensure_ascii=False, separators=(",", ":"))
+        out_path = _REPO_ROOT / filename
+
+        cmd = ["node", str(GOD_TEMPLATE_GENERATOR), god_name, "--out", str(out_path)]
+        if desc:
+            cmd += ["--desc", desc]
+        if wenan:
+            cmd += ["--wenan", wenan]
+        if cankao:
+            cmd += ["--cankao", cankao]
+        if shuliang:
+            cmd += ["--shuliang", shuliang]
+        if audio_url:
+            cmd += ["--audio", audio_url]
+        if voice_id:
+            cmd += ["--yinse", voice_id]
+
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=str(_REPO_ROOT),
+            timeout=120,
+        )
+        if proc.returncode != 0 or not out_path.exists():
+            detail = (proc.stderr or proc.stdout or "").strip()[-500:]
+            return jsonify({"error": f"生成失败: {detail or 'node 生成器执行失败'}"}), 500
+
+        warning = None
+        if "不在内置形象库" in (proc.stderr or ""):
+            warning = (
+                f"「{god_name}」不在内置形象库，已使用通用形象描述；"
+                "建议填写「主神形象描述」后重新生成，画面会更贴合神格"
+            )
 
         return jsonify({
             "success": True,
@@ -209,6 +232,7 @@ def api_generate_god():
             "download_url": f"/api/download/{filename}",
             "preview_video_url": get_preview_video_url("god"),
             "god_name": god_name,
+            "warning": warning,
         })
     except Exception as e:
         traceback.print_exc()
@@ -217,10 +241,11 @@ def api_generate_god():
 
 @api_bp.route("/download/<filename>")
 def download_file(filename):
-    if not os.path.exists(filename):
+    filepath = filename if os.path.exists(filename) else str(_REPO_ROOT / filename)
+    if not os.path.exists(filepath):
         return jsonify({"error": "文件不存在"}), 404
 
-    with open(filename, "r", encoding="utf-8") as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         content = f.read()
 
     encoded_filename = quote(filename)

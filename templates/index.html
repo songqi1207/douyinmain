@@ -1044,16 +1044,24 @@
                 />
               </div>
               <div class="form-group">
+                <label>主神形象描述</label>
+                <input
+                  type="text"
+                  id="godDesc"
+                  placeholder="可选。如：手持XX法器，XX袍服，XX气质"
+                />
+                <p style="margin-top:6px;font-size:12px;color:#6d7a90;">33 位常见神已内置形象（哪吒、二郎神、妈祖…）；库外的神建议填写，画面会更贴合神格。</p>
+              </div>
+              <div class="form-group">
                 <label>AI生图数量</label>
                 <input
                   type="number"
                   id="godCount"
-                  placeholder="生成几张AI图片"
+                  placeholder="留空默认 14 张（约 2 分钟）"
                   min="1"
                   max="22"
-                  value="15"
                 />
-                <p style="margin-top:6px;font-size:12px;color:#6d7a90;">参考：1分钟≈8~10张，2分钟≈15~18张，3分钟≈20~22张。默认15张约2分钟视频</p>
+                <p style="margin-top:6px;font-size:12px;color:#6d7a90;">参考：1分钟≈8~10张，2分钟≈14~18张，3分钟≈20~22张。</p>
               </div>
               <div class="form-group">
                 <label>配音声线</label>
@@ -1093,14 +1101,13 @@
                 />
               </div>
               <div class="form-group">
-                <label>智能改写链接（可选）</label>
-                <input
-                  type="text"
-                  id="godRewriteUrl"
-                  placeholder="粘贴讲【神话人物】的抖音/小红书链接 → 服务端自动取字幕 + 70% 改写"
-                />
-                <p style="margin-top:6px;font-size:12px;color:#6d7a90;">填写后将忽略下方解说文案，由 Coze 工作流从链接抓取字幕并按营销号腔调改写，适合二创发布。与上方"从链接提取文案"是两种模式：上方是提取到本地编辑，本字段是端到端自动改写。</p>
-                <p style="margin-top:4px;font-size:12px;color:#b8862a;line-height:1.6;">⚠️ 链接内容要求：①必须是讲<b>神话人物</b>的视频（聊美食、影视剧情、健身类不行，会被强行套进神话框架，结果跑题）；②建议时长 <b>1 分钟以上</b>，太短素材不够，模型需要凑够 900 字会大量虚构；③语音清晰、神名/法器名要念准，ASR 错字会被 LLM"合理化"写进分镜。</p>
+                <label>参考文案（爆款改写模式）</label>
+                <textarea
+                  id="godCankao"
+                  rows="5"
+                  placeholder="可选。粘贴一篇同赛道爆款口播文案，AI 会保留其结构与记忆点、换词率70%以上改写成该神的版本，适合二创发布。"
+                ></textarea>
+                <p style="margin-top:6px;font-size:12px;color:#6d7a90;">填写后走爆款口播改写模式，下方"需求/解说素材"将不生效；留空则按下方素材走纪录片自动生成模式。</p>
               </div>
               <div class="form-group">
                 <label>你的需求/要求</label>
@@ -1111,20 +1118,12 @@
                 ></textarea>
               </div>
               <div class="form-group">
-                <label>解说文案</label>
+                <label>解说素材/文案</label>
                 <textarea
                   id="godScript"
                   rows="5"
-                  placeholder="可选。输入人物来历、成名经历、黑历史、能力象征和文化影响，系统会按约 3 分钟、6 大段结构拆成视频文案。留空则AI自动生成。"
+                  placeholder="可选。输入人物来历、成名经历、记忆点传说、能力象征和文化影响等素材，AI 按五幕纪录片节奏拆成分镜文案。留空则AI自动生成。"
                 ></textarea>
-              </div>
-              <div class="form-group">
-                <label>画面风格</label>
-                <input
-                  type="text"
-                  id="godStyle"
-                  placeholder="可选，如：神话史诗插画、电影级光影、三分构图、庄严神性"
-                />
               </div>
 
               <button
@@ -1613,26 +1612,20 @@
           return;
         }
 
-        const godCountRaw = document.getElementById("godCount").value.trim();
-        const godCount = godCountRaw === "" ? "10" : godCountRaw;
+        const godDesc = document.getElementById("godDesc").value.trim();
+        const godCankao = document.getElementById("godCankao").value.trim();
+        const godCount = document.getElementById("godCount").value.trim();
         const godAudio = document.getElementById("godAudio").value.trim();
         const godScript = document.getElementById("godScript").value.trim();
         const godRequirement = document.getElementById("godRequirement").value.trim();
-        const godStyle = document.getElementById("godStyle").value.trim();
         const godVoice = document.getElementById("godVoice").value;
-        const godRewriteUrl = document.getElementById("godRewriteUrl").value.trim();
-        
-        // 把文案和需求合并传给工作流
-        let finalScript = godScript;
+
+        // 把素材和需求合并进 wenan（开始节点解说文案默认值）
+        let finalWenan = godScript;
         if (godRequirement && godScript) {
-          finalScript = godScript + "\n\n【用户要求】" + godRequirement;
+          finalWenan = godScript + "\n\n【用户要求】" + godRequirement;
         } else if (godRequirement && !godScript) {
-          finalScript = "【用户要求】" + godRequirement;
-        }
-        
-        // 智能改写模式：URL 非空时清空文案，让 180385:false 分支触发 137312 LLM 改写
-        if (godRewriteUrl) {
-          finalScript = "";
+          finalWenan = "【用户要求】" + godRequirement;
         }
 
         const btn = document.getElementById("generateGodBtn");
@@ -1645,12 +1638,12 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               god_name: godName,
+              desc: godDesc,
+              wenan: finalWenan,
+              cankao: godCankao,
               shuliang: godCount,
               audio: godAudio,
-              god_script: finalScript,
-              visual_style: godStyle,
               voice_id: godVoice,
-              url: godRewriteUrl,
             }),
           });
           const data = await resp.json();
@@ -1661,10 +1654,14 @@
               data.preview_video_url ||
               bizMeta.god.previewUrl ||
               "/api/preview_video/god";
-            showToast("生成成功", "success");
+            if (data.warning) {
+              showToast(data.warning, "");
+            } else {
+              showToast("生成成功", "success");
+            }
             showResult(
               "神明工作流生成成功",
-              `${godName} 的解说分镜工作流已就绪。`,
+              `${godName} 的解说分镜工作流已就绪，下载后整份复制到 Coze 画布粘贴即可导入。`,
             );
           } else {
             showToast(data.error || "生成失败", "error");

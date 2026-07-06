@@ -10,6 +10,11 @@ WORKDIR /app
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
+# /api/generate_god 通过 subprocess 调用 generate-god-template.js，需要 node 运行时
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY . /app
 
 EXPOSE 7860
