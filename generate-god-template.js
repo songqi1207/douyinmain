@@ -238,7 +238,16 @@ function main() {
     raw = replaceParamDefault(raw, 'audio', String(args.audio).trim(), 600, 'audio 默认值');
   }
   if (args.yinse !== undefined && String(args.yinse).trim() !== '') {
-    raw = replaceParamDefault(raw, 'yinse', String(args.yinse).trim(), 300, 'yinse 默认值');
+    const vid = String(args.yinse).trim();
+    // 开始节点 yinse 是死参数（无节点引用），真正生效的是 3 个配音节点写死的 voice_id：
+    // 开场配音 310628 / 标题配音 1711088 / 正文循环内分镜配音 135573/102982
+    raw = replaceParamDefault(raw, 'yinse', vid, 300, 'yinse 默认值');
+    const vre = /("name": "voice_id",\s*"input": \{\s*"type": "string",\s*"value": \{\s*"type": "literal",\s*"content": ")[^"]*(")/g;
+    const vm = raw.match(vre);
+    if (!vm || vm.length !== 3) {
+      throw new Error(`voice_id 取值槽出现 ${vm ? vm.length : 0} 处（应为 3：开场/标题/正文配音），已终止`);
+    }
+    raw = raw.replace(vre, (_, p1, p2) => p1 + jsonEscape(vid) + p2);
   }
   if (args.cankao !== undefined && String(args.cankao).trim() !== '') {
     raw = replaceParamDefault(raw, 'cankao', String(args.cankao).trim(), 400, 'cankao 默认值');
@@ -264,7 +273,24 @@ function main() {
       pick('yinse').defaultValue === String(args.yinse).trim()) &&
     (args.cankao === undefined || String(args.cankao).trim() === '' ||
       (pick('cankao') && pick('cankao').defaultValue === String(args.cankao).trim()));
-  if (!ok) throw new Error('自校验失败，请勿使用生成文件');
+  let voiceOk = true;
+  if (args.yinse !== undefined && String(args.yinse).trim() !== '') {
+    const vid = String(args.yinse).trim();
+    const voices = [];
+    (function walk(list) {
+      for (const nd of list || []) {
+        for (const p of ((nd.data && nd.data.inputs && nd.data.inputs.inputParameters) || [])) {
+          if (p.name === 'voice_id' && p.input && p.input.value && p.input.value.type === 'literal') {
+            voices.push(p.input.value.content);
+          }
+        }
+        if (nd.blocks) walk(nd.blocks);
+        if (nd.data && nd.data.blocks) walk(nd.data.blocks);
+      }
+    })(cNodes);
+    voiceOk = voices.length === 3 && voices.every(v => v === vid);
+  }
+  if (!ok || !voiceOk) throw new Error('自校验失败，请勿使用生成文件');
 
   console.log(`✔ 已生成: ${outPath}`);
   console.log(`  主神(zhuti): ${oldGod} → ${god}`);
