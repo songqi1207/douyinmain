@@ -26,6 +26,7 @@ from utils.cover import (
 )
 from utils.template_loader import find_preview_video, get_preview_video_url
 from workflows.book.builder import generate_book_workflow
+from workflows.cigarette import generate_cigarette_workflow
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -230,52 +231,22 @@ def _generate_book_from_link(data, book_name, author, cover, shuliang,
 
 @api_bp.route("/generate_cigarette", methods=["POST"])
 def api_generate_cigarette():
-    """以香烟 v1 母版换烟（node generate-cigarette-template.js 字节级定点替换）。"""
+    """老红塔山模板 + 情感独白增量改造（2026-07-08 回归老管线）。"""
     data = request.json or {}
     cigarette_name = data.get("cigarette_name", "").strip()
     if not cigarette_name:
         return jsonify({"error": "请输入香烟名称"}), 400
-
-    desc = str(data.get("desc", "")).strip()
-    wenan = str(data.get("wenan", "")).strip()
-    cankao = str(data.get("cankao", "")).strip()
-    shuliang = str(data.get("shuliang", "")).strip()
-    audio_url = str(data.get("audio", "")).strip()
-    voice_id = str(data.get("voice_id", "")).strip()
-    texiao = str(data.get("texiao", "")).strip()
+    cover_url = str(data.get("cover", "")).strip()
 
     try:
+        workflow, warning = generate_cigarette_workflow(cigarette_name, cover_url=cover_url)
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_name = re.sub(r'[^\w\u4e00-\u9fff]', '', cigarette_name)[:20]
         filename = f"每天认识一款香烟_{safe_name}_{timestamp}.txt"
-        out_path = _REPO_ROOT / filename
 
-        cmd = ["node", str(CIG_TEMPLATE_GENERATOR), cigarette_name, "--out", str(out_path)]
-        if desc:
-            cmd += ["--desc", desc]
-        if wenan:
-            cmd += ["--wenan", wenan]
-        if cankao:
-            cmd += ["--cankao", cankao]
-        if shuliang:
-            cmd += ["--shuliang", shuliang]
-        if audio_url:
-            cmd += ["--audio", audio_url]
-        if voice_id:
-            cmd += ["--yinse", voice_id]
-        if texiao:
-            cmd += ["--texiao", texiao]
-
-        ok, detail = _run_node_generator(cmd)
-        if not ok or not out_path.exists():
-            return jsonify({"error": f"生成失败: {detail[-500:] or 'node 生成器执行失败'}"}), 500
-
-        warning = None
-        if "不在内置画面气质库" in detail:
-            warning = (
-                f"「{cigarette_name}」不在内置画面气质库，已使用通用画面风格；"
-                "可提供画面气质描述后重新生成"
-            )
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(workflow, f, ensure_ascii=False, separators=(",", ":"))
 
         return jsonify({
             "success": True,

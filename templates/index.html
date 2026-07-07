@@ -1031,11 +1031,11 @@
                 />
               </div>
               <div class="form-group">
-                <label>画面特效</label>
+                <label>烟盒图片链接</label>
                 <input
                   type="text"
-                  id="cigTexiao"
-                  placeholder="可选，剪映特效名，如：大雪纷飞II（留空默认金粉闪闪）"
+                  id="cigCover"
+                  placeholder="可选。内置图库已含中华/红塔山/玉溪等19款；图库外的烟建议提供烟盒图链接"
                 />
               </div>
 
@@ -1598,7 +1598,7 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               cigarette_name: cigaretteName,
-              texiao: document.getElementById("cigTexiao").value.trim(),
+              cover: document.getElementById("cigCover").value.trim(),
             }),
           });
           const data = await resp.json();
@@ -1614,6 +1614,9 @@
               `${cigaretteName} 的工作流已就绪。`,
             );
             showToast("生成成功", "success");
+            if (data.warning) {
+              showToast(data.warning, "");
+            }
           } else {
             showToast(data.error || "生成失败", "error");
           }
