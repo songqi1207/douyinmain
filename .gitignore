@@ -36,8 +36,9 @@ tmp_video_frames/
 # 放行代码实际加载的根目录模板
 !每天认识一个神_王母娘娘_横滑版_V12.txt
 
-# 临时调试脚本
+# 临时调试脚本（注意：_*.py 也会匹配 __init__.py，故显式放行）
 _*.py
+!__init__.py
 temp/*
 # 仅放行代码实际加载的模板（其余 temp/template/* 都是调试迭代版）
 !temp/template/

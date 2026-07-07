@@ -25,7 +25,7 @@ from utils.cover import (
     attach_cover_preview_to_book_info,
 )
 from utils.template_loader import find_preview_video, get_preview_video_url
-from workflows.book import generate_book_workflow
+from workflows.book.builder import generate_book_workflow
 from workflows.cigarette import generate_cigarette_workflow
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
