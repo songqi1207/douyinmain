@@ -278,9 +278,7 @@ def _apply_monologue_v2(template, cigarette_name, cover_url=""):
     n_url = deepcopy(byid["121831"])
     n_url["id"] = _BG_URL_ID
     n_url["data"]["nodeMeta"]["title"] = "背景图片"
-    # str_to_list(990002) 需要 JSON 数组形状的字符串(与原链 887116 输出列表插值后的形状一致),
-    # 裸 URL 会解析失败并把字符串原样传给 imgs_infos,导致 "value must be an array"
-    _set_literal(n_url, "String1", json.dumps([CIG_BG_IMAGE_URL]))
+    _set_literal(n_url, "String1", CIG_BG_IMAGE_URL)
 
     n_list = deepcopy(byid["737556"])
     n_list["id"] = _BG_LIST_ID
@@ -290,8 +288,15 @@ def _apply_monologue_v2(template, cigarette_name, cover_url=""):
     n_info = deepcopy(byid["368825"])
     n_info["id"] = _BG_INFO_ID
     n_info["data"]["nodeMeta"]["title"] = "输入前背景图片格式整理"
-    _param(n_info, "imgs")["input"]["value"] = make_ref(_BG_LIST_ID, "infos")
-    _param(n_info, "timelines")["input"]["value"] = make_ref("127963", "timeline_full")
+    # imgs 是 rawMeta 99(列表)、timelines 是 103(对象列表):只改引用目标,
+    # 保留原 type/schema/rawMeta——用 make_ref(rawMeta=1 字符串)整体替换会让
+    # Coze 把数组序列化成字符串,插件报 "value must be an array"
+    for pname, blk, out in (("imgs", _BG_LIST_ID, "infos"), ("timelines", "127963", "timeline_full")):
+        val = _param(n_info, pname)["input"]["value"]
+        if val.get("type") != "ref":
+            raise ValueError(f"990003 {pname} 参数结构异常")
+        val["content"]["blockID"] = blk
+        val["content"]["name"] = out
     n_info["data"]["inputs"]["inputParameters"] = [
         p for p in _params(n_info) if p.get("name") not in ("in_animation", "in_animation_duration")
     ]
