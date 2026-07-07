@@ -52,8 +52,29 @@ _MID_ANIM_NODES = {
 # 背景视频链(整体换成背景图片链)
 _BGV_NODES = {"121831", "175734", "182988", "109304"}
 
-# 新增节点 ID(背景图片链)
+# 新增节点 ID(背景图片链 + 分句清洗)
 _BG_URL_ID, _BG_LIST_ID, _BG_INFO_ID, _BG_ADD_ID = "990001", "990002", "990003", "990004"
+_SENT_CLEAN_ID = "990005"
+
+# 分句清洗:剔除纯标点碎片(如落单的后引号,会让逐句配音报 No readable text),
+# 并剥掉每句里的引号/书名号等成对符号
+CODE_SENT_CLEAN = '''import re
+
+
+async def main(args: Args) -> Output:
+    params = getattr(args, "params", None) or {}
+    items = params.get("data") or []
+    strip_chars = "\\u201c\\u201d\\u2018\\u2019\\"'\\u300a\\u300b\\u3008\\u3009\\u3010\\u3011()\\uff08\\uff09\\u2026\\u2014\\uff1a:\\uff1b;"
+    cleaned = []
+    for it in items:
+        s = str(it or "").strip()
+        for ch in strip_chars:
+            s = s.replace(ch, "")
+        s = s.strip()
+        if s and re.search(r"[\\u4e00-\\u9fff0-9A-Za-z]", s):
+            cleaned.append(s)
+    return {"data": cleaned}
+'''
 
 PROMPT_171205 = """# 角色
 你是香烟视频的开场名单生成器。用户会给出一款香烟,你从内置可选名单里挑 7 款陪跑,加上用户输入的那款,组成 8 款名单。
@@ -90,6 +111,7 @@ PROMPT_134353 = """# 角色
 ## 硬性限制
 - 全文 200 到 300 字。
 - 句子偏短,一句一意,每句都以句号、问号或感叹号收束,适合逐句出字幕。
+- 全文只使用逗号、句号、问号、感叹号、顿号这五种标点;严禁引号、书名号、括号、冒号、分号、省略号、破折号(有古意的句子直接写出来,不要加引号)。
 - 烟的名字、包装、图案、典故必须符合事实;拿不准的细节宁可写虚(光、气息、温度),禁止编造年份、价格、销量数据。
 - 口感只作情感隐喻,不写“好抽、提神、解乏、值得一试”这类品鉴与诱导表述,不劝人吸烟。
 - 禁止评论区、点赞、关注等引导词,禁止祝福模板,禁止百科腔与AI套话。"""
@@ -256,6 +278,68 @@ def _apply_monologue_v2(template, cigarette_name, cover_url=""):
     _set_system_prompt(byid["171205"], PROMPT_171205)
     _set_system_prompt(byid["134353"], PROMPT_134353)
 
+    # ── 3.5) 分句清洗:插在 191393(list_sli_trim)之后,逐句配音(141751)与
+    #        中英互译(117954)都改喝清洗后的分句,防止落单标点碎片打崩配音批处理 ──
+    clean_node = {
+        "id": _SENT_CLEAN_ID,
+        "type": "5",
+        "meta": {"position": {"x": -2000.0, "y": -1500.0}},
+        "data": {
+            "nodeMeta": {
+                "description": "剔除纯标点分句碎片,剥离引号书名号等成对符号",
+                "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Code-v2.jpg",
+                "title": "分句清洗",
+            },
+            "inputs": {
+                "inputParameters": [{
+                    "name": "data",
+                    "input": {
+                        "type": "list",
+                        "schema": {"type": "string"},
+                        "value": {
+                            "type": "ref",
+                            "content": {"source": "block-output", "blockID": "191393", "name": "data"},
+                            "rawMeta": {"type": 99},
+                        },
+                    },
+                }],
+                "code": CODE_SENT_CLEAN,
+                "language": 3,
+                "settingOnError": {"switch": False, "processType": 1, "timeoutMs": 60000, "retryTimes": 0},
+            },
+            "outputs": [{"type": "list", "name": "data", "schema": {"type": "string"}, "required": False}],
+            "version": "v2",
+        },
+    }
+    nodes.append(clean_node)
+    byid[_SENT_CLEAN_ID] = clean_node
+
+    def _repoint_191393(node):
+        count = 0
+
+        def rec(obj):
+            nonlocal count
+            if isinstance(obj, dict):
+                if obj.get("source") == "block-output" and obj.get("blockID") == "191393":
+                    obj["blockID"] = _SENT_CLEAN_ID
+                    count += 1
+                for v in obj.values():
+                    rec(v)
+            elif isinstance(obj, list):
+                for item in obj:
+                    rec(item)
+
+        rec(node)
+        return count
+
+    hits = _repoint_191393(byid["141751"]) + _repoint_191393(byid["117954"])
+    if hits < 2:
+        raise ValueError(f"191393 引用改接仅命中 {hits} 处(预期≥2)")
+    edges[:] = [e for e in edges
+                if not (e.get("sourceNodeID") == "191393" and e.get("targetNodeID") == "141751")]
+    edges.append({"sourceNodeID": "191393", "targetNodeID": _SENT_CLEAN_ID})
+    edges.append({"sourceNodeID": _SENT_CLEAN_ID, "targetNodeID": "141751"})
+
     # ── 4) 字幕样式 ──
     n_cap = byid["175877"]
     for key, value in CIG_CAPTION_STYLE.items():
@@ -371,6 +455,7 @@ def _apply_monologue_v2(template, cigarette_name, cover_url=""):
         if e.get("sourceNodeID") not in ids or e.get("targetNodeID") not in ids:
             raise ValueError(f"存在悬空边: {e}")
     compile(CODE_127963, "127963", "exec")
+    compile(CODE_SENT_CLEAN, "990005", "exec")
 
     return warning
 
