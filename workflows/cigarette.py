@@ -14,6 +14,7 @@
 8. BGM 换 keshi - magnolia。
 """
 
+import json
 from copy import deepcopy
 
 from config import CIGARETTE_TEMPLATE_CANDIDATES
@@ -277,7 +278,9 @@ def _apply_monologue_v2(template, cigarette_name, cover_url=""):
     n_url = deepcopy(byid["121831"])
     n_url["id"] = _BG_URL_ID
     n_url["data"]["nodeMeta"]["title"] = "背景图片"
-    _set_literal(n_url, "String1", CIG_BG_IMAGE_URL)
+    # str_to_list(990002) 需要 JSON 数组形状的字符串(与原链 887116 输出列表插值后的形状一致),
+    # 裸 URL 会解析失败并把字符串原样传给 imgs_infos,导致 "value must be an array"
+    _set_literal(n_url, "String1", json.dumps([CIG_BG_IMAGE_URL]))
 
     n_list = deepcopy(byid["737556"])
     n_list["id"] = _BG_LIST_ID
