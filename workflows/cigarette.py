@@ -37,10 +37,12 @@ CIG_CAPTION_STYLE = {
 }
 CIG_THEME_TRANSFORM = {"transform_x": -51, "transform_y": 269}
 
-# 与模板 150301 节点内置图库同步维护(陪跑与主题烟盒图都取自这 19 款)
+# 与模板 150301 节点内置图库同步维护(主题烟盒图取自这里)。
+# 注意:模板里 IMG14"万宝路"实为装饰 PNG 占位符而非烟盒图,已剔除(映射行也会在
+# _apply_monologue_v2 里删掉);输入万宝路会触发"请提供烟盒图"提示。
 CIG_IMAGE_LIBRARY = [
     "中华", "红塔山", "荷花", "玉溪", "芙蓉王", "黄鹤楼", "娇子", "利群", "南京",
-    "泰山", "云烟", "七匹狼", "大前门", "万宝路", "七星", "双喜", "中南海", "黄金叶", "兰州",
+    "泰山", "云烟", "七匹狼", "大前门", "七星", "双喜", "中南海", "黄金叶", "兰州",
 ]
 
 # 中段"第一张/第二张封面放大±旋转"两条动画链(展示的是名单第1、2位=非主题烟,用户要求删除)
@@ -80,7 +82,7 @@ PROMPT_171205 = """# 角色
 你是香烟视频的开场名单生成器。用户会给出一款香烟,你从内置可选名单里挑 7 款陪跑,加上用户输入的那款,组成 8 款名单。
 
 ## 可选名单(陪跑只能从这里选,一款都不能超出)
-中华、红塔山、荷花、玉溪、芙蓉王、黄鹤楼、娇子、利群、南京、泰山、云烟、七匹狼、大前门、万宝路、七星、双喜、中南海、黄金叶、兰州
+中华、红塔山、荷花、玉溪、芙蓉王、黄鹤楼、娇子、利群、南京、泰山、云烟、七匹狼、大前门、七星、双喜、中南海、黄金叶、兰州
 
 ## 技能
 1. 用户输入{{input}}固定放在第 3 位。
@@ -209,6 +211,31 @@ def _set_system_prompt(node, text):
     raise ValueError(f"节点 {node['id']} 没有 systemPrompt")
 
 
+def _set_all_voice_ids(template, voice_id):
+    """把所有配音节点(含批处理内部)的 voice_id 槽改成指定音色，返回改动数。
+
+    老红塔山模板有 2 个 voice_id 槽：163300(标题配音,顶层) + 190569(金句配音,批处理 141751 内)。
+    直接改字面量，不涉及跨作用域引用。
+    """
+    count = 0
+
+    def rec(nodes):
+        nonlocal count
+        for n in nodes or []:
+            if not isinstance(n, dict):
+                continue
+            params = (((n.get("data") or {}).get("inputs") or {}).get("inputParameters")) or []
+            for p in params:
+                if isinstance(p, dict) and p.get("name") == "voice_id":
+                    p.setdefault("input", {})["value"] = _literal(voice_id, 1)
+                    count += 1
+            if isinstance(n.get("blocks"), list):
+                rec(n["blocks"])
+
+    rec(template.get("json", {}).get("nodes", []))
+    return count
+
+
 def _apply_monologue_v2(template, cigarette_name, cover_url=""):
     """对老红塔山模板做 2026-07-08 定稿的增量改造,返回 warning(或 None)。"""
     nodes = template["json"]["nodes"]
@@ -241,6 +268,13 @@ def _apply_monologue_v2(template, cigarette_name, cover_url=""):
             'outputs: imageUrls,\n    theme_url: (typeof params.zhuti === "string" '
             '&& cigaretteMap[params.zhuti.trim()]) || imageUrls[2] || imageUrls[0] || ""',
         )
+    # IMG14"万宝路"实为装饰 PNG 占位符,从主题图映射中剔除(查不到 → fallback + warning 引导供图)
+    code301 = n301["data"]["inputs"]["code"]
+    mp_anchor = '"万宝路":params.IMG14,'
+    if code301.count(mp_anchor) == 1:
+        n301["data"]["inputs"]["code"] = code301.replace(mp_anchor, "")
+    elif '"万宝路"' in code301:
+        raise ValueError("150301 万宝路占位映射锚点异常")
 
     # 887116 改引 theme_url(有 cover_url 则直接用外部图)。
     # 原设计:String1=列表绑定(rawMeta 99)引 150301.outputs,模板 {{String1[2]}} 取第3项;
@@ -349,6 +383,18 @@ def _apply_monologue_v2(template, cigarette_name, cover_url=""):
     n_theme = byid["557577"]
     for key, value in CIG_THEME_TRANSFORM.items():
         _set_literal(n_theme, key, value)
+
+    # ── 5.5) 装饰图层全部改用主题烟图 ──
+    # 245595→555014/692446(正文正反旋转两层) + 125607→501522(开场渐显缩小层),
+    # 原都用 142783 装饰 PNG;改引 887116.output(主题烟链接,含 cover_url 覆盖场景)。
+    # 142783/887116 同为文本处理字符串输出,同名同型,只换 blockID 不动绑定;
+    # 142783 保留在控制链上作透传,不再被引用。
+    for deco_id in ("245595", "125607"):
+        val = _param(byid[deco_id], "imgs")["input"]["value"]
+        if (val.get("type") != "ref" or val["content"].get("blockID") != "142783"
+                or val["content"].get("name") != "output"):
+            raise ValueError(f"{deco_id} imgs 引用结构异常")
+        val["content"]["blockID"] = "887116"
 
     # ── 6) 删除中段非主题动画链,桥接控制流 ──
     template["json"]["nodes"] = [n for n in nodes if n["id"] not in _MID_ANIM_NODES]
@@ -460,10 +506,11 @@ def _apply_monologue_v2(template, cigarette_name, cover_url=""):
     return warning
 
 
-def generate_cigarette_workflow(cigarette_name, cover_url=""):
+def generate_cigarette_workflow(cigarette_name, cover_url="", voice_id=""):
     """
     生成香烟工作流(老模板 + 情感独白增量改造)。
     返回 (template, warning)。cover_url 非空时用它作为中间主题烟盒图。
+    voice_id 非空时切换全片配音音色(标题 163300 + 金句 190569 两个槽)。
     """
     template = load_first_available_template(CIGARETTE_TEMPLATE_CANDIDATES)
     nodes = {n.get("id"): n for n in template.get("json", {}).get("nodes", []) if isinstance(n, dict)}
@@ -498,6 +545,10 @@ def generate_cigarette_workflow(cigarette_name, cover_url=""):
         ]
 
     warning = _apply_monologue_v2(template, cigarette_name, cover_url=cover_url)
+
+    voice_id = (voice_id or "").strip()
+    if voice_id:
+        _set_all_voice_ids(template, voice_id)
 
     ensure_coze_temp_metadata(template)
     match_key = build_cigarette_match_key(cigarette_name)

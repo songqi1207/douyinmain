@@ -237,9 +237,10 @@ def api_generate_cigarette():
     if not cigarette_name:
         return jsonify({"error": "请输入香烟名称"}), 400
     cover_url = str(data.get("cover", "")).strip()
+    voice_id = str(data.get("voice_id", "")).strip()
 
     try:
-        workflow, warning = generate_cigarette_workflow(cigarette_name, cover_url=cover_url)
+        workflow, warning = generate_cigarette_workflow(cigarette_name, cover_url=cover_url, voice_id=voice_id)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_name = re.sub(r'[^\w\u4e00-\u9fff]', '', cigarette_name)[:20]

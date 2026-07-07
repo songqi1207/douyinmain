@@ -1038,6 +1038,35 @@
                   placeholder="可选。内置图库已含中华/红塔山/玉溪等19款；图库外的烟建议提供烟盒图链接"
                 />
               </div>
+              <div class="form-group">
+                <label>配音声线</label>
+                <select id="cigVoice" style="width:100%;padding:13px 16px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,0.92);font-size:15px;font-family:inherit;outline:none;">
+                  <optgroup label="🔥 大模型2.0（支持情感,推荐）">
+                    <option value="7568423452617588790">儒雅逸辰</option>
+                    <option value="7566481398970712100">vivi 女声</option>
+                    <option value="7568423452617506870">大壹 男声</option>
+                    <option value="7568423452617572406">流畅女声</option>
+                    <option value="7620288417930297386">邻家女孩 2.0</option>
+                  </optgroup>
+                  <optgroup label="📖 大模型1.0（自然流畅）">
+                    <option value="7468512265151528987">磁性解说男声</option>
+                    <option value="7426725529589645339">解说小明</option>
+                    <option value="7426720361733193737">阳光青年</option>
+                    <option value="7426720361733177353" selected>渊博小叔（默认）</option>
+                    <option value="7468512265134932019">悬疑解说</option>
+                    <option value="7468512265134899251">知性女声</option>
+                    <option value="7620302716920971318">温柔女神</option>
+                    <option value="7426720361732980745">少年梓辛</option>
+                  </optgroup>
+                  <optgroup label="⚡ 小模型（成本低）">
+                    <option value="7481299960424644662">擎苍</option>
+                    <option value="7481299960424824886">阳光男声</option>
+                    <option value="7481299960424808502">影视解说小美</option>
+                    <option value="7481299960424841270">活泼女声</option>
+                  </optgroup>
+                </select>
+                <p style="margin-top:6px;font-size:12px;color:#6d7a90;">默认渊博小叔，与老模板一致；换其他音色即切换全片配音</p>
+              </div>
 
               <button
                 class="btn primary-btn full-width"
@@ -1599,6 +1628,7 @@
             body: JSON.stringify({
               cigarette_name: cigaretteName,
               cover: document.getElementById("cigCover").value.trim(),
+              voice_id: document.getElementById("cigVoice").value,
             }),
           });
           const data = await resp.json();
