@@ -220,22 +220,37 @@ def _apply_monologue_v2(template, cigarette_name, cover_url=""):
             '&& cigaretteMap[params.zhuti.trim()]) || imageUrls[2] || imageUrls[0] || ""',
         )
 
-    # 887116 改引 theme_url(有 cover_url 则直接用外部图)
+    # 887116 改引 theme_url(有 cover_url 则直接用外部图)。
+    # 原设计:String1=列表绑定(rawMeta 99)引 150301.outputs,模板 {{String1[2]}} 取第3项;
+    # 换成字符串源后必须同步改:绑定类型 string/rawMeta 1 + 模板 {{String1}},
+    # 否则字符串被按列表解析成 [] 再取下标,报 720712014 "variable len is error"
     n887 = byid["887116"]
     p887 = _param(n887, "String1")
+    p887["input"]["type"] = "string"
+    p887["input"].pop("schema", None)
     if cover_url:
         p887["input"]["value"] = _literal(cover_url, 1)
     else:
         val = p887["input"]["value"]
         if val.get("type") == "ref" and val["content"].get("blockID") == "150301":
             val["content"]["name"] = "theme_url"
-        elif val.get("type") != "literal":
+            val["rawMeta"] = {"type": 1}
+        else:
             raise ValueError("887116 String1 引用结构异常")
         if cigarette_name not in CIG_IMAGE_LIBRARY:
             warning = (
                 f"「{cigarette_name}」不在内置 19 款烟盒图库中,中间主题烟图会回退为陪跑名单第 3 张;"
                 "建议在「烟盒图片链接」里提供这款烟的烟盒图后重新生成"
             )
+    tpl_found = False
+    for cp in n887["data"]["inputs"].get("concatParams", []):
+        if cp.get("name") == "concatResult":
+            if cp["input"]["value"]["content"] != "{{String1[2]}}":
+                raise ValueError(f"887116 concat 模板异常: {cp['input']['value']['content']}")
+            cp["input"]["value"]["content"] = "{{String1}}"
+            tpl_found = True
+    if not tpl_found:
+        raise ValueError("887116 缺少 concatResult 模板")
 
     # ── 2) 陪跑名单约束 + 3) 独白文案 ──
     _set_system_prompt(byid["171205"], PROMPT_171205)
