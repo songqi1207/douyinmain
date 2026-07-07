@@ -1001,6 +1001,14 @@
                   placeholder="可选，如：电影级光影、文艺胶片质感、水彩插画、暖色调"
                 />
               </div>
+              <div class="form-group">
+                <label>画面特效</label>
+                <input
+                  type="text"
+                  id="bookTexiao"
+                  placeholder="可选，剪映特效名，如：大雪纷飞II（留空默认金粉闪闪）"
+                />
+              </div>
 
               <button
                 class="btn primary-btn full-width"
@@ -1020,6 +1028,14 @@
                   id="cigaretteName"
                   placeholder="请输入香烟名称，如：中华"
                   onkeydown="if (event.key === 'Enter') generateCigarette();"
+                />
+              </div>
+              <div class="form-group">
+                <label>画面特效</label>
+                <input
+                  type="text"
+                  id="cigTexiao"
+                  placeholder="可选，剪映特效名，如：大雪纷飞II（留空默认金粉闪闪）"
                 />
               </div>
 
@@ -1516,6 +1532,7 @@
         const bookAudio = document.getElementById("bookAudio").value.trim();
         const bookScript = document.getElementById("bookScript").value.trim();
         const bookStyle = document.getElementById("bookStyle").value.trim();
+        const bookTexiao = document.getElementById("bookTexiao").value.trim();
         const bookVoice = document.getElementById("bookVoice").value;
         const btn = document.getElementById("generateBookBtn");
         btn.disabled = true;
@@ -1535,6 +1552,7 @@
               book_script: bookScript,
               visual_style: bookStyle,
               voice_id: bookVoice,
+              texiao: bookTexiao,
             }),
           });
           const data = await resp.json();
@@ -1578,7 +1596,10 @@
           const resp = await fetch("/api/generate_cigarette", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ cigarette_name: cigaretteName }),
+            body: JSON.stringify({
+              cigarette_name: cigaretteName,
+              texiao: document.getElementById("cigTexiao").value.trim(),
+            }),
           });
           const data = await resp.json();
 

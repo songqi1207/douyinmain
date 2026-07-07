@@ -26,12 +26,28 @@ from utils.cover import (
 )
 from utils.template_loader import find_preview_video, get_preview_video_url
 from workflows.book.builder import generate_book_workflow
-from workflows.cigarette import generate_cigarette_workflow
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 GOD_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-god-template.js"
+BOOK_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-book-template.js"
+CIG_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-cigarette-template.js"
+
+
+def _run_node_generator(cmd):
+    """跑 node 模板生成器,返回 (ok, stderr+stdout 摘要)。"""
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=str(_REPO_ROOT),
+        timeout=120,
+    )
+    detail = ((proc.stderr or "") + "\n" + (proc.stdout or "")).strip()
+    return proc.returncode == 0, detail
 
 
 @api_bp.route("/generate_flip_intro", methods=["POST"])
@@ -80,22 +96,92 @@ def api_search_book():
 
 @api_bp.route("/generate_book", methods=["POST"])
 def api_generate_book():
-    data = request.json
+    """以书籍 v1 母版换书（node generate-book-template.js 字节级定点替换）。"""
+    data = request.json or {}
     book_name = data.get("book_name", "").strip()
-    author = data.get("author", "").strip()
-    cover = data.get("cover", "").strip()
-
     if not book_name:
         return jsonify({"error": "请输入书名"}), 400
 
-    shuliang = str(data.get("shuliang", "10")).strip() or "10"
-    audio_url = str(data.get("audio", "")).strip() or None
+    author = str(data.get("author", "")).strip()
+    cover = str(data.get("cover", "")).strip()
+    shuliang = str(data.get("shuliang", "")).strip()
+    audio_url = str(data.get("audio", "")).strip()
     book_script = str(data.get("book_script", "")).strip()
     visual_style = str(data.get("visual_style", "")).strip()
     voice_id = str(data.get("voice_id", "")).strip()
+    texiao = str(data.get("texiao", "")).strip()
     url = str(data.get("url", "")).strip()
-    from_link = bool(url)
 
+    # 「从链接生成」仍走旧版书单带货模板（v1 母版没有抖音/小红书取链节点）
+    if url:
+        return _generate_book_from_link(data, book_name, author, cover,
+                                        shuliang or "10", audio_url or None,
+                                        book_script, visual_style, voice_id, url)
+
+    try:
+        # 补作者/摘要用于丰富解说方向；爬虫失败不阻断生成
+        try:
+            fetched = get_book_info(book_name) or {}
+        except Exception:
+            fetched = {}
+        author = author or (fetched.get("author") or "").strip()
+        summary = (fetched.get("summary") or "").strip()
+
+        wenan = ""
+        if summary:
+            prefix = f"《{book_name}》"
+            if author:
+                prefix += f"，作者{author}"
+            wenan = f"{prefix}。{summary}"[:500]
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_name = re.sub(r'[^\w一-鿿]', '', book_name)[:20]
+        filename = f"每天认识一本书_{safe_name}_{timestamp}.txt"
+        out_path = _REPO_ROOT / filename
+
+        cmd = ["node", str(BOOK_TEMPLATE_GENERATOR), book_name, "--out", str(out_path)]
+        if visual_style:
+            cmd += ["--desc", visual_style]
+        if wenan:
+            cmd += ["--wenan", wenan]
+        if book_script:
+            cmd += ["--cankao", book_script]
+        if shuliang:
+            cmd += ["--shuliang", shuliang]
+        if audio_url:
+            cmd += ["--audio", audio_url]
+        if voice_id:
+            cmd += ["--yinse", voice_id]
+        if texiao:
+            cmd += ["--texiao", texiao]
+
+        ok, detail = _run_node_generator(cmd)
+        if not ok or not out_path.exists():
+            return jsonify({"error": f"生成失败: {detail[-500:] or 'node 生成器执行失败'}"}), 500
+
+        warning = None
+        if "不在内置画面气质库" in detail:
+            warning = (
+                f"「{book_name}」不在内置画面气质库，已使用通用画面风格；"
+                "建议填写「画面风格」后重新生成，画面会更贴合这本书"
+            )
+
+        return jsonify({
+            "success": True,
+            "filename": filename,
+            "download_url": f"/api/download/{filename}",
+            "preview_video_url": get_preview_video_url("book"),
+            "book_info": {"title": book_name, "author": author, "summary": summary},
+            "warning": warning,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"生成失败: {str(e)}"}), 500
+
+
+def _generate_book_from_link(data, book_name, author, cover, shuliang,
+                             audio_url, book_script, visual_style, voice_id, url):
+    """旧版书单带货管线：抖音/小红书链接取文案改写（v1 母版不含取链节点）。"""
     try:
         need_fetch = not author or not cover
         fetched = get_book_info(book_name) if need_fetch else {}
@@ -116,7 +202,7 @@ def api_generate_book():
             book_script=book_script,
             visual_style=visual_style,
             voice_id=voice_id,
-            from_link=from_link,
+            from_link=True,
             url=url,
         )
         book_info["cover_workflow_url"] = cover_url_for_coze_workflow(
@@ -144,20 +230,52 @@ def api_generate_book():
 
 @api_bp.route("/generate_cigarette", methods=["POST"])
 def api_generate_cigarette():
-    data = request.json
+    """以香烟 v1 母版换烟（node generate-cigarette-template.js 字节级定点替换）。"""
+    data = request.json or {}
     cigarette_name = data.get("cigarette_name", "").strip()
     if not cigarette_name:
         return jsonify({"error": "请输入香烟名称"}), 400
 
-    try:
-        workflow = generate_cigarette_workflow(cigarette_name)
+    desc = str(data.get("desc", "")).strip()
+    wenan = str(data.get("wenan", "")).strip()
+    cankao = str(data.get("cankao", "")).strip()
+    shuliang = str(data.get("shuliang", "")).strip()
+    audio_url = str(data.get("audio", "")).strip()
+    voice_id = str(data.get("voice_id", "")).strip()
+    texiao = str(data.get("texiao", "")).strip()
 
+    try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_name = re.sub(r'[^\w\u4e00-\u9fff]', '', cigarette_name)[:20]
         filename = f"每天认识一款香烟_{safe_name}_{timestamp}.txt"
+        out_path = _REPO_ROOT / filename
 
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(workflow, f, ensure_ascii=False, separators=(",", ":"))
+        cmd = ["node", str(CIG_TEMPLATE_GENERATOR), cigarette_name, "--out", str(out_path)]
+        if desc:
+            cmd += ["--desc", desc]
+        if wenan:
+            cmd += ["--wenan", wenan]
+        if cankao:
+            cmd += ["--cankao", cankao]
+        if shuliang:
+            cmd += ["--shuliang", shuliang]
+        if audio_url:
+            cmd += ["--audio", audio_url]
+        if voice_id:
+            cmd += ["--yinse", voice_id]
+        if texiao:
+            cmd += ["--texiao", texiao]
+
+        ok, detail = _run_node_generator(cmd)
+        if not ok or not out_path.exists():
+            return jsonify({"error": f"生成失败: {detail[-500:] or 'node 生成器执行失败'}"}), 500
+
+        warning = None
+        if "不在内置画面气质库" in detail:
+            warning = (
+                f"「{cigarette_name}」不在内置画面气质库，已使用通用画面风格；"
+                "可提供画面气质描述后重新生成"
+            )
 
         return jsonify({
             "success": True,
@@ -165,6 +283,7 @@ def api_generate_cigarette():
             "download_url": f"/api/download/{filename}",
             "preview_video_url": get_preview_video_url("cigarette"),
             "cigarette_name": cigarette_name,
+            "warning": warning,
         })
     except Exception as e:
         traceback.print_exc()
