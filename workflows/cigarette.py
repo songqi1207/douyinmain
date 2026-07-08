@@ -9,7 +9,8 @@
 3. 134353 文案改第一人称情感独白(银钗风格提炼要义,不内嵌范文)。
 4. 字幕样式:华文行楷/9号/#dfd5d5/行间距-3/位置(-35,-810)。
 5. 主题烟封面 70% 缩放,位置(-51,269)(发光描边插件不支持,需剪映手动)。
-6. 删除中段非主题烟放大/旋转动画两条链(第一张/第二张封面 = 名单第1、2位,非主题)。
+6. 中段放大/旋转动画链全部保留,所有装饰图层(开场边框/正反旋转层/旋转放大边框/
+   第一二张放大层)的图片源统一改为主题烟图(用户 2026-07-08:只换图,动画要留)。
 7. 背景视频链整体替换为全片背景图片链(timeline_full 覆盖 0→结尾)。
 8. BGM 换 keshi - magnolia。
 """
@@ -45,12 +46,6 @@ CIG_IMAGE_LIBRARY = [
     "泰山", "云烟", "七匹狼", "大前门", "七星", "双喜", "中南海", "黄金叶", "兰州",
 ]
 
-# 中段"第一张/第二张封面放大±旋转"两条动画链(展示的是名单第1、2位=非主题烟,用户要求删除)
-_MID_ANIM_NODES = {
-    "182771", "145954", "166620", "483916", "174572", "217444",
-    "961933", "100598", "293522", "848424",
-    "193758", "828956", "364046", "884316", "357526", "872905",
-}
 # 背景视频链(整体换成背景图片链)
 _BGV_NODES = {"121831", "175734", "182988", "109304"}
 
@@ -384,29 +379,19 @@ def _apply_monologue_v2(template, cigarette_name, cover_url=""):
     for key, value in CIG_THEME_TRANSFORM.items():
         _set_literal(n_theme, key, value)
 
-    # ── 5.5) 装饰图层全部改用主题烟图 ──
-    # 245595→555014/692446(正文正反旋转两层) + 125607→501522(开场渐显缩小层),
-    # 原都用 142783 装饰 PNG;改引 887116.output(主题烟链接,含 cover_url 覆盖场景)。
-    # 142783/887116 同为文本处理字符串输出,同名同型,只换 blockID 不动绑定;
-    # 142783 保留在控制链上作透传,不再被引用。
-    for deco_id in ("245595", "125607"):
+    # ── 5.5) 装饰图层全部改用主题烟图,动画链原样保留(用户 2026-07-08 明确:只换图,动画要留) ──
+    # 245595→555014/692446(正文正反旋转两层)、125607→501522(开场渐显缩小层)、
+    # 193758→828956(旋转放大边框层),原都用 142783 装饰 PNG;改引 887116.output
+    # (主题烟链接,含 cover_url 覆盖场景)。142783/887116 同为文本处理字符串输出,
+    # 同名同型,只换 blockID 不动绑定;142783 保留在控制链上作透传,不再被引用。
+    # 145954→166620/483916(第一/二张放大±旋转层)本就经 182771←887116 取图,
+    # 887116 改出 theme_url 后自动跟随,无需改。
+    for deco_id in ("245595", "125607", "193758"):
         val = _param(byid[deco_id], "imgs")["input"]["value"]
         if (val.get("type") != "ref" or val["content"].get("blockID") != "142783"
                 or val["content"].get("name") != "output"):
             raise ValueError(f"{deco_id} imgs 引用结构异常")
         val["content"]["blockID"] = "887116"
-
-    # ── 6) 删除中段非主题动画链,桥接控制流 ──
-    template["json"]["nodes"] = [n for n in nodes if n["id"] not in _MID_ANIM_NODES]
-    template["json"]["edges"] = [
-        e for e in edges
-        if e.get("sourceNodeID") not in _MID_ANIM_NODES
-        and e.get("targetNodeID") not in _MID_ANIM_NODES
-    ]
-    nodes = template["json"]["nodes"]
-    edges = template["json"]["edges"]
-    edges.append({"sourceNodeID": "639486", "targetNodeID": "245595"})
-    edges.append({"sourceNodeID": "887116", "targetNodeID": "142783"})
 
     # ── 7) 背景视频链 → 全片背景图片链 ──
     #   时间线:127963 重写,新增 timeline_full(0→结尾)
