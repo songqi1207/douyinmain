@@ -13,48 +13,35 @@ __pycache__/
 .coverage
 coverage.xml
 
-# .venv/
-# venv/
-# ENV/
-# env/
-
 .env
 .env.*
-# large media
+
 *.mov
 *.mp4
 tmp_video_frames/
 
-# 生成的工作流文件（运行时产物）
-# 每天认识一个神_*.txt
-# 每天认识一本书_*.txt
-# 每天认识一款香烟_*.txt
+每天认识一个神_*.txt
+每天认识一本书_*.txt
+每天认识一款香烟_*.txt
 
-# 根目录草稿/内容文本（题材脚本等，不入库）
-# /*.txt
-
-# 放行代码实际加载的根目录模板
-!每天认识一个神_王母娘娘_横滑版_V12.txt
-
-# 临时调试脚本（注意：_*.py 也会匹配 __init__.py，故显式放行）
 _*.py
 !__init__.py
+
 temp/*
-# 仅放行代码实际加载的模板（其余 temp/template/* 都是调试迭代版）
 !temp/template/
 !temp/template/书单带货1.txt
-!temp/template/每天认识一款香烟_红塔山.txt
 
-# IDE / 编辑器本地配置
 .claude/
 .kiro/
 .vscode/
 .idea/
 
-# 缓存与运行时生成产物
 static/cache/
-static/intro_placeholder/
+static/intro_placeholder/*
+!static/intro_placeholder/.gitkeep
+
+covers/*
+!covers/.gitkeep
 covers/flip_frames/
 
-# 嵌套的项目副本
 dy-tt-main/
