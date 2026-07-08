@@ -31,6 +31,15 @@ def load_first_available_template(candidates):
     raise FileNotFoundError(f"模板文件不存在，候选路径: {candidates}")
 
 
+def load_first_available_template_with_path(candidates):
+    for candidate in candidates:
+        candidate_path = os.path.join(_BASE_DIR, candidate)
+        if os.path.exists(candidate_path):
+            with open(candidate_path, 'r', encoding='utf-8') as f:
+                return json.load(f), candidate
+    raise FileNotFoundError(f"模板文件不存在，候选路径: {candidates}")
+
+
 def find_preview_video(biz_type):
     patterns = VIDEO_PREVIEW_PATTERNS.get(biz_type, [])
     cwd = Path(os.getcwd())

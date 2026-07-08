@@ -337,119 +337,6 @@
         border-top: 1px dashed #d7e0ee;
       }
 
-      .cover-section {
-        margin-top: 12px;
-      }
-
-      .cover-section > label {
-        display: block;
-        margin-bottom: 8px;
-        font-size: 14px;
-        font-weight: 600;
-        color: #44536b;
-      }
-
-      .cover-tabs {
-        display: flex;
-        margin-bottom: 12px;
-      }
-
-      .cover-tab {
-        flex: 1;
-        padding: 10px 14px;
-        border: 1px solid var(--line);
-        background: #f5f7fb;
-        color: var(--muted);
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.18s ease;
-      }
-
-      .cover-tab:first-child {
-        border-radius: 12px 0 0 12px;
-      }
-
-      .cover-tab:last-child {
-        border-left: none;
-        border-radius: 0 12px 12px 0;
-      }
-
-      .cover-tab.active {
-        background: var(--primary-soft);
-        color: #2563eb;
-        border-color: #a7c2ff;
-      }
-
-      .cover-tab.active:last-child {
-        border-left: 1px solid #a7c2ff;
-      }
-
-      .cover-input-mode input {
-        width: 100%;
-      }
-
-      .upload-area {
-        padding: 22px;
-        border: 1.5px dashed #c9d6ea;
-        border-radius: 16px;
-        background: rgba(248, 250, 253, 0.95);
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.18s ease;
-      }
-
-      .upload-area:hover {
-        border-color: #8db0ff;
-        background: #f7faff;
-      }
-
-      .upload-icon {
-        margin-bottom: 8px;
-        font-size: 28px;
-      }
-
-      .upload-area p {
-        margin: 0;
-        font-size: 14px;
-        color: #66758b;
-      }
-
-      .upload-tip {
-        margin-top: 6px;
-        font-size: 12px;
-        color: #a0acc0;
-      }
-
-      .upload-preview {
-        position: relative;
-        margin-top: 12px;
-      }
-
-      .upload-preview img {
-        width: 100%;
-        max-height: 220px;
-        border-radius: 12px;
-        border: 1px solid #e7edf7;
-        object-fit: cover;
-      }
-
-      .btn-remove {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        padding: 6px 12px;
-        border: none;
-        border-radius: 8px;
-        background: var(--danger);
-        color: #fff;
-        font-size: 12px;
-        cursor: pointer;
-      }
-
-      .btn-remove:hover {
-        background: #dc2626;
-      }
-
       .button-row {
         display: flex;
         flex-wrap: wrap;
@@ -758,7 +645,7 @@
             <button class="biz-item" data-type="god" onclick="selectBiz('god')">
               <div class="biz-item-title">🏛 每天认识一个神</div>
               <div class="biz-item-desc">
-                输入神名、分镜数和文案，生成神话题材工作流。
+                输入神名和分镜数，生成神话题材工作流。
               </div>
             </button>
           </div>
@@ -770,7 +657,7 @@
               <div>
                 <h2 id="currentBizTitle">每天认识一本书</h2>
                 <p id="currentBizDesc">
-                  输入书名、分镜数量、文案和画面风格，生成书籍主题工作流。
+                  输入书名、分镜数量和画面风格，生成书籍主题工作流。
                 </p>
               </div>
               <button
@@ -870,70 +757,6 @@
                   />
                 </div>
 
-                <div class="cover-section">
-                  <label>封面图片</label>
-                  <div class="cover-tabs">
-                    <div
-                      class="cover-tab active"
-                      data-mode="url"
-                      onclick="switchCoverMode('url')"
-                    >
-                      URL 链接
-                    </div>
-                    <div
-                      class="cover-tab"
-                      data-mode="upload"
-                      onclick="switchCoverMode('upload')"
-                    >
-                      本地上传
-                    </div>
-                  </div>
-
-                  <div class="cover-input-mode" id="urlMode">
-                    <input
-                      type="text"
-                      id="bookCoverUrl"
-                      placeholder="粘贴封面图片 URL"
-                    />
-                  </div>
-
-                  <div
-                    class="cover-input-mode"
-                    id="uploadMode"
-                    style="display: none"
-                  >
-                    <div
-                      class="upload-area"
-                      id="uploadArea"
-                      onclick="document.getElementById('coverFile').click()"
-                    >
-                      <div class="upload-icon">🖼</div>
-                      <p id="uploadText">点击上传封面图片</p>
-                      <p class="upload-tip">支持 JPG、PNG、WEBP，最大 5MB</p>
-                    </div>
-                    <input
-                      type="file"
-                      id="coverFile"
-                      accept="image/*"
-                      style="display: none"
-                      onchange="uploadCover(this)"
-                    />
-                    <div
-                      class="upload-preview"
-                      id="uploadPreview"
-                      style="display: none"
-                    >
-                      <img id="previewImg" src="" alt="封面预览" />
-                      <button
-                        class="btn-remove"
-                        type="button"
-                        onclick="removeUploadedCover()"
-                      >
-                        移除
-                      </button>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               <div class="form-group">
@@ -976,22 +799,6 @@
                   </optgroup>
                 </select>
                 <p style="margin-top:6px;font-size:12px;color:#6d7a90;">选择配音音色，推荐知性/深情类声线</p>
-              </div>
-              <div class="form-group">
-                <label>背景音乐 URL</label>
-                <input
-                  type="text"
-                  id="bookAudio"
-                  placeholder="可选，留空则使用默认背景音乐"
-                />
-              </div>
-              <div class="form-group">
-                <label>解说文案</label>
-                <textarea
-                  id="bookScript"
-                  rows="5"
-                  placeholder="可选。输入书评、读后感或核心情节，系统会按约3分钟、四阶段情感弧结构拆成视频文案。留空则由AI根据书名自动生成。"
-                ></textarea>
               </div>
               <div class="form-group">
                 <label>画面风格</label>
@@ -1145,32 +952,6 @@
                   placeholder="可选，留空则使用默认背景音乐"
                 />
               </div>
-              <div class="form-group">
-                <label>参考文案（爆款改写模式）</label>
-                <textarea
-                  id="godCankao"
-                  rows="5"
-                  placeholder="可选。粘贴一篇同赛道爆款口播文案，AI 会保留其结构与记忆点、换词率70%以上改写成该神的版本，适合二创发布。"
-                ></textarea>
-                <p style="margin-top:6px;font-size:12px;color:#6d7a90;">填写后走爆款口播改写模式，下方"需求/解说素材"将不生效；留空则按下方素材走纪录片自动生成模式。</p>
-              </div>
-              <div class="form-group">
-                <label>你的需求/要求</label>
-                <textarea
-                  id="godRequirement"
-                  rows="2"
-                  placeholder="可选。如：重点讲黑历史、风格搞笑一点、多讲和其他神的关系"
-                ></textarea>
-              </div>
-              <div class="form-group">
-                <label>解说素材/文案</label>
-                <textarea
-                  id="godScript"
-                  rows="5"
-                  placeholder="可选。输入人物来历、成名经历、记忆点传说、能力象征和文化影响等素材，AI 按五幕纪录片节奏拆成分镜文案。留空则AI自动生成。"
-                ></textarea>
-              </div>
-
               <button
                 class="btn primary-btn full-width"
                 id="generateGodBtn"
@@ -1212,7 +993,7 @@
             <ul>
               <li>下载的工作流文件为 JSON 格式文本，可直接导入剪映使用。</li>
               <li>
-                书籍业务支持自动抓取书名、作者与封面，也支持手动补充和本地上传封面。
+                书籍业务支持自动抓取书名与作者，也支持手动补充信息。
               </li>
               <li>
                 示例视频不再常驻页面，统一通过“查看示例视频”按钮弹窗查看。
@@ -1263,12 +1044,11 @@
       let currentBiz = "";
       let currentDownloadUrl = "";
       let currentPreviewVideoUrl = "";
-      let uploadedCoverUrl = "";
 
       const bizMeta = {
         book: {
           title: "每天认识一本书",
-          desc: "输入书名、分镜数量、文案和画面风格，生成书籍主题工作流。",
+          desc: "输入书名、分镜数量和画面风格，生成书籍主题工作流。",
           previewTitle: "每天认识一本书 示例视频",
           previewUrl: "/api/preview_video/book",
         },
@@ -1280,7 +1060,7 @@
         },
         god: {
           title: "每天认识一个神",
-          desc: "输入神名、分镜数量、文案和画面风格，生成神话主题工作流。",
+          desc: "输入神名和分镜数量，生成神话主题工作流。",
           previewTitle: "每天认识一个神 示例视频",
           previewUrl: "/api/preview_video/god",
         },
@@ -1395,82 +1175,6 @@
         }
       }
 
-      function switchCoverMode(mode) {
-        document.querySelectorAll(".cover-tab").forEach((tab) => {
-          tab.classList.toggle("active", tab.dataset.mode === mode);
-        });
-        document.getElementById("urlMode").style.display =
-          mode === "url" ? "block" : "none";
-        document.getElementById("uploadMode").style.display =
-          mode === "upload" ? "block" : "none";
-      }
-
-      async function uploadCover(input) {
-        const file = input.files[0];
-        if (!file) return;
-
-        if (!file.type.startsWith("image/")) {
-          showToast("请上传图片文件", "error");
-          return;
-        }
-
-        if (file.size > 5 * 1024 * 1024) {
-          showToast("图片大小不能超过 5MB", "error");
-          return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = function (e) {
-          document.getElementById("previewImg").src = e.target.result;
-          document.getElementById("uploadArea").style.display = "none";
-          document.getElementById("uploadPreview").style.display = "block";
-        };
-        reader.readAsDataURL(file);
-
-        const formData = new FormData();
-        formData.append("cover", file);
-        formData.append(
-          "book_name",
-          document.getElementById("bookName").value.trim() || "cover",
-        );
-
-        try {
-          const resp = await fetch("/api/upload_cover", {
-            method: "POST",
-            body: formData,
-          });
-          const data = await resp.json();
-
-          if (data.success) {
-            uploadedCoverUrl = (data.cover_path || data.cover_url || "").trim();
-            showToast("封面上传成功", "success");
-          } else {
-            showToast(data.error || "上传失败", "error");
-            removeUploadedCover();
-          }
-        } catch (e) {
-          showToast("网络错误，请重试", "error");
-          removeUploadedCover();
-        }
-      }
-
-      function removeUploadedCover() {
-        uploadedCoverUrl = "";
-        document.getElementById("coverFile").value = "";
-        document.getElementById("uploadArea").style.display = "block";
-        document.getElementById("uploadPreview").style.display = "none";
-        document.getElementById("previewImg").src = "";
-      }
-
-      function getCoverUrl() {
-        const urlModeVisible =
-          document.getElementById("urlMode").style.display !== "none";
-        if (urlModeVisible) {
-          return document.getElementById("bookCoverUrl").value.trim();
-        }
-        return uploadedCoverUrl;
-      }
-
       async function searchBook() {
         const bookName = document.getElementById("bookName").value.trim();
         if (!bookName) {
@@ -1532,10 +1236,7 @@
             if (info.author) {
               document.getElementById("bookAuthor").value = info.author;
             }
-            if (info.cover) {
-              document.getElementById("bookCoverUrl").value = info.cover;
-            }
-            window._bookCoverSourceUrl = info.cover_source_url || "";
+
           } else {
             showToast(data.error || "搜索失败", "error");
           }
@@ -1555,11 +1256,8 @@
         }
 
         const author = document.getElementById("bookAuthor").value.trim();
-        const cover = getCoverUrl();
         const bookCountRaw = document.getElementById("bookCount").value.trim();
         const bookCount = bookCountRaw === "" ? "10" : bookCountRaw;
-        const bookAudio = document.getElementById("bookAudio").value.trim();
-        const bookScript = document.getElementById("bookScript").value.trim();
         const bookStyle = document.getElementById("bookStyle").value.trim();
         const bookTexiao = document.getElementById("bookTexiao").value.trim();
         const bookVoice = document.getElementById("bookVoice").value;
@@ -1574,11 +1272,7 @@
             body: JSON.stringify({
               book_name: bookName,
               author: author,
-              cover: cover,
-              cover_source_url: window._bookCoverSourceUrl || "",
               shuliang: bookCount,
-              audio: bookAudio,
-              book_script: bookScript,
               visual_style: bookStyle,
               voice_id: bookVoice,
               texiao: bookTexiao,
@@ -1667,20 +1361,9 @@
         }
 
         const godDesc = document.getElementById("godDesc").value.trim();
-        const godCankao = document.getElementById("godCankao").value.trim();
         const godCount = document.getElementById("godCount").value.trim();
         const godAudio = document.getElementById("godAudio").value.trim();
-        const godScript = document.getElementById("godScript").value.trim();
-        const godRequirement = document.getElementById("godRequirement").value.trim();
         const godVoice = document.getElementById("godVoice").value;
-
-        // 把素材和需求合并进 wenan（开始节点解说文案默认值）
-        let finalWenan = godScript;
-        if (godRequirement && godScript) {
-          finalWenan = godScript + "\n\n【用户要求】" + godRequirement;
-        } else if (godRequirement && !godScript) {
-          finalWenan = "【用户要求】" + godRequirement;
-        }
 
         const btn = document.getElementById("generateGodBtn");
         btn.disabled = true;
@@ -1693,8 +1376,6 @@
             body: JSON.stringify({
               god_name: godName,
               desc: godDesc,
-              wenan: finalWenan,
-              cankao: godCankao,
               shuliang: godCount,
               audio: godAudio,
               voice_id: godVoice,

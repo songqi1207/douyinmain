@@ -19,7 +19,7 @@ import json
 from copy import deepcopy
 
 from config import CIGARETTE_TEMPLATE_CANDIDATES
-from utils.template_loader import load_first_available_template
+from utils.template_loader import load_first_available_template_with_path
 from utils.media import build_cigarette_match_key
 from utils.sanitize import sanitize_template_media_urls
 from workflows.common import make_ref
@@ -491,13 +491,52 @@ def _apply_monologue_v2(template, cigarette_name, cover_url=""):
     return warning
 
 
+def _retheme_reference_template(template, cigarette_name, cover_url=""):
+    """基于现成参考模板仅换主题，尽量保持原模板结构不被旧补丁重写。"""
+    nodes = template["json"]["nodes"]
+    byid = {n["id"]: n for n in nodes}
+    for required in ("150301", "887116", "171205", "134353", "148842"):
+        if required not in byid:
+            raise ValueError(f"参考模板缺少节点 {required}")
+
+    warning = None
+
+    n301 = byid["150301"]
+    if _param(n301, "zhuti") is None:
+        _params(n301).append({
+            "name": "zhuti",
+            "input": {"type": "string", "value": make_ref("100001", "xiangyan_name")},
+        })
+
+    n887 = byid["887116"]
+    p887 = _param(n887, "String1")
+    if p887 is None:
+        raise ValueError("参考模板缺少 887116.String1")
+    p887["input"]["type"] = "string"
+    p887["input"].pop("schema", None)
+
+    if cover_url:
+        p887["input"]["value"] = _literal(cover_url, 1)
+        for cp in n887["data"]["inputs"].get("concatParams", []):
+            if cp.get("name") == "concatResult":
+                cp["input"]["value"]["content"] = "{{String1}}"
+                break
+    elif cigarette_name not in CIG_IMAGE_LIBRARY:
+        warning = (
+            f"《{cigarette_name}》不在内置 19 款烟盒图库中，中间主题烟图会沿用参考模板结构的兜底逻辑。"
+            "建议在“烟盒图片链接”里提供这款烟的烟盒图后重新生成。"
+        )
+
+    return warning
+
+
 def generate_cigarette_workflow(cigarette_name, cover_url="", voice_id=""):
     """
     生成香烟工作流(老模板 + 情感独白增量改造)。
     返回 (template, warning)。cover_url 非空时用它作为中间主题烟盒图。
     voice_id 非空时切换全片配音音色(标题 163300 + 金句 190569 两个槽)。
     """
-    template = load_first_available_template(CIGARETTE_TEMPLATE_CANDIDATES)
+    template, template_source = load_first_available_template_with_path(CIGARETTE_TEMPLATE_CANDIDATES)
     nodes = {n.get("id"): n for n in template.get("json", {}).get("nodes", []) if isinstance(n, dict)}
 
     for node in template["json"]["nodes"]:
@@ -529,7 +568,11 @@ def generate_cigarette_workflow(cigarette_name, cover_url="", voice_id=""):
             {"name": "tts_msg", "input": {"type": "string", "value": make_ref("163300", "msg")}},
         ]
 
-    warning = _apply_monologue_v2(template, cigarette_name, cover_url=cover_url)
+    is_reference_template = template_source == CIGARETTE_TEMPLATE_CANDIDATES[0]
+    if is_reference_template:
+        warning = _retheme_reference_template(template, cigarette_name, cover_url=cover_url)
+    else:
+        warning = _apply_monologue_v2(template, cigarette_name, cover_url=cover_url)
 
     voice_id = (voice_id or "").strip()
     if voice_id:
