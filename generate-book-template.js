@@ -33,7 +33,8 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--desc' || a === '--wenan' || a === '--cankao' || a === '--shuliang'
-      || a === '--audio' || a === '--yinse' || a === '--texiao' || a === '--base' || a === '--out') {
+      || a === '--audio' || a === '--yinse' || a === '--texiao' || a === '--author'
+      || a === '--base' || a === '--out') {
       out[a.slice(2)] = argv[++i];
     } else {
       out._.push(a);
@@ -82,7 +83,7 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   const bookName = (args._[0] || '').trim();
   if (!bookName) {
-    console.error('用法: node generate-book-template.js <书名> [--desc 画面气质] [--wenan 资料] [--cankao 参考文案] [--shuliang 张数] [--audio BGM链接] [--yinse 音色ID] [--base 母版] [--out 输出]');
+    console.error('用法: node generate-book-template.js <书名> [--author 作者] [--desc 画面气质] [--wenan 资料] [--cankao 参考文案] [--shuliang 张数] [--audio BGM链接] [--yinse 音色ID] [--base 母版] [--out 输出]');
     process.exit(1);
   }
   const basePath = args.base || DEFAULT_BASE;
@@ -93,6 +94,12 @@ function main() {
   // 1) 书名 → 旁白主题（开始节点 subject）
   setStartDefault(doc, 'subject', bookName);
   changes.push(`书名(subject): ${bookName}`);
+
+  // 1b) 作者 → 开场"《书名》 作者著"字幕（开始节点 author）
+  if (args.author && String(args.author).trim() !== '') {
+    setStartDefault(doc, 'author', String(args.author).trim());
+    changes.push(`作者(author): ${args.author}`);
+  }
 
   // 2) 配图张数 → img_count
   if (args.shuliang && String(args.shuliang).trim() !== '') {

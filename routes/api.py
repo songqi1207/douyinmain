@@ -141,6 +141,8 @@ def api_generate_book():
         out_path = _REPO_ROOT / filename
 
         cmd = ["node", str(BOOK_TEMPLATE_GENERATOR), book_name, "--out", str(out_path)]
+        if author:
+            cmd += ["--author", author]
         if visual_style:
             cmd += ["--desc", visual_style]
         if wenan:
