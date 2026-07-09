@@ -53,6 +53,9 @@ def _run_node_generator(cmd):
 
 
 def _external_base_url():
+    public = workflow_public_base("").strip().rstrip("/")
+    if public:
+        return public
     proto = (request.headers.get("X-Forwarded-Proto") or request.scheme or "http").split(",")[0].strip()
     host = (request.headers.get("X-Forwarded-Host") or request.host or "").split(",")[0].strip()
     return f"{proto}://{host}"
