@@ -1,21 +1,26 @@
 FROM python:3.11-slim
 
-# 米核 Key 通过运行时的环境变量 MIHE_KEY 注入（docker run -e / --env-file / compose env_file），勿写入镜像层
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=7860
+ENV HOME=/home/user
+ENV PATH=/home/user/.local/bin:$PATH
 
-WORKDIR /app
+RUN useradd -m -u 1000 user
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+WORKDIR $HOME/app
 
-# /api/generate_god 通过 subprocess 调用 generate-god-template.js，需要 node 运行时
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get install -y --no-install-recommends ffmpeg nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-COPY . /app
+COPY --chown=user requirements.txt $HOME/app/requirements.txt
+
+USER user
+
+RUN pip install --no-cache-dir -r $HOME/app/requirements.txt
+
+COPY --chown=user . $HOME/app
 
 EXPOSE 7860
 

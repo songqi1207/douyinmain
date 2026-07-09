@@ -24,6 +24,7 @@ from utils.cover import (
     workflow_public_base, cover_url_for_coze_workflow,
     attach_cover_preview_to_book_info,
 )
+from utils.audio_probe import probe_audio_duration
 from utils.template_loader import find_preview_video, get_preview_video_url
 from workflows.book.builder import generate_book_workflow
 from workflows.cigarette import generate_cigarette_workflow
@@ -49,6 +50,115 @@ def _run_node_generator(cmd):
     )
     detail = ((proc.stderr or "") + "\n" + (proc.stdout or "")).strip()
     return proc.returncode == 0, detail
+
+
+def _coze_audio_tools_openapi(base_url):
+    server_url = f"{base_url.rstrip('/')}/api"
+    return {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "Douyin Workflow Audio Tools",
+            "version": "1.0.0",
+            "description": "Self-hosted audio utility tools for Coze plugins.",
+        },
+        "servers": [
+            {"url": server_url}
+        ],
+        "paths": {
+            "/tools/get_audio_duration": {
+                "post": {
+                    "operationId": "get_audio_duration",
+                    "summary": "Get audio duration",
+                    "description": "Probe audio duration in seconds from a local path or remote URL.",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "mp3_url": {
+                                            "type": "string",
+                                            "description": "Remote audio URL or local file path.",
+                                        },
+                                        "url": {
+                                            "type": "string",
+                                            "description": "Alias of mp3_url.",
+                                        },
+                                        "file_path": {
+                                            "type": "string",
+                                            "description": "Alias of mp3_url for local file paths.",
+                                        },
+                                        "path": {
+                                            "type": "string",
+                                            "description": "Alias of mp3_url for local file paths.",
+                                        },
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Duration probing result.",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "success": {"type": "boolean"},
+                                            "duration": {"type": "number", "format": "float"},
+                                            "message": {"type": "string"},
+                                        },
+                                        "required": ["success", "message"],
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            }
+        },
+    }
+
+
+@api_bp.route("/tools/get_audio_duration", methods=["GET", "POST"])
+def api_get_audio_duration():
+    """Local replacement for the third-party get_audio_duration plugin."""
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+    target = (
+        str(data.get("mp3_url", "")).strip()
+        or str(data.get("url", "")).strip()
+        or str(data.get("file_path", "")).strip()
+        or str(data.get("path", "")).strip()
+    )
+    if not target:
+        return jsonify({
+            "success": False,
+            "message": "missing mp3_url/url/file_path/path",
+        }), 400
+
+    try:
+        duration = probe_audio_duration(target)
+        return jsonify({
+            "success": True,
+            "duration": duration,
+            "message": "ok",
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e),
+        }), 400
+
+
+@api_bp.route("/openapi/coze_audio_tools.json")
+def coze_audio_tools_openapi():
+    """OpenAPI spec for importing self-hosted tools into Coze."""
+    return jsonify(_coze_audio_tools_openapi(request.host_url))
 
 
 @api_bp.route("/generate_flip_intro", methods=["POST"])
