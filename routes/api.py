@@ -25,6 +25,11 @@ from utils.cover import (
     attach_cover_preview_to_book_info,
 )
 from utils.audio_probe import probe_audio_duration
+from utils.coze_plugin_tools import (
+    split_text_segments,
+    merge_timelines,
+    build_effect_infos,
+)
 from utils.template_loader import find_preview_video, get_preview_video_url
 from workflows.book.builder import generate_book_workflow
 from workflows.cigarette import generate_cigarette_workflow
@@ -66,9 +71,9 @@ def _coze_audio_tools_openapi(base_url):
     return {
         "openapi": "3.0.3",
         "info": {
-            "title": "Douyin Workflow Audio Tools",
+            "title": "抖音工作流音频工具",
             "version": "1.0.0",
-            "description": "Self-hosted audio utility tools for Coze plugins.",
+            "description": "用于扣子插件的自托管音频工具。",
         },
         "servers": [
             {"url": server_url}
@@ -77,8 +82,8 @@ def _coze_audio_tools_openapi(base_url):
             "/tools/get_audio_duration": {
                 "post": {
                     "operationId": "get_audio_duration",
-                    "summary": "Get audio duration",
-                    "description": "Probe audio duration in seconds from a local path or remote URL.",
+                    "summary": "获取音频时长",
+                    "description": "读取本地路径或远程音频链接，返回音频时长（单位：秒）。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -88,19 +93,19 @@ def _coze_audio_tools_openapi(base_url):
                                     "properties": {
                                         "mp3_url": {
                                             "type": "string",
-                                            "description": "Remote audio URL or local file path.",
+                                            "description": "音频链接或本地文件路径。推荐优先使用这个字段。",
                                         },
                                         "url": {
                                             "type": "string",
-                                            "description": "Alias of mp3_url.",
+                                            "description": "mp3_url 的别名。",
                                         },
                                         "file_path": {
                                             "type": "string",
-                                            "description": "Alias of mp3_url for local file paths.",
+                                            "description": "本地文件路径，可作为 mp3_url 的别名使用。",
                                         },
                                         "path": {
                                             "type": "string",
-                                            "description": "Alias of mp3_url for local file paths.",
+                                            "description": "本地文件路径，可作为 mp3_url 的别名使用。",
                                         },
                                     },
                                 }
@@ -109,7 +114,7 @@ def _coze_audio_tools_openapi(base_url):
                     },
                     "responses": {
                         "200": {
-                            "description": "Duration probing result.",
+                            "description": "音频时长查询结果。",
                             "content": {
                                 "application/json": {
                                     "schema": {
@@ -127,6 +132,238 @@ def _coze_audio_tools_openapi(base_url):
                     },
                 }
             }
+        },
+    }
+
+
+def _coze_workflow_tools_openapi(base_url):
+    server_url = f"{base_url.rstrip('/')}/api"
+    timeline_item_schema = {
+        "type": "object",
+        "properties": {
+            "start": {"type": "integer"},
+            "end": {"type": "integer"},
+        },
+    }
+    return {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "抖音工作流辅助工具",
+            "version": "1.0.0",
+            "description": "用于扣子插件的自托管工作流辅助工具，包含音频、分句、时间线和特效数据处理。",
+        },
+        "servers": [{"url": server_url}],
+        "paths": {
+            "/tools/get_audio_duration": {
+                "post": {
+                    "operationId": "get_audio_duration",
+                    "summary": "获取音频时长",
+                    "description": "读取本地路径或远程音频链接，返回音频时长（单位：秒）。",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "mp3_url": {
+                                            "type": "string",
+                                            "description": "音频链接或本地文件路径。推荐优先使用这个字段。",
+                                        },
+                                        "url": {
+                                            "type": "string",
+                                            "description": "mp3_url 的别名。",
+                                        },
+                                        "file_path": {
+                                            "type": "string",
+                                            "description": "本地文件路径，可作为 mp3_url 的别名使用。",
+                                        },
+                                        "path": {
+                                            "type": "string",
+                                            "description": "本地文件路径，可作为 mp3_url 的别名使用。",
+                                        },
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "音频时长查询结果。",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "success": {"type": "boolean"},
+                                            "duration": {"type": "number", "format": "float"},
+                                            "message": {"type": "string"},
+                                        },
+                                        "required": ["success", "message"],
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/tools/text_splitter": {
+                "post": {
+                    "operationId": "text_splitter",
+                    "summary": "中文智能分句",
+                    "description": "将整段中文文案按标点智能切分，去掉多余符号并合并过短片段。",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "text": {
+                                            "type": "string",
+                                            "description": "需要分句处理的原始文案。",
+                                        }
+                                    },
+                                    "required": ["text"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "分句结果。",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "success": {"type": "boolean"},
+                                            "segments": {
+                                                "type": "array",
+                                                "items": {"type": "string"},
+                                            },
+                                            "message": {"type": "string"},
+                                            "error": {"type": "string"},
+                                        },
+                                        "required": ["success", "segments"],
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/tools/timeline_merge": {
+                "post": {
+                    "operationId": "timeline_merge",
+                    "summary": "合并开场与正文时间线",
+                    "description": "接收开场和正文时间线，将正文整体顺延到开场结束后，返回兼容原模板的多组时间线字段。",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "pre_timeline": {
+                                            "type": "array",
+                                            "description": "开场时间线，单位微秒。",
+                                            "items": timeline_item_schema,
+                                        },
+                                        "main_timeline": {
+                                            "type": "array",
+                                            "description": "正文时间线，单位微秒。",
+                                            "items": timeline_item_schema,
+                                        },
+                                        "gap_us": {
+                                            "type": "integer",
+                                            "description": "正文相对开场额外增加的间隔，单位微秒。",
+                                        },
+                                        "skip_us": {
+                                            "type": "integer",
+                                            "description": "在整体顺延后额外扣减的时长，单位微秒。",
+                                        },
+                                    },
+                                    "required": ["pre_timeline", "main_timeline"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "时间线合并结果。",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "timelines": {"type": "array", "items": timeline_item_schema},
+                                            "main_timelines": {"type": "array", "items": timeline_item_schema},
+                                            "pre_timelines": {"type": "array", "items": timeline_item_schema},
+                                            "all_timeline": {"type": "array", "items": timeline_item_schema},
+                                            "all_timelines": {"type": "array", "items": timeline_item_schema},
+                                            "all_main_timeline": {"type": "array", "items": timeline_item_schema},
+                                            "all_pre_timeline": {"type": "array", "items": timeline_item_schema},
+                                            "all_complete_timeline": {"type": "array", "items": timeline_item_schema},
+                                            "last_end_us": {"type": "integer"},
+                                            "error": {"type": "string"},
+                                        },
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/tools/effect_infos": {
+                "post": {
+                    "operationId": "effect_infos",
+                    "summary": "生成特效时间信息",
+                    "description": "把特效名称列表和时间线一一对应，输出可直接下游使用的 infos 字符串。",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "effects": {
+                                            "type": "array",
+                                            "description": "特效名称列表。",
+                                            "items": {"type": "string"},
+                                        },
+                                        "timelines": {
+                                            "type": "array",
+                                            "description": "时间线列表，单位微秒。",
+                                            "items": timeline_item_schema,
+                                        },
+                                    },
+                                    "required": ["effects", "timelines"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "特效信息生成结果。",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "infos": {"type": "string"},
+                                            "items": {"type": "array", "items": {"type": "object"}},
+                                            "count": {"type": "integer"},
+                                            "error": {"type": "string"},
+                                        },
+                                        "required": ["infos"],
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
         },
     }
 
@@ -164,10 +401,69 @@ def api_get_audio_duration():
         }), 400
 
 
+@api_bp.route("/tools/text_splitter", methods=["GET", "POST"])
+def api_text_splitter():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    text = str(data.get("text", "")).strip()
+    if not text:
+        return jsonify({
+            "success": False,
+            "segments": [],
+            "message": "missing text",
+            "error": "missing text",
+        }), 400
+
+    return jsonify({
+        "success": True,
+        "segments": split_text_segments(text),
+        "message": "ok",
+        "error": "",
+    })
+
+
+@api_bp.route("/tools/timeline_merge", methods=["GET", "POST"])
+def api_timeline_merge():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    pre_timeline = data.get("pre_timeline") or []
+    main_timeline = data.get("main_timeline") or []
+    if not isinstance(pre_timeline, list) or not isinstance(main_timeline, list):
+        return jsonify({"error": "pre_timeline and main_timeline must be lists"}), 400
+
+    return jsonify(merge_timelines(
+        pre_timeline=pre_timeline,
+        main_timeline=main_timeline,
+        gap_us=data.get("gap_us", 0),
+        skip_us=data.get("skip_us", 0),
+    ))
+
+
+@api_bp.route("/tools/effect_infos", methods=["GET", "POST"])
+def api_effect_infos():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    effects = data.get("effects") or []
+    timelines = data.get("timelines") or []
+    if not isinstance(effects, list) or not isinstance(timelines, list):
+        return jsonify({"error": "effects and timelines must be lists"}), 400
+
+    return jsonify(build_effect_infos(effects, timelines))
+
+
 @api_bp.route("/openapi/coze_audio_tools.json")
 def coze_audio_tools_openapi():
     """OpenAPI spec for importing self-hosted tools into Coze."""
-    return jsonify(_coze_audio_tools_openapi(_external_base_url()))
+    return jsonify(_coze_workflow_tools_openapi(_external_base_url()))
 
 
 @api_bp.route("/generate_flip_intro", methods=["POST"])
