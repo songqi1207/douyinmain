@@ -66,6 +66,29 @@ def _external_base_url():
     return f"{proto}://{host}"
 
 
+def _coze_list_param(data, primary_key, alias_keys=()):
+    value = data.get(primary_key)
+    if isinstance(value, list):
+        return value
+    for key in alias_keys:
+        alias_value = data.get(key)
+        if isinstance(alias_value, list):
+            return alias_value
+        if isinstance(alias_value, str) and alias_value.strip():
+            try:
+                parsed = json.loads(alias_value)
+            except Exception:
+                return []
+            return parsed if isinstance(parsed, list) else []
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return []
+        return parsed if isinstance(parsed, list) else []
+    return []
+
+
 def _coze_audio_tools_openapi(base_url):
     server_url = f"{base_url.rstrip('/')}/api"
     return {
@@ -166,22 +189,10 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "mp3_url": {
-                                            "type": "string",
-                                            "description": "音频链接或本地文件路径。推荐优先使用这个字段。",
-                                        },
-                                        "url": {
-                                            "type": "string",
-                                            "description": "mp3_url 的别名。",
-                                        },
-                                        "file_path": {
-                                            "type": "string",
-                                            "description": "本地文件路径，可作为 mp3_url 的别名使用。",
-                                        },
-                                        "path": {
-                                            "type": "string",
-                                            "description": "本地文件路径，可作为 mp3_url 的别名使用。",
-                                        },
+                                        "mp3_url": {"type": "string", "description": "音频链接或本地文件路径。推荐优先使用这个字段。"},
+                                        "url": {"type": "string", "description": "mp3_url 的别名。"},
+                                        "file_path": {"type": "string", "description": "本地文件路径，可作为 mp3_url 的别名使用。"},
+                                        "path": {"type": "string", "description": "本地文件路径，可作为 mp3_url 的别名使用。"},
                                     },
                                 }
                             }
@@ -219,10 +230,7 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "text": {
-                                            "type": "string",
-                                            "description": "需要分句处理的原始文案。",
-                                        }
+                                        "text": {"type": "string", "description": "需要分句处理的原始文案。"}
                                     },
                                     "required": ["text"],
                                 }
@@ -238,10 +246,7 @@ def _coze_workflow_tools_openapi(base_url):
                                         "type": "object",
                                         "properties": {
                                             "success": {"type": "boolean"},
-                                            "segments": {
-                                                "type": "array",
-                                                "items": {"type": "string"},
-                                            },
+                                            "segments": {"type": "array", "items": {"type": "string"}},
                                             "message": {"type": "string"},
                                             "error": {"type": "string"},
                                         },
@@ -257,7 +262,7 @@ def _coze_workflow_tools_openapi(base_url):
                 "post": {
                     "operationId": "timeline_merge",
                     "summary": "合并开场与正文时间线",
-                    "description": "接收开场和正文时间线，将正文整体顺延到开场结束后，返回兼容原模板的多组时间线字段。",
+                    "description": "接收开场和正文时间线，将正文整体顺延到开场结束后。为兼容扣子导入器，这两个字段使用 JSON 字符串传入。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -265,24 +270,10 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "pre_timeline": {
-                                            "type": "array",
-                                            "description": "开场时间线，单位微秒。",
-                                            "items": timeline_item_schema,
-                                        },
-                                        "main_timeline": {
-                                            "type": "array",
-                                            "description": "正文时间线，单位微秒。",
-                                            "items": timeline_item_schema,
-                                        },
-                                        "gap_us": {
-                                            "type": "integer",
-                                            "description": "正文相对开场额外增加的间隔，单位微秒。",
-                                        },
-                                        "skip_us": {
-                                            "type": "integer",
-                                            "description": "在整体顺延后额外扣减的时长，单位微秒。",
-                                        },
+                                        "pre_timeline": {"type": "string", "description": "开场时间线 JSON 字符串，例如 [{\"start\":0,\"end\":1000}]。"},
+                                        "main_timeline": {"type": "string", "description": "正文时间线 JSON 字符串，例如 [{\"start\":0,\"end\":500}]。"},
+                                        "gap_us": {"type": "integer", "description": "正文相对开场额外增加的间隔，单位微秒。"},
+                                        "skip_us": {"type": "integer", "description": "在整体顺延后额外扣减的时长，单位微秒。"},
                                     },
                                     "required": ["pre_timeline", "main_timeline"],
                                 }
@@ -319,7 +310,7 @@ def _coze_workflow_tools_openapi(base_url):
                 "post": {
                     "operationId": "effect_infos",
                     "summary": "生成特效时间信息",
-                    "description": "把特效名称列表和时间线一一对应，输出可直接下游使用的 infos 字符串。",
+                    "description": "把特效名称列表和时间线一一对应。为兼容扣子导入器，这两个字段使用 JSON 字符串传入。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -327,16 +318,8 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "effects": {
-                                            "type": "array",
-                                            "description": "特效名称列表。",
-                                            "items": {"type": "string"},
-                                        },
-                                        "timelines": {
-                                            "type": "array",
-                                            "description": "时间线列表，单位微秒。",
-                                            "items": timeline_item_schema,
-                                        },
+                                        "effects": {"type": "string", "description": "特效名称 JSON 字符串，例如 [\"fade\",\"zoom\"]。"},
+                                        "timelines": {"type": "string", "description": "时间线 JSON 字符串，例如 [{\"start\":0,\"end\":100}]。"},
                                     },
                                     "required": ["effects", "timelines"],
                                 }
@@ -432,8 +415,8 @@ def api_timeline_merge():
     else:
         data = request.args
 
-    pre_timeline = data.get("pre_timeline") or []
-    main_timeline = data.get("main_timeline") or []
+    pre_timeline = _coze_list_param(data, "pre_timeline", ("pre_timeline_json",))
+    main_timeline = _coze_list_param(data, "main_timeline", ("main_timeline_json",))
     if not isinstance(pre_timeline, list) or not isinstance(main_timeline, list):
         return jsonify({"error": "pre_timeline and main_timeline must be lists"}), 400
 
@@ -452,8 +435,8 @@ def api_effect_infos():
     else:
         data = request.args
 
-    effects = data.get("effects") or []
-    timelines = data.get("timelines") or []
+    effects = _coze_list_param(data, "effects", ("effects_json",))
+    timelines = _coze_list_param(data, "timelines", ("timelines_json",))
     if not isinstance(effects, list) or not isinstance(timelines, list):
         return jsonify({"error": "effects and timelines must be lists"}), 400
 
