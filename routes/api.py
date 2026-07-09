@@ -52,6 +52,12 @@ def _run_node_generator(cmd):
     return proc.returncode == 0, detail
 
 
+def _external_base_url():
+    proto = (request.headers.get("X-Forwarded-Proto") or request.scheme or "http").split(",")[0].strip()
+    host = (request.headers.get("X-Forwarded-Host") or request.host or "").split(",")[0].strip()
+    return f"{proto}://{host}"
+
+
 def _coze_audio_tools_openapi(base_url):
     server_url = f"{base_url.rstrip('/')}/api"
     return {
@@ -158,7 +164,7 @@ def api_get_audio_duration():
 @api_bp.route("/openapi/coze_audio_tools.json")
 def coze_audio_tools_openapi():
     """OpenAPI spec for importing self-hosted tools into Coze."""
-    return jsonify(_coze_audio_tools_openapi(request.host_url))
+    return jsonify(_coze_audio_tools_openapi(_external_base_url()))
 
 
 @api_bp.route("/generate_flip_intro", methods=["POST"])

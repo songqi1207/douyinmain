@@ -11,6 +11,7 @@ import os
 
 from flask import Flask
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import print_startup_info
 from routes.api import api_bp
@@ -19,6 +20,7 @@ from routes.views import views_bp
 
 def create_app():
     application = Flask(__name__, template_folder="templates", static_folder="static")
+    application.wsgi_app = ProxyFix(application.wsgi_app, x_for=1, x_proto=1, x_host=1)
     CORS(application)
     application.register_blueprint(views_bp)
     application.register_blueprint(api_bp)
