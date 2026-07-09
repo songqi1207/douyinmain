@@ -160,15 +160,17 @@ def _coze_audio_tools_openapi(base_url):
 
 
 def _coze_workflow_tools_openapi(base_url):
-    server_url = base_url.rstrip("/")
+    server_url = f"{base_url.rstrip('/')}/api"
     timeline_item_schema = {
         "type": "object",
         "properties": {
             "start": {"type": "integer"},
             "end": {"type": "integer"},
         },
+        "required": ["start", "end"],
     }
     return {
+        "$schema": "https://spec.openapis.org/oas/3.0/schema/2021-09-28",
         "openapi": "3.0.3",
         "info": {
             "title": "抖音工作流辅助工具",
@@ -177,8 +179,9 @@ def _coze_workflow_tools_openapi(base_url):
         },
         "servers": [{"url": server_url}],
         "paths": {
-            "/api/tools/get_audio_duration": {
+            "/tools/get_audio_duration": {
                 "post": {
+                    "tags": ["工作流工具"],
                     "operationId": "get_audio_duration",
                     "summary": "获取音频时长",
                     "description": "读取本地路径或远程音频链接，返回音频时长（单位：秒）。",
@@ -218,8 +221,9 @@ def _coze_workflow_tools_openapi(base_url):
                     },
                 }
             },
-            "/api/tools/text_splitter": {
+            "/tools/text_splitter": {
                 "post": {
+                    "tags": ["工作流工具"],
                     "operationId": "text_splitter",
                     "summary": "中文智能分句",
                     "description": "将整段中文文案按标点智能切分，去掉多余符号并合并过短片段。",
@@ -258,8 +262,9 @@ def _coze_workflow_tools_openapi(base_url):
                     },
                 }
             },
-            "/api/tools/timeline_merge": {
+            "/tools/timeline_merge": {
                 "post": {
+                    "tags": ["工作流工具"],
                     "operationId": "timeline_merge",
                     "summary": "合并开场与正文时间线",
                     "description": "接收开场和正文时间线，将正文整体顺延到开场结束后。为兼容扣子导入器，这两个字段使用 JSON 字符串传入。",
@@ -306,8 +311,9 @@ def _coze_workflow_tools_openapi(base_url):
                     },
                 }
             },
-            "/api/tools/effect_infos": {
+            "/tools/effect_infos": {
                 "post": {
+                    "tags": ["工作流工具"],
                     "operationId": "effect_infos",
                     "summary": "生成特效时间信息",
                     "description": "把特效名称列表和时间线一一对应。为兼容扣子导入器，这两个字段使用 JSON 字符串传入。",
@@ -335,7 +341,18 @@ def _coze_workflow_tools_openapi(base_url):
                                         "type": "object",
                                         "properties": {
                                             "infos": {"type": "string"},
-                                            "items": {"type": "array", "items": {"type": "object"}},
+                                            "items": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "effect": {"type": "string"},
+                                                        "start": {"type": "integer"},
+                                                        "end": {"type": "integer"},
+                                                    },
+                                                    "required": ["effect", "start", "end"],
+                                                },
+                                            },
                                             "count": {"type": "integer"},
                                             "error": {"type": "string"},
                                         },
