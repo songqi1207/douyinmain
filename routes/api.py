@@ -30,6 +30,12 @@ from utils.coze_plugin_tools import (
     merge_timelines,
     build_effect_infos,
 )
+from utils.jianying_drafts import (
+    create_draft as create_jianying_draft,
+    append_audios as append_draft_audios,
+    append_images as append_draft_images,
+    append_captions as append_draft_captions,
+)
 from utils.template_loader import find_preview_video, get_preview_video_url
 from workflows.book.builder import generate_book_workflow
 from workflows.cigarette import generate_cigarette_workflow
@@ -364,6 +370,233 @@ def _coze_workflow_tools_openapi(base_url):
                     },
                 }
             },
+            "/tools/create_draft": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "create_draft",
+                    "summary": "Create a local JianYing draft",
+                    "description": "Create a local draft folder and return its draft_id for later add_audios/add_images/add_captions calls.",
+                    "requestBody": {
+                        "required": False,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "width": {"type": "integer", "description": "Canvas width in pixels."},
+                                        "height": {"type": "integer", "description": "Canvas height in pixels."},
+                                        "name": {"type": "string", "description": "Optional draft display name."},
+                                        "user_id": {"type": "integer", "description": "Optional creator id."},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Draft created.",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "draft_id": {"type": "string"},
+                                            "draft_name": {"type": "string"},
+                                            "draft_dir": {"type": "string"},
+                                            "width": {"type": "integer"},
+                                            "height": {"type": "integer"},
+                                            "ratio": {"type": "string"},
+                                            "message": {"type": "string"},
+                                        },
+                                        "required": ["draft_id", "message"],
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/tools/add_audios": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "add_audios",
+                    "summary": "Add audio segments to a local draft",
+                    "description": "Append audio segments to a previously created local draft.",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "draft_id": {"type": "string"},
+                                        "audio_infos": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "audio_url": {"type": "string"},
+                                                    "start": {"type": "integer"},
+                                                    "end": {"type": "integer"},
+                                                    "duration": {"type": "number"},
+                                                    "volume": {"type": "number"},
+                                                },
+                                            },
+                                        },
+                                    },
+                                    "required": ["draft_id", "audio_infos"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Audio segments appended.",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "draft_id": {"type": "string"},
+                                            "message": {"type": "string"},
+                                            "track_id": {"type": "string"},
+                                            "segment_ids": {"type": "array", "items": {"type": "string"}},
+                                            "segment_infos": {"type": "array", "items": timeline_item_schema},
+                                        },
+                                        "required": ["draft_id", "message"],
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/tools/add_images": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "add_images",
+                    "summary": "Add image segments to a local draft",
+                    "description": "Append image segments to a previously created local draft.",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "draft_id": {"type": "string"},
+                                        "alpha": {"type": "number"},
+                                        "image_infos": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "image_url": {"type": "string"},
+                                                    "start": {"type": "integer"},
+                                                    "end": {"type": "integer"},
+                                                    "duration": {"type": "number"},
+                                                    "alpha": {"type": "number"},
+                                                    "scale_x": {"type": "number"},
+                                                    "scale_y": {"type": "number"},
+                                                    "transform_x": {"type": "number"},
+                                                    "transform_y": {"type": "number"},
+                                                },
+                                            },
+                                        },
+                                    },
+                                    "required": ["draft_id", "image_infos"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Image segments appended.",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "draft_id": {"type": "string"},
+                                            "message": {"type": "string"},
+                                            "track_id": {"type": "string"},
+                                            "segment_ids": {"type": "array", "items": {"type": "string"}},
+                                            "segment_infos": {"type": "array", "items": timeline_item_schema},
+                                        },
+                                        "required": ["draft_id", "message"],
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/tools/add_captions": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "add_captions",
+                    "summary": "Add captions to a local draft",
+                    "description": "Append text caption segments to a previously created local draft.",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "draft_id": {"type": "string"},
+                                        "captions": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "text": {"type": "string"},
+                                                    "start": {"type": "integer"},
+                                                    "end": {"type": "integer"},
+                                                    "duration": {"type": "number"},
+                                                },
+                                            },
+                                        },
+                                        "font": {"type": "string"},
+                                        "font_size": {"type": "number"},
+                                        "text_color": {"type": "string"},
+                                        "border_color": {"type": "string"},
+                                        "alignment": {"type": "integer"},
+                                        "line_spacing": {"type": "number"},
+                                        "alpha": {"type": "number"},
+                                        "scale_x": {"type": "number"},
+                                        "scale_y": {"type": "number"},
+                                        "transform_x": {"type": "number"},
+                                        "transform_y": {"type": "number"},
+                                        "style_text": {"type": "integer"},
+                                    },
+                                    "required": ["draft_id", "captions"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Caption segments appended.",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "draft_id": {"type": "string"},
+                                            "message": {"type": "string"},
+                                            "track_id": {"type": "string"},
+                                            "segment_ids": {"type": "array", "items": {"type": "string"}},
+                                            "segment_infos": {"type": "array", "items": timeline_item_schema},
+                                        },
+                                        "required": ["draft_id", "message"],
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
         },
     }
 
@@ -458,6 +691,103 @@ def api_effect_infos():
         return jsonify({"error": "effects and timelines must be lists"}), 400
 
     return jsonify(build_effect_infos(effects, timelines))
+
+
+@api_bp.route("/tools/create_draft", methods=["GET", "POST"])
+def api_create_draft():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    try:
+        return jsonify(create_jianying_draft(
+            width=data.get("width", 1920),
+            height=data.get("height", 1080),
+            name=str(data.get("name", "")).strip(),
+            user_id=data.get("user_id"),
+        ))
+    except Exception as e:
+        return jsonify({"message": str(e)}), 400
+
+
+@api_bp.route("/tools/add_audios", methods=["GET", "POST"])
+def api_add_audios():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    draft_id = str(data.get("draft_id", "")).strip()
+    audio_infos = _coze_list_param(data, "audio_infos", ("audio_infos_json",))
+    if not draft_id:
+        return jsonify({"message": "missing draft_id"}), 400
+    if not isinstance(audio_infos, list):
+        return jsonify({"message": "audio_infos must be a list"}), 400
+
+    try:
+        return jsonify(append_draft_audios(draft_id, audio_infos))
+    except Exception as e:
+        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+
+
+@api_bp.route("/tools/add_images", methods=["GET", "POST"])
+def api_add_images():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    draft_id = str(data.get("draft_id", "")).strip()
+    image_infos = _coze_list_param(data, "image_infos", ("image_infos_json",))
+    if not draft_id:
+        return jsonify({"message": "missing draft_id"}), 400
+    if not isinstance(image_infos, list):
+        return jsonify({"message": "image_infos must be a list"}), 400
+
+    try:
+        return jsonify(append_draft_images(
+            draft_id,
+            image_infos,
+            alpha=data.get("alpha"),
+        ))
+    except Exception as e:
+        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+
+
+@api_bp.route("/tools/add_captions", methods=["GET", "POST"])
+def api_add_captions():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    draft_id = str(data.get("draft_id", "")).strip()
+    captions = _coze_list_param(data, "captions", ("captions_json",))
+    if not draft_id:
+        return jsonify({"message": "missing draft_id"}), 400
+    if not isinstance(captions, list):
+        return jsonify({"message": "captions must be a list"}), 400
+
+    try:
+        return jsonify(append_draft_captions(
+            draft_id,
+            captions,
+            alpha=data.get("alpha"),
+            alignment=data.get("alignment"),
+            border_color=str(data.get("border_color", "")).strip(),
+            font=str(data.get("font", "")).strip(),
+            font_size=data.get("font_size"),
+            line_spacing=data.get("line_spacing"),
+            scale_x=data.get("scale_x"),
+            scale_y=data.get("scale_y"),
+            style_text=data.get("style_text"),
+            text_color=str(data.get("text_color", "#FFFFFF")).strip() or "#FFFFFF",
+            transform_x=data.get("transform_x"),
+            transform_y=data.get("transform_y"),
+        ))
+    except Exception as e:
+        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
 
 
 @api_bp.route("/openapi/coze_audio_tools.json")
