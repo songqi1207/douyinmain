@@ -445,7 +445,13 @@ def api_effect_infos():
 
 @api_bp.route("/openapi/coze_audio_tools.json")
 def coze_audio_tools_openapi():
-    """OpenAPI spec for importing self-hosted tools into Coze."""
+    """Minimal OpenAPI spec kept for Coze import compatibility."""
+    return jsonify(_coze_audio_tools_openapi(_external_base_url()))
+
+
+@api_bp.route("/openapi/coze_workflow_tools.json")
+def coze_workflow_tools_openapi():
+    """Extended OpenAPI spec for self-hosted workflow helper tools."""
     return jsonify(_coze_workflow_tools_openapi(_external_base_url()))
 
 
