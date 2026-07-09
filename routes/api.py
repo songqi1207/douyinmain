@@ -160,7 +160,7 @@ def _coze_audio_tools_openapi(base_url):
 
 
 def _coze_workflow_tools_openapi(base_url):
-    server_url = f"{base_url.rstrip('/')}/api"
+    server_url = base_url.rstrip("/")
     timeline_item_schema = {
         "type": "object",
         "properties": {
@@ -177,7 +177,7 @@ def _coze_workflow_tools_openapi(base_url):
         },
         "servers": [{"url": server_url}],
         "paths": {
-            "/tools/get_audio_duration": {
+            "/api/tools/get_audio_duration": {
                 "post": {
                     "operationId": "get_audio_duration",
                     "summary": "获取音频时长",
@@ -218,7 +218,7 @@ def _coze_workflow_tools_openapi(base_url):
                     },
                 }
             },
-            "/tools/text_splitter": {
+            "/api/tools/text_splitter": {
                 "post": {
                     "operationId": "text_splitter",
                     "summary": "中文智能分句",
@@ -258,7 +258,7 @@ def _coze_workflow_tools_openapi(base_url):
                     },
                 }
             },
-            "/tools/timeline_merge": {
+            "/api/tools/timeline_merge": {
                 "post": {
                     "operationId": "timeline_merge",
                     "summary": "合并开场与正文时间线",
@@ -306,7 +306,7 @@ def _coze_workflow_tools_openapi(base_url):
                     },
                 }
             },
-            "/tools/effect_infos": {
+            "/api/tools/effect_infos": {
                 "post": {
                     "operationId": "effect_infos",
                     "summary": "生成特效时间信息",
@@ -447,6 +447,19 @@ def api_effect_infos():
 def coze_audio_tools_openapi():
     """OpenAPI spec for importing self-hosted tools into Coze."""
     return jsonify(_coze_workflow_tools_openapi(_external_base_url()))
+
+
+@api_bp.route("/openapi/test.json")
+def coze_openapi_test():
+    return jsonify({
+        "openapi": "3.0.3",
+        "info": {
+            "title": "test",
+            "version": "1.0.0",
+        },
+        "servers": [{"url": _external_base_url().rstrip("/")}],
+        "paths": {},
+    })
 
 
 @api_bp.route("/generate_flip_intro", methods=["POST"])

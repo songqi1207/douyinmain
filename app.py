@@ -21,6 +21,7 @@ from routes.views import views_bp
 def create_app():
     application = Flask(__name__, template_folder="templates", static_folder="static")
     application.wsgi_app = ProxyFix(application.wsgi_app, x_for=1, x_proto=1, x_host=1)
+    application.config["JSON_AS_ASCII"] = False
     CORS(application)
     application.register_blueprint(views_bp)
     application.register_blueprint(api_bp)
