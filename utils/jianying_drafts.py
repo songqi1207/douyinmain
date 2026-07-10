@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 import requests
 
 from utils.audio_probe import probe_audio_duration
+from utils.local_media_generation import generated_local_path_from_url
 
 try:
     from PIL import Image
@@ -446,6 +447,13 @@ def _materialize_asset(target: str, draft_dir: Path, kind: str, fallback_ext: st
     asset_dir = draft_dir / "assets" / kind
     asset_dir.mkdir(parents=True, exist_ok=True)
 
+    generated_local_path = generated_local_path_from_url(raw)
+    if generated_local_path is not None:
+        suffix = generated_local_path.suffix or fallback_ext
+        asset_path = asset_dir / f"{_generate_id()}{suffix}"
+        shutil.copy2(generated_local_path, asset_path)
+        return asset_path
+
     scheme = (urlparse(raw).scheme or "").lower()
     if scheme in {"http", "https"}:
         response = requests.get(raw, timeout=_REMOTE_TIMEOUT)
@@ -559,7 +567,16 @@ def _build_video_material(path: Path, duration_us: int, width: int, height: int)
     }
 
 
-def _build_text_material(text: str, font_size: float, text_color: str, border_color: str, line_spacing: float, alignment: int, font_name: str) -> dict[str, Any]:
+def _build_text_material(
+    text: str,
+    font_size: float,
+    text_color: str,
+    border_color: str,
+    line_spacing: float,
+    alignment: int,
+    font_name: str,
+    letter_spacing: float = 0,
+) -> dict[str, Any]:
     utf16_bytes = len(text.encode("utf-16le"))
     style_payload = {
         "styles": [
@@ -588,7 +605,7 @@ def _build_text_material(text: str, font_size: float, text_color: str, border_co
         "font_size": font_size,
         "text_color": text_color,
         "typesetting": 0,
-        "letter_spacing": 0,
+        "letter_spacing": letter_spacing,
         "line_spacing": line_spacing,
         "line_feed": 1,
         "line_max_width": 0.82,
@@ -637,11 +654,67 @@ def _base_segment(material_id: str, start_us: int, duration_us: int, render_inde
     }
 
 
+def _find_segment_by_id(draft: dict[str, Any], segment_id: str) -> dict[str, Any] | None:
+    target = str(segment_id or "").strip()
+    if not target:
+        return None
+    for track in draft.get("tracks", []):
+        for segment in track.get("segments", []):
+            if str(segment.get("id", "")) == target:
+                return segment
+    return None
+
+
+def _normalize_keyframe_property(value: str) -> str:
+    raw = str(value or "").strip()
+    mapping = {
+        "UNIFORM_SCALE": "KFTypeUniformScale",
+        "KFTypeUniformScale": "KFTypeUniformScale",
+        "KFTypePositionX": "KFTypePositionX",
+        "KFTypePositionY": "KFTypePositionY",
+        "KFTypeRotation": "KFTypeRotation",
+        "KFTypeScaleX": "KFTypeScaleX",
+        "KFTypeScaleY": "KFTypeScaleY",
+        "KFTypeAlpha": "KFTypeAlpha",
+        "KFTypeVolume": "KFTypeVolume",
+    }
+    return mapping.get(raw, raw or "KFTypePositionX")
+
+
+def _build_effect_material(effect_name: str) -> dict[str, Any]:
+    effect_id = str(effect_name or "").strip() or "1039448"
+    return {
+        "adjust_params": [
+            {"default_value": 0.33, "name": "effects_adjust_speed", "value": 0.33},
+            {"default_value": 1.0, "name": "effects_adjust_background_animation", "value": 1.0},
+        ],
+        "algorithm_artifact_path": "",
+        "apply_target_type": 2,
+        "apply_time_range": {"duration": 0, "start": 0},
+        "category_id": effect_id,
+        "category_name": "local",
+        "common_keyframes": [],
+        "disable_effect_faces": [],
+        "effect_id": effect_id,
+        "formula_id": "",
+        "id": _generate_id(),
+        "name": effect_name,
+        "path": "",
+        "platform": "all",
+        "render_index": 0,
+        "request_id": "",
+        "type": "video_effect",
+        "value": 1.0,
+        "version": "",
+    }
+
+
 def append_audios(draft_id: str, audio_infos: list[dict[str, Any]]) -> dict[str, Any]:
     bundle = _load_bundle(draft_id)
     draft = bundle["content"]
     track = _ensure_track(draft, "audio", "audio")
     items = []
+    audio_ids = []
 
     for info in audio_infos or []:
         if not isinstance(info, dict):
@@ -660,6 +733,7 @@ def append_audios(draft_id: str, audio_infos: list[dict[str, Any]]) -> dict[str,
         asset_path = _materialize_asset(str(target), bundle["draft_dir"], "audio", ".mp3")
         material = _build_audio_material(asset_path, duration_us)
         draft["materials"]["audios"].append(material)
+        audio_ids.append(material["id"])
 
         segment = _base_segment(material["id"], start_us, duration_us, 11000)
         segment["volume"] = float(info.get("volume", 1) or 1)
@@ -669,6 +743,7 @@ def append_audios(draft_id: str, audio_infos: list[dict[str, Any]]) -> dict[str,
     _write_bundle(bundle)
     return {
         "draft_id": draft_id,
+        "audio_ids": audio_ids,
         "message": "ok",
         "segment_ids": [item["id"] for item in items],
         "segment_infos": items,
@@ -733,6 +808,7 @@ def append_captions(
     border_color: str = "",
     font: str = "",
     font_size: Any = None,
+    letter_spacing: Any = None,
     line_spacing: Any = None,
     scale_x: Any = None,
     scale_y: Any = None,
@@ -754,6 +830,7 @@ def append_captions(
     clip_x = float(transform_x if transform_x not in (None, "") else 0)
     clip_y = float(transform_y if transform_y not in (None, "") else 0)
     material_font_size = float(font_size if font_size not in (None, "") else 15)
+    material_letter_spacing = float(letter_spacing if letter_spacing not in (None, "") else 0)
     material_line_spacing = float(line_spacing if line_spacing not in (None, "") else 0.02)
     material_alignment = int(float(alignment if alignment not in (None, "") else 1))
 
@@ -778,6 +855,7 @@ def append_captions(
             line_spacing=float(info.get("line_spacing", material_line_spacing) or material_line_spacing),
             alignment=int(float(info.get("alignment", material_alignment) or material_alignment)),
             font_name=str(info.get("font") or font or ""),
+            letter_spacing=float(info.get("letter_spacing", material_letter_spacing) or material_letter_spacing),
         )
         draft["materials"]["texts"].append(material)
 
@@ -800,6 +878,93 @@ def append_captions(
     return {
         "draft_id": draft_id,
         "message": "ok",
+        "segment_ids": [item["id"] for item in items],
+        "segment_infos": items,
+        "track_id": track["id"],
+    }
+
+
+def append_keyframes(draft_id: str, keyframes: list[dict[str, Any]]) -> dict[str, Any]:
+    bundle = _load_bundle(draft_id)
+    draft = bundle["content"]
+    applied = 0
+
+    for item in keyframes or []:
+        if not isinstance(item, dict):
+            continue
+        segment_id = str(item.get("segment_id") or item.get("id") or "").strip()
+        segment = _find_segment_by_id(draft, segment_id)
+        if segment is None:
+            continue
+
+        property_type = _normalize_keyframe_property(str(item.get("property") or item.get("property_type") or ""))
+        try:
+            offset_us = max(0, int(round(float(item.get("offset", 0) or 0))))
+            value_num = float(item.get("value", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+
+        existing = None
+        for keyframe_group in segment.get("common_keyframes", []):
+            if str(keyframe_group.get("property_type", "")) == property_type:
+                existing = keyframe_group
+                break
+        if existing is None:
+            existing = {"id": _generate_id(), "property_type": property_type, "keyframe_list": []}
+            segment.setdefault("common_keyframes", []).append(existing)
+
+        existing["keyframe_list"].append(
+            {
+                "id": _generate_id(),
+                "time_offset": offset_us,
+                "values": [value_num],
+                "curveType": "Line",
+            }
+        )
+        existing["keyframe_list"].sort(key=lambda row: int(row.get("time_offset") or 0))
+        applied += 1
+
+    _write_bundle(bundle)
+    return {
+        "draft_id": draft_id,
+        "message": "ok",
+        "applied": applied,
+    }
+
+
+def append_effects(draft_id: str, effect_infos: list[dict[str, Any]]) -> dict[str, Any]:
+    bundle = _load_bundle(draft_id)
+    draft = bundle["content"]
+    track = _ensure_track(draft, "effect", "effect")
+    items = []
+    effect_ids = []
+
+    for info in effect_infos or []:
+        if not isinstance(info, dict):
+            continue
+        effect_name = str(info.get("effect") or info.get("name") or info.get("effect_id") or "").strip()
+        if not effect_name:
+            continue
+        start_us = _duration_to_us(info.get("start"))
+        end_us = _target_end_us(info)
+        if end_us <= start_us:
+            duration_us = _duration_to_us(info.get("duration")) or 500_000
+            end_us = start_us + duration_us
+        duration_us = max(0, end_us - start_us)
+
+        material = _build_effect_material(effect_name)
+        draft["materials"]["video_effects"].append(material)
+        effect_ids.append(material["id"])
+
+        segment = _base_segment(material["id"], start_us, duration_us, 16000)
+        track["segments"].append(segment)
+        items.append({"id": segment["id"], "start": start_us, "end": end_us, "effect": effect_name})
+
+    _write_bundle(bundle)
+    return {
+        "draft_id": draft_id,
+        "message": "ok",
+        "effect_ids": effect_ids,
         "segment_ids": [item["id"] for item in items],
         "segment_infos": items,
         "track_id": track["id"],

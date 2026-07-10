@@ -26,15 +26,31 @@ from utils.cover import (
 )
 from utils.audio_probe import probe_audio_duration
 from utils.coze_plugin_tools import (
+    align_text_to_audio,
+    build_audio_infos,
+    build_audio_timelines,
+    build_caption_infos,
     split_text_segments,
+    build_image_infos,
+    build_keyframes_infos,
+    build_rolling_effect,
     merge_timelines,
+    collect_audio_links,
     build_effect_infos,
+    build_wenan_timeline_range,
 )
 from utils.jianying_drafts import (
     create_draft as create_jianying_draft,
     append_audios as append_draft_audios,
     append_images as append_draft_images,
     append_captions as append_draft_captions,
+    append_effects as append_draft_effects,
+    append_keyframes as append_draft_keyframes,
+)
+from utils.local_media_generation import (
+    generate_placeholder_image,
+    generated_file_path,
+    synthesize_speech,
 )
 from utils.template_loader import find_preview_video, get_preview_video_url
 from workflows.book.builder import generate_book_workflow
@@ -597,6 +613,317 @@ def _coze_workflow_tools_openapi(base_url):
                     },
                 }
             },
+            "/tools/audio_link_collector": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "audio_link_collector",
+                    "summary": "Extract audio links from plugin batch outputs",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "outputList": {"type": "array", "items": {"type": "object"}},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Audio links.", "content": {"application/json": {"schema": {"type": "object", "properties": {"links": {"type": "array", "items": {"type": "string"}}}}}}}},
+                }
+            },
+            "/tools/audio_timelines": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "audio_timelines",
+                    "summary": "Build sequential timelines from audio links",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "links": {"type": "array", "items": {"type": "string"}},
+                                        "gap_us": {"type": "integer"},
+                                    },
+                                    "required": ["links"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Audio timelines.", "content": {"application/json": {"schema": {"type": "object", "properties": {"timelines": {"type": "array", "items": timeline_item_schema}, "all_timelines": {"type": "array", "items": timeline_item_schema}}}}}}},
+                }
+            },
+            "/tools/audio_infos": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "audio_infos",
+                    "summary": "Build add_audios payloads from links and timelines",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "mp3_urls": {"type": "array", "items": {"type": "string"}},
+                                        "timelines": {"type": "array", "items": timeline_item_schema},
+                                        "audio_effect": {"type": "string"},
+                                        "volume": {"type": "number"},
+                                    },
+                                    "required": ["mp3_urls", "timelines"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Audio infos.", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string"}}}}}}},
+                }
+            },
+            "/tools/caption_infos": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "caption_infos",
+                    "summary": "Build add_captions payloads from texts and timelines",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "texts": {"type": "array", "items": {"type": "string"}},
+                                        "timelines": {"type": "array", "items": timeline_item_schema},
+                                        "font_size": {"type": "integer"},
+                                    },
+                                    "required": ["texts", "timelines"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Caption infos.", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string"}}}}}}},
+                }
+            },
+            "/tools/imgs_infos": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "imgs_infos",
+                    "summary": "Build add_images payloads from image urls and timelines",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "imgs": {"type": "array", "items": {"type": "string"}},
+                                        "timelines": {"type": "array", "items": timeline_item_schema},
+                                        "out_animation_duration": {"type": "integer"},
+                                    },
+                                    "required": ["imgs", "timelines"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Image infos.", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string"}}}}}}},
+                }
+            },
+            "/tools/keyframes_infos": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "keyframes_infos",
+                    "summary": "Build add_keyframes payloads from segment timelines",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "ctype": {"type": "string"},
+                                        "offsets": {"type": "string"},
+                                        "segment_infos": {"type": "array", "items": {"type": "object"}},
+                                        "values": {"type": "string"},
+                                        "width": {"type": "integer"},
+                                        "height": {"type": "integer"},
+                                    },
+                                    "required": ["ctype", "offsets", "segment_infos", "values"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Keyframe infos.", "content": {"application/json": {"schema": {"type": "object", "properties": {"keyframes_infos": {"type": "string"}}}}}}},
+                }
+            },
+            "/tools/rolling_effect": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "rolling_effect",
+                    "summary": "Build quick-flash timelines from durations and texts",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "duration_list": {"type": "array", "items": {"type": "integer"}},
+                                        "str_list": {"type": "array", "items": {"type": "string"}},
+                                    },
+                                    "required": ["duration_list", "str_list"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Rolling timelines.", "content": {"application/json": {"schema": {"type": "object", "properties": {"timelines": {"type": "array", "items": timeline_item_schema}, "subject_arr": {"type": "array", "items": {"type": "string"}}, "all_timeline": {"type": "array", "items": timeline_item_schema}, "error": {"type": "string"}}}}}}},
+                }
+            },
+            "/tools/wenan_timeline_range": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "wenan_timeline_range",
+                    "summary": "Zip texts with timelines",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "timelines": {"type": "array", "items": timeline_item_schema},
+                                        "wenan": {"type": "array", "items": {"type": "string"}},
+                                    },
+                                    "required": ["timelines", "wenan"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Merged text+timeline ranges.", "content": {"application/json": {"schema": {"type": "object", "properties": {"wenanTimeline": {"type": "array", "items": {"type": "object"}}, "error": {"type": "string"}}}}}}},
+                }
+            },
+            "/tools/align_text_to_audio": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "align_text_to_audio",
+                    "summary": "Split text and align it proportionally to an audio file",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "text": {"type": "string"},
+                                        "audio_url": {"type": "string"},
+                                        "max_chars_per_line": {"type": "integer"},
+                                    },
+                                    "required": ["text", "audio_url"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Aligned captions.", "content": {"application/json": {"schema": {"type": "object", "properties": {"texts": {"type": "array", "items": {"type": "string"}}, "timelines": {"type": "array", "items": timeline_item_schema}, "data": {"type": "object"}}}}}}},
+                }
+            },
+            "/tools/add_keyframes": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "add_keyframes",
+                    "summary": "Append keyframes to existing draft segments",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "draft_id": {"type": "string"},
+                                        "keyframes": {"type": "array", "items": {"type": "object"}},
+                                    },
+                                    "required": ["draft_id", "keyframes"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Keyframes appended.", "content": {"application/json": {"schema": {"type": "object", "properties": {"draft_id": {"type": "string"}, "message": {"type": "string"}, "applied": {"type": "integer"}}}}}}},
+                }
+            },
+            "/tools/add_effects": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "add_effects",
+                    "summary": "Append effect segments to a local draft",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "draft_id": {"type": "string"},
+                                        "effect_infos": {"type": "array", "items": {"type": "object"}},
+                                    },
+                                    "required": ["draft_id", "effect_infos"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Effects appended.", "content": {"application/json": {"schema": {"type": "object", "properties": {"draft_id": {"type": "string"}, "message": {"type": "string"}}}}}}},
+                }
+            },
+            "/tools/speech_synthesis": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "speech_synthesis",
+                    "summary": "Local Windows speech synthesis",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "text": {"type": "string"},
+                                        "voice_id": {"type": "string"},
+                                        "emotion": {"type": "string"},
+                                        "emotion_scale": {"type": "integer"},
+                                        "speed_ratio": {"type": "number"},
+                                    },
+                                    "required": ["text"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Speech synthesis result.", "content": {"application/json": {"schema": {"type": "object", "properties": {"code": {"type": "number"}, "data": {"type": "object"}, "log_id": {"type": "string"}, "msg": {"type": "string"}}}}}}},
+                }
+            },
+            "/tools/jimeng_generate_image": {
+                "post": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "jimeng_generate_image",
+                    "summary": "Local placeholder image generation",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "prompt": {"type": "string"},
+                                        "key": {"type": "string"},
+                                        "model": {"type": "string"},
+                                        "ratio": {"type": "string"},
+                                    },
+                                    "required": ["prompt"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Generated placeholder image result.", "content": {"application/json": {"schema": {"type": "object", "properties": {"message": {"type": "string"}, "task_id": {"type": "string"}, "url": {"type": "string"}}}}}}},
+                }
+            },
         },
     }
 
@@ -693,6 +1020,161 @@ def api_effect_infos():
     return jsonify(build_effect_infos(effects, timelines))
 
 
+@api_bp.route("/tools/audio_link_collector", methods=["GET", "POST"])
+def api_audio_link_collector():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    output_list = _coze_list_param(data, "outputList", ("outputList_json",))
+    return jsonify(collect_audio_links(output_list))
+
+
+@api_bp.route("/tools/audio_timelines", methods=["GET", "POST"])
+def api_audio_timelines():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    links = _coze_list_param(data, "links", ("links_json",))
+    if not isinstance(links, list):
+        return jsonify({"message": "links must be a list"}), 400
+
+    try:
+        return jsonify(build_audio_timelines(links, gap_us=data.get("gap_us", 0)))
+    except Exception as e:
+        return jsonify({"message": str(e), "timelines": [], "all_timelines": []}), 400
+
+
+@api_bp.route("/tools/audio_infos", methods=["GET", "POST"])
+def api_audio_infos():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    mp3_urls = _coze_list_param(data, "mp3_urls", ("mp3_urls_json", "links_json", "links"))
+    timelines = _coze_list_param(data, "timelines", ("timelines_json",))
+    if not isinstance(mp3_urls, list) or not isinstance(timelines, list):
+        return jsonify({"message": "mp3_urls and timelines must be lists"}), 400
+
+    return jsonify(build_audio_infos(
+        mp3_urls,
+        timelines,
+        audio_effect=str(data.get("audio_effect", "")).strip(),
+        volume=data.get("volume"),
+    ))
+
+
+@api_bp.route("/tools/caption_infos", methods=["GET", "POST"])
+def api_caption_infos():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    texts = _coze_list_param(data, "texts", ("texts_json",))
+    timelines = _coze_list_param(data, "timelines", ("timelines_json",))
+    if not isinstance(texts, list) or not isinstance(timelines, list):
+        return jsonify({"message": "texts and timelines must be lists"}), 400
+
+    return jsonify(build_caption_infos(texts, timelines, font_size=data.get("font_size")))
+
+
+@api_bp.route("/tools/imgs_infos", methods=["GET", "POST"])
+def api_imgs_infos():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    imgs = _coze_list_param(data, "imgs", ("imgs_json",))
+    timelines = _coze_list_param(data, "timelines", ("timelines_json",))
+    if not isinstance(imgs, list) or not isinstance(timelines, list):
+        return jsonify({"message": "imgs and timelines must be lists"}), 400
+
+    return jsonify(build_image_infos(
+        imgs,
+        timelines,
+        out_animation_duration=data.get("out_animation_duration"),
+    ))
+
+
+@api_bp.route("/tools/keyframes_infos", methods=["GET", "POST"])
+def api_keyframes_infos():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    segment_infos = _coze_list_param(data, "segment_infos", ("segment_infos_json",))
+    if not isinstance(segment_infos, list):
+        return jsonify({"message": "segment_infos must be a list"}), 400
+
+    return jsonify(build_keyframes_infos(
+        segment_infos=segment_infos,
+        ctype=str(data.get("ctype", "")).strip(),
+        offsets=str(data.get("offsets", "")).strip(),
+        values=str(data.get("values", "")).strip(),
+        width=data.get("width"),
+        height=data.get("height"),
+    ))
+
+
+@api_bp.route("/tools/rolling_effect", methods=["GET", "POST"])
+def api_rolling_effect():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    duration_list = _coze_list_param(data, "duration_list", ("duration_list_json",))
+    str_list = _coze_list_param(data, "str_list", ("str_list_json",))
+    if not isinstance(duration_list, list) or not isinstance(str_list, list):
+        return jsonify({"message": "duration_list and str_list must be lists"}), 400
+
+    return jsonify(build_rolling_effect(duration_list, str_list))
+
+
+@api_bp.route("/tools/wenan_timeline_range", methods=["GET", "POST"])
+def api_wenan_timeline_range():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    timelines = _coze_list_param(data, "timelines", ("timelines_json",))
+    wenan = _coze_list_param(data, "wenan", ("wenan_json",))
+    if not isinstance(timelines, list) or not isinstance(wenan, list):
+        return jsonify({"message": "timelines and wenan must be lists"}), 400
+
+    return jsonify(build_wenan_timeline_range(timelines, wenan))
+
+
+@api_bp.route("/tools/align_text_to_audio", methods=["GET", "POST"])
+def api_align_text_to_audio():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    text = str(data.get("text", "")).strip()
+    audio_url = str(data.get("audio_url", "")).strip()
+    if not text or not audio_url:
+        return jsonify({"message": "missing text/audio_url", "texts": [], "timelines": [], "data": {}}), 400
+
+    try:
+        return jsonify(align_text_to_audio(
+            text=text,
+            audio_url=audio_url,
+            max_chars_per_line=data.get("max_chars_per_line", 14),
+        ))
+    except Exception as e:
+        return jsonify({"message": str(e), "texts": [], "timelines": [], "data": {}}), 400
+
+
 @api_bp.route("/tools/create_draft", methods=["GET", "POST"])
 def api_create_draft():
     if request.method == "POST":
@@ -778,6 +1260,7 @@ def api_add_captions():
             border_color=str(data.get("border_color", "")).strip(),
             font=str(data.get("font", "")).strip(),
             font_size=data.get("font_size"),
+            letter_spacing=data.get("letter_spacing"),
             line_spacing=data.get("line_spacing"),
             scale_x=data.get("scale_x"),
             scale_y=data.get("scale_y"),
@@ -788,6 +1271,93 @@ def api_add_captions():
         ))
     except Exception as e:
         return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+
+
+@api_bp.route("/tools/add_keyframes", methods=["GET", "POST"])
+def api_add_keyframes():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    draft_id = str(data.get("draft_id", "")).strip()
+    keyframes = _coze_list_param(data, "keyframes", ("keyframes_json",))
+    if not draft_id:
+        return jsonify({"message": "missing draft_id"}), 400
+    if not isinstance(keyframes, list):
+        return jsonify({"message": "keyframes must be a list"}), 400
+
+    try:
+        return jsonify(append_draft_keyframes(draft_id, keyframes))
+    except Exception as e:
+        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+
+
+@api_bp.route("/tools/add_effects", methods=["GET", "POST"])
+def api_add_effects():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    draft_id = str(data.get("draft_id", "")).strip()
+    effect_infos = _coze_list_param(data, "effect_infos", ("effect_infos_json",))
+    if not draft_id:
+        return jsonify({"message": "missing draft_id"}), 400
+    if not isinstance(effect_infos, list):
+        return jsonify({"message": "effect_infos must be a list"}), 400
+
+    try:
+        return jsonify(append_draft_effects(draft_id, effect_infos))
+    except Exception as e:
+        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+
+
+@api_bp.route("/tools/speech_synthesis", methods=["GET", "POST"])
+def api_speech_synthesis():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    text = str(data.get("text", "")).strip()
+    if not text:
+        return jsonify({"code": 1, "data": {}, "log_id": "", "msg": "missing text"}), 400
+
+    try:
+        return jsonify(synthesize_speech(
+            text=text,
+            base_url=_external_base_url(),
+            voice_id=str(data.get("voice_id", "")).strip(),
+            speed_ratio=data.get("speed_ratio"),
+            emotion=str(data.get("emotion", "")).strip(),
+            emotion_scale=data.get("emotion_scale"),
+        ))
+    except Exception as e:
+        return jsonify({"code": 1, "data": {}, "log_id": "", "msg": str(e)}), 400
+
+
+@api_bp.route("/tools/jimeng_generate_image", methods=["GET", "POST"])
+def api_jimeng_generate_image():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    prompt = str(data.get("prompt", "")).strip()
+    if not prompt:
+        return jsonify({"message": "missing prompt", "task_id": "", "url": ""}), 400
+
+    try:
+        return jsonify(generate_placeholder_image(
+            prompt=prompt,
+            base_url=_external_base_url(),
+            ratio=str(data.get("ratio", "16:9")).strip() or "16:9",
+            model=str(data.get("model", "")).strip(),
+            key=str(data.get("key", "")).strip(),
+        ))
+    except Exception as e:
+        return jsonify({"message": str(e), "task_id": "", "url": ""}), 400
 
 
 @api_bp.route("/openapi/coze_audio_tools.json")
@@ -1126,6 +1696,16 @@ def preview_video(biz_type):
     if not video_path:
         return jsonify({"error": "video not found"}), 404
     return send_file(video_path, conditional=True)
+
+
+@api_bp.route("/generated/<kind>/<filename>")
+def generated_media(kind, filename):
+    if kind not in {"audio", "image"}:
+        return jsonify({"error": "invalid generated media kind"}), 404
+    filepath = generated_file_path(kind, filename)
+    if not filepath.exists():
+        return jsonify({"error": "generated file not found"}), 404
+    return send_file(filepath, conditional=True)
 
 
 @api_bp.route("/cover/<filename>")
