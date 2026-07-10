@@ -192,7 +192,6 @@ def _coze_workflow_tools_openapi(base_url):
         "required": ["start", "end"],
     }
     return {
-        "$schema": "https://spec.openapis.org/oas/3.0/schema/2021-09-28",
         "openapi": "3.0.3",
         "info": {
             "title": "抖音工作流辅助工具",
@@ -630,7 +629,7 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "outputList": {"type": "array", "description": "上游节点返回的批量输出数组。", "items": {"type": "object", "properties": {"code": {"type": "number", "description": "上游节点状态码，可选。"}, "msg": {"type": "string", "description": "上游节点消息，可选。"}, "data": {"type": "object", "description": "上游节点数据对象，内部通常包含 link/url 等音频地址字段。", "additionalProperties": True}, "link": {"type": "string", "description": "直接返回的音频链接，可选。"}, "url": {"type": "string", "description": "兼容字段，可选。"}, "audio_url": {"type": "string", "description": "兼容字段，可选。"}}, "additionalProperties": True}},
+                                        "outputList": {"type": "array", "description": "上游节点返回的批量输出数组。", "items": {"type": "object", "properties": {"code": {"type": "number", "description": "上游节点状态码，可选。"}, "msg": {"type": "string", "description": "上游节点消息，可选。"}, "data": {"type": "object", "description": "上游节点数据对象，内部通常包含 link/url 等音频地址字段。", "properties": {"link": {"type": "string", "description": "音频链接，可选。"}, "url": {"type": "string", "description": "兼容字段，可选。"}, "audio_url": {"type": "string", "description": "兼容字段，可选。"}}}, "link": {"type": "string", "description": "直接返回的音频链接，可选。"}, "url": {"type": "string", "description": "兼容字段，可选。"}, "audio_url": {"type": "string", "description": "兼容字段，可选。"}}}},
                                     },
                                 }
                             }
