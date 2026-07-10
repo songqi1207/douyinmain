@@ -478,7 +478,8 @@ def _coze_workflow_tools_openapi(base_url):
                                             "message": {"type": "string", "description": "执行结果说明。"},
                                             "track_id": {"type": "string", "description": "写入的音频轨道 ID。"},
                                             "segment_ids": {"type": "array", "description": "新建音频片段 ID 列表。", "items": {"type": "string"}},
-                                            "segment_infos": {"type": "array", "description": "写入后的片段时间信息。", "items": timeline_item_schema},
+                                            "audio_ids": {"type": "array", "description": "新建音频素材 ID 列表。", "items": {"type": "string"}},
+                                            "segment_infos": {"type": "array", "description": "写入后的片段时间信息。", "items": {"type": "object", "properties": {"id": {"type": "string", "description": "片段 ID。"}, "start": {"type": "integer", "description": "开始时间，单位微秒。"}, "end": {"type": "integer", "description": "结束时间，单位微秒。"}}, "required": ["id", "start", "end"]}},
                                         },
                                         "required": ["draft_id", "message"],
                                     }
@@ -539,7 +540,7 @@ def _coze_workflow_tools_openapi(base_url):
                                             "message": {"type": "string", "description": "执行结果说明。"},
                                             "track_id": {"type": "string", "description": "写入的图片轨道 ID。"},
                                             "segment_ids": {"type": "array", "description": "新建图片片段 ID 列表。", "items": {"type": "string"}},
-                                            "segment_infos": {"type": "array", "description": "写入后的片段时间信息。", "items": timeline_item_schema},
+                                            "segment_infos": {"type": "array", "description": "写入后的片段时间信息。", "items": {"type": "object", "properties": {"id": {"type": "string", "description": "片段 ID。"}, "start": {"type": "integer", "description": "开始时间，单位微秒。"}, "end": {"type": "integer", "description": "结束时间，单位微秒。"}}, "required": ["id", "start", "end"]}},
                                         },
                                         "required": ["draft_id", "message"],
                                     }
@@ -606,7 +607,7 @@ def _coze_workflow_tools_openapi(base_url):
                                             "message": {"type": "string", "description": "执行结果说明。"},
                                             "track_id": {"type": "string", "description": "写入的字幕轨道 ID。"},
                                             "segment_ids": {"type": "array", "description": "新建字幕片段 ID 列表。", "items": {"type": "string"}},
-                                            "segment_infos": {"type": "array", "description": "写入后的片段时间信息。", "items": timeline_item_schema},
+                                            "segment_infos": {"type": "array", "description": "写入后的片段时间信息。", "items": {"type": "object", "properties": {"id": {"type": "string", "description": "片段 ID。"}, "start": {"type": "integer", "description": "开始时间，单位微秒。"}, "end": {"type": "integer", "description": "结束时间，单位微秒。"}}, "required": ["id", "start", "end"]}},
                                         },
                                         "required": ["draft_id", "message"],
                                     }
@@ -629,7 +630,7 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "outputList": {"type": "array", "description": "上游节点返回的批量输出数组。", "items": {"type": "object"}},
+                                        "outputList": {"type": "array", "description": "上游节点返回的批量输出数组。", "items": {"type": "object", "properties": {"code": {"type": "number", "description": "上游节点状态码，可选。"}, "msg": {"type": "string", "description": "上游节点消息，可选。"}, "data": {"type": "object", "description": "上游节点数据对象，内部通常包含 link/url 等音频地址字段。", "additionalProperties": True}, "link": {"type": "string", "description": "直接返回的音频链接，可选。"}, "url": {"type": "string", "description": "兼容字段，可选。"}, "audio_url": {"type": "string", "description": "兼容字段，可选。"}}, "additionalProperties": True}},
                                     },
                                 }
                             }
@@ -685,7 +686,7 @@ def _coze_workflow_tools_openapi(base_url):
                             }
                         },
                     },
-                    "responses": {"200": {"description": "音频信息生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string", "description": "可直接传给 add_audios 的 JSON 字符串。"}}}}}}},
+                    "responses": {"200": {"description": "音频信息生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string", "description": "可直接传给 add_audios 的 JSON 字符串。"}, "items": {"type": "array", "description": "解析后的音频信息数组。", "items": {"type": "object", "properties": {"audio_url": {"type": "string", "description": "音频地址。"}, "start": {"type": "integer", "description": "开始时间，单位微秒。"}, "end": {"type": "integer", "description": "结束时间，单位微秒。"}, "duration": {"type": "integer", "description": "时长，单位微秒。"}, "audio_effect": {"type": "string", "description": "音频效果名称。"}, "volume": {"type": "number", "description": "音量倍率。"}}}}, "count": {"type": "integer", "description": "生成条目数量。"}, "error": {"type": "string", "description": "错误信息，无错误时为空字符串。"}}}}}}},
                 }
             },
             "/tools/caption_infos": {
@@ -710,7 +711,7 @@ def _coze_workflow_tools_openapi(base_url):
                             }
                         },
                     },
-                    "responses": {"200": {"description": "字幕信息生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string", "description": "可直接传给 add_captions 的 JSON 字符串。"}}}}}}},
+                    "responses": {"200": {"description": "字幕信息生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string", "description": "可直接传给 add_captions 的 JSON 字符串。"}, "items": {"type": "array", "description": "解析后的字幕信息数组。", "items": {"type": "object", "properties": {"text": {"type": "string", "description": "字幕文本。"}, "start": {"type": "integer", "description": "开始时间，单位微秒。"}, "end": {"type": "integer", "description": "结束时间，单位微秒。"}, "font_size": {"type": "integer", "description": "字号。"}}}}, "count": {"type": "integer", "description": "生成条目数量。"}, "error": {"type": "string", "description": "错误信息，无错误时为空字符串。"}}}}}}},
                 }
             },
             "/tools/imgs_infos": {
@@ -735,7 +736,7 @@ def _coze_workflow_tools_openapi(base_url):
                             }
                         },
                     },
-                    "responses": {"200": {"description": "图片信息生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string", "description": "可直接传给 add_images 的 JSON 字符串。"}}}}}}},
+                    "responses": {"200": {"description": "图片信息生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string", "description": "可直接传给 add_images 的 JSON 字符串。"}, "items": {"type": "array", "description": "解析后的图片信息数组。", "items": {"type": "object", "properties": {"image_url": {"type": "string", "description": "图片地址。"}, "start": {"type": "integer", "description": "开始时间，单位微秒。"}, "end": {"type": "integer", "description": "结束时间，单位微秒。"}, "out_animation_duration": {"type": "integer", "description": "出场动画时长，单位微秒。"}}}}, "count": {"type": "integer", "description": "生成条目数量。"}, "error": {"type": "string", "description": "错误信息，无错误时为空字符串。"}}}}}}},
                 }
             },
             "/tools/keyframes_infos": {
@@ -753,7 +754,7 @@ def _coze_workflow_tools_openapi(base_url):
                                     "properties": {
                                         "ctype": {"type": "string", "description": "关键帧类型，例如 x、y、scale_x、scale_y。"},
                                         "offsets": {"type": "string", "description": "关键帧偏移量列表，通常为 JSON 字符串。"},
-                                        "segment_infos": {"type": "array", "description": "目标片段信息列表。", "items": {"type": "object"}},
+                                        "segment_infos": {"type": "array", "description": "目标片段信息列表。", "items": {"type": "object", "properties": {"id": {"type": "string", "description": "片段 ID。"}, "start": {"type": "integer", "description": "片段开始时间，单位微秒。"}, "end": {"type": "integer", "description": "片段结束时间，单位微秒。"}}, "required": ["id", "start", "end"]}},
                                         "values": {"type": "string", "description": "关键帧取值列表，通常为 JSON 字符串。"},
                                         "width": {"type": "integer", "description": "画布宽度，可选。"},
                                         "height": {"type": "integer", "description": "画布高度，可选。"},
@@ -763,7 +764,7 @@ def _coze_workflow_tools_openapi(base_url):
                             }
                         },
                     },
-                    "responses": {"200": {"description": "关键帧信息生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"keyframes_infos": {"type": "string", "description": "可直接传给 add_keyframes 的 JSON 字符串。"}}}}}}},
+                    "responses": {"200": {"description": "关键帧信息生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"keyframes_infos": {"type": "string", "description": "可直接传给 add_keyframes 的 JSON 字符串。"}, "items": {"type": "array", "description": "解析后的关键帧数组。", "items": {"type": "object", "properties": {"offset": {"type": "integer", "description": "关键帧偏移时间，单位微秒。"}, "property": {"type": "string", "description": "关键帧属性名。"}, "segment_id": {"type": "string", "description": "目标片段 ID。"}, "value": {"type": "number", "description": "关键帧数值。"}}}}, "count": {"type": "integer", "description": "生成条目数量。"}, "error": {"type": "string", "description": "错误信息，无错误时为空字符串。"}}}}}}},
                 }
             },
             "/tools/rolling_effect": {
@@ -811,7 +812,7 @@ def _coze_workflow_tools_openapi(base_url):
                             }
                         },
                     },
-                    "responses": {"200": {"description": "文案时间线合并结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"wenanTimeline": {"type": "array", "description": "文案与时间线组合后的结果数组。", "items": {"type": "object"}}, "error": {"type": "string", "description": "错误信息，无错误时为空字符串。"}}}}}}},
+                    "responses": {"200": {"description": "文案时间线合并结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"wenanTimeline": {"type": "array", "description": "文案与时间线组合后的结果数组。", "items": {"type": "object", "properties": {"content": {"type": "string", "description": "当前时间段对应的文案内容。"}, "start": {"type": "integer", "description": "开始时间，单位微秒。"}, "end": {"type": "integer", "description": "结束时间，单位微秒。"}}, "required": ["content", "start", "end"]}}, "error": {"type": "string", "description": "错误信息，无错误时为空字符串。"}}}}}}},
                 }
             },
             "/tools/align_text_to_audio": {
@@ -836,7 +837,51 @@ def _coze_workflow_tools_openapi(base_url):
                             }
                         },
                     },
-                    "responses": {"200": {"description": "文本与音频对齐结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"texts": {"type": "array", "description": "分句后的文本数组。", "items": {"type": "string"}}, "timelines": {"type": "array", "description": "与文本对应的时间线数组。", "items": timeline_item_schema}, "data": {"type": "object", "description": "附加调试信息，例如总时长等。"}}}}}}},
+                    "responses": {
+                        "200": {
+                            "description": "文本与音频对齐结果。",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "texts": {
+                                                "type": "array",
+                                                "description": "分句后的文本数组。",
+                                                "items": {"type": "string"},
+                                            },
+                                            "timelines": {
+                                                "type": "array",
+                                                "description": "与文本对应的时间线数组。",
+                                                "items": timeline_item_schema,
+                                            },
+                                            "data": {
+                                                "type": "object",
+                                                "description": "附加调试信息，例如总时长等。",
+                                                "properties": {
+                                                    "audio_url": {"type": "string", "description": "用于对齐的音频地址。"},
+                                                    "duration": {"type": "number", "description": "音频总时长，单位秒。"},
+                                                    "segments": {
+                                                        "type": "array",
+                                                        "description": "文本与时间线的配对明细。",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "text": {"type": "string", "description": "分句文本。"},
+                                                                "start": {"type": "integer", "description": "开始时间，单位微秒。"},
+                                                                "end": {"type": "integer", "description": "结束时间，单位微秒。"},
+                                                            },
+                                                            "required": ["text", "start", "end"],
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    }
+                                }
+                            },
+                        }
+                    },
                 }
             },
             "/tools/add_keyframes": {
@@ -853,7 +898,21 @@ def _coze_workflow_tools_openapi(base_url):
                                     "type": "object",
                                     "properties": {
                                         "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
-                                        "keyframes": {"type": "array", "description": "关键帧列表。", "items": {"type": "object"}},
+                                        "keyframes": {
+                                            "type": "array",
+                                            "description": "关键帧列表。",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "segment_id": {"type": "string", "description": "目标片段 ID。"},
+                                                    "id": {"type": "string", "description": "segment_id 的兼容别名。"},
+                                                    "offset": {"type": "integer", "description": "关键帧时间偏移，单位微秒。"},
+                                                    "property": {"type": "string", "description": "关键帧属性名，例如 KFTypePositionX。"},
+                                                    "property_type": {"type": "string", "description": "property 的兼容别名。"},
+                                                    "value": {"type": "number", "description": "关键帧数值。"},
+                                                },
+                                            },
+                                        },
                                     },
                                     "required": ["draft_id", "keyframes"],
                                 }
@@ -877,14 +936,28 @@ def _coze_workflow_tools_openapi(base_url):
                                     "type": "object",
                                     "properties": {
                                         "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
-                                        "effect_infos": {"type": "array", "description": "特效片段列表。", "items": {"type": "object"}},
+                                        "effect_infos": {
+                                            "type": "array",
+                                            "description": "特效片段列表。",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "effect": {"type": "string", "description": "特效名称。"},
+                                                    "name": {"type": "string", "description": "effect 的兼容别名。"},
+                                                    "effect_id": {"type": "string", "description": "特效 ID 或名称兼容字段。"},
+                                                    "start": {"type": "integer", "description": "开始时间，单位微秒。"},
+                                                    "end": {"type": "integer", "description": "结束时间，单位微秒。"},
+                                                    "duration": {"type": "integer", "description": "持续时长，单位微秒；未传 end 时可使用该字段。"},
+                                                },
+                                            },
+                                        },
                                     },
                                     "required": ["draft_id", "effect_infos"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "特效片段写入结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"draft_id": {"type": "string", "description": "目标草稿的 draft_id。"}, "message": {"type": "string", "description": "执行结果说明。"}}}}}}},
+                    "responses": {"200": {"description": "特效片段写入结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"draft_id": {"type": "string", "description": "目标草稿的 draft_id。"}, "message": {"type": "string", "description": "执行结果说明。"}, "effect_ids": {"type": "array", "description": "新建特效素材 ID 列表。", "items": {"type": "string"}}, "segment_ids": {"type": "array", "description": "新建特效片段 ID 列表。", "items": {"type": "string"}}, "segment_infos": {"type": "array", "description": "写入后的特效片段信息。", "items": {"type": "object", "properties": {"id": {"type": "string", "description": "片段 ID。"}, "start": {"type": "integer", "description": "开始时间，单位微秒。"}, "end": {"type": "integer", "description": "结束时间，单位微秒。"}, "effect": {"type": "string", "description": "特效名称。"}}, "required": ["id", "start", "end", "effect"]}}, "track_id": {"type": "string", "description": "写入的特效轨道 ID。"}}}}}}},
                 }
             },
             "/tools/speech_synthesis": {
@@ -911,7 +984,31 @@ def _coze_workflow_tools_openapi(base_url):
                             }
                         },
                     },
-                    "responses": {"200": {"description": "语音合成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"code": {"type": "number", "description": "状态码，0 表示成功。"}, "data": {"type": "object", "description": "返回数据，通常包含 link 和 duration。"}, "log_id": {"type": "string", "description": "日志追踪 ID。"}, "msg": {"type": "string", "description": "执行结果说明。"}}}}}}},
+                    "responses": {
+                        "200": {
+                            "description": "语音合成结果。",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "code": {"type": "number", "description": "状态码，0 表示成功。"},
+                                            "data": {
+                                                "type": "object",
+                                                "description": "返回数据。",
+                                                "properties": {
+                                                    "duration": {"type": "number", "description": "生成音频时长，单位秒。"},
+                                                    "link": {"type": "string", "description": "生成音频的访问链接。"},
+                                                },
+                                            },
+                                            "log_id": {"type": "string", "description": "日志追踪 ID。"},
+                                            "msg": {"type": "string", "description": "执行结果说明。"},
+                                        },
+                                    }
+                                }
+                            },
+                        }
+                    },
                 }
             },
             "/tools/jimeng_generate_image": {
