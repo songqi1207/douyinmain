@@ -39,6 +39,11 @@ from utils.coze_plugin_tools import (
     build_effect_infos,
     build_wenan_timeline_range,
 )
+from utils.draft_key_importer import (
+    AssetDownloadError,
+    KeyValidationError,
+    import_draft_key,
+)
 from utils.jianying_drafts import (
     create_draft as create_jianying_draft,
     append_audios as append_draft_audios,
@@ -1423,6 +1428,35 @@ def api_add_effects():
         return jsonify(append_draft_effects(draft_id, effect_infos))
     except Exception as e:
         return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+
+
+@api_bp.route("/tools/create_draft_from_key", methods=["POST"])
+def api_create_draft_from_key():
+    data = request.get_json(silent=True) or {}
+
+    key = data.get("key", data)
+    if isinstance(key, str):
+        try:
+            key = json.loads(key)
+        except json.JSONDecodeError:
+            return jsonify({"message": "key 不是合法 JSON 字符串", "errors": ["invalid key_json"]}), 400
+    if isinstance(data.get("key_json"), str):
+        try:
+            key = json.loads(data["key_json"])
+        except json.JSONDecodeError:
+            return jsonify({"message": "key_json 不是合法 JSON 字符串", "errors": ["invalid key_json"]}), 400
+
+    force = str(request.args.get("force", data.get("force", ""))).strip().lower() in ("1", "true", "yes")
+    dry_run = str(request.args.get("dry_run", data.get("dry_run", ""))).strip().lower() in ("1", "true", "yes")
+
+    try:
+        return jsonify(import_draft_key(key, force=force, dry_run=dry_run))
+    except KeyValidationError as e:
+        return jsonify({"message": "key 校验失败", "errors": e.errors}), 400
+    except AssetDownloadError as e:
+        return jsonify({"message": "素材下载失败", "failed_urls": e.failed}), 502
+    except Exception as e:
+        return jsonify({"message": str(e)}), 400
 
 
 @api_bp.route("/tools/speech_synthesis", methods=["GET", "POST"])

@@ -27,6 +27,7 @@ except Exception:  # pragma: no cover - Pillow is optional at runtime
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _FALLBACK_DRAFT_ROOT = _PROJECT_ROOT / "temp" / "jianying_drafts"
+_META_PATH = Path(__file__).resolve().parent / "data" / "jianying_meta.json"
 _TRACK_RANK = {
     "video": 0,
     "audio": 1,
@@ -36,6 +37,36 @@ _TRACK_RANK = {
     "text": 5,
 }
 _REMOTE_TIMEOUT = 60
+
+_jianying_meta_cache: dict[str, Any] | None = None
+
+
+def _jianying_meta() -> dict[str, Any]:
+    """剪映资源元数据表（特效/字体/动画 → resource_id/effect_id），源自 pyJianYingDraft。"""
+    global _jianying_meta_cache
+    if _jianying_meta_cache is None:
+        try:
+            _jianying_meta_cache = json.loads(_META_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            _jianying_meta_cache = {}
+    return _jianying_meta_cache
+
+
+def _lookup_meta(table: str, name: str) -> dict[str, Any] | None:
+    entry = _jianying_meta().get(table, {}).get(str(name or "").strip())
+    return entry if isinstance(entry, dict) else None
+
+
+def _hex_to_rgb_floats(value: str, fallback: tuple[float, float, float] = (1.0, 1.0, 1.0)) -> list[float]:
+    raw = str(value or "").strip().lstrip("#")
+    if len(raw) == 3:
+        raw = "".join(ch * 2 for ch in raw)
+    if len(raw) != 6:
+        return list(fallback)
+    try:
+        return [round(int(raw[i : i + 2], 16) / 255.0, 6) for i in (0, 2, 4)]
+    except ValueError:
+        return list(fallback)
 
 
 def _draft_root() -> Path:
@@ -91,6 +122,7 @@ def _ensure_track(draft: dict[str, Any], track_type: str, track_name: str) -> di
         "name": track_name,
         "attribute": 0,
         "flag": 0,
+        "is_default_name": not track_name,
         "segments": [],
     }
     draft["tracks"].append(track)
@@ -163,35 +195,53 @@ def _new_content_template(width: int, height: int, name: str, draft_id: str) -> 
         "free_render_index_mode_on": False,
         "render_index_track_mode_on": False,
         "source": "default",
-        "new_version": "103.0.0",
+        "new_version": "110.0.0",
         "canvas_config": {
             "width": width,
             "height": height,
             "ratio": _ratio_from_size(width, height),
         },
+        "config": {
+            "adjust_max_index": 1,
+            "attachment_info": [],
+            "combination_max_index": 1,
+            "export_range": None,
+            "extract_audio_last_index": 1,
+            "lyrics_recognition_id": "",
+            "lyrics_sync": True,
+            "lyrics_taskinfo": [],
+            "maintrack_adsorb": True,
+            "material_save_mode": 0,
+            "multi_language_current": "none",
+            "multi_language_list": [],
+            "multi_language_main": "none",
+            "multi_language_mode": "none",
+            "original_sound_last_index": 1,
+            "record_audio_last_index": 1,
+            "sticker_max_index": 1,
+            "subtitle_keywords_config": None,
+            "subtitle_recognition_id": "",
+            "subtitle_sync": True,
+            "subtitle_taskinfo": [],
+            "system_font_list": [],
+            "video_mute": False,
+            "zoom_info_params": None,
+        },
         "platform": {
             "app_id": 3704,
             "app_source": "lv",
-            "app_version": "5.5.0",
-            "device_id": "",
-            "hard_disk_id": "",
-            "mac_address": "",
+            "app_version": "5.9.0",
             "os": "windows",
-            "os_version": "",
         },
         "last_modified_platform": {
             "app_id": 3704,
             "app_source": "lv",
-            "app_version": "5.5.0",
-            "device_id": "",
-            "hard_disk_id": "",
-            "mac_address": "",
+            "app_version": "5.9.0",
             "os": "windows",
-            "os_version": "",
         },
         "color_space": 0,
         "cover": None,
-        "extra_info": {"created_via": "douyinmain_local_tools"},
+        "extra_info": None,
         "group_container": None,
         "keyframe_graph_list": [],
         "keyframes": {
@@ -229,6 +279,7 @@ def _new_content_template(width: int, height: int, name: str, draft_id: str) -> 
             "masks": [],
             "material_animations": [],
             "material_colors": [],
+            "multi_language_refs": [],
             "placeholders": [],
             "plugin_effects": [],
             "primary_color_wheels": [],
@@ -482,18 +533,20 @@ def _infer_image_size(path: Path) -> tuple[int, int]:
 
 
 def _build_audio_material(path: Path, duration_us: int) -> dict[str, Any]:
+    material_id = _generate_id()
     return {
-        "id": _generate_id(),
+        "id": material_id,
         "app_id": 0,
         "category_id": "",
         "category_name": "local",
-        "check_flag": 1,
+        "check_flag": 3,
+        "copyright_limit_type": "none",
         "duration": duration_us,
         "effect_id": "",
         "formula_id": "",
         "intensifies_path": "",
-        "local_material_id": "",
-        "music_id": _generate_id(),
+        "local_material_id": material_id,
+        "music_id": material_id,
         "name": path.name,
         "path": str(path),
         "request_id": "",
@@ -514,12 +567,13 @@ def _build_audio_material(path: Path, duration_us: int) -> dict[str, Any]:
 
 
 def _build_video_material(path: Path, duration_us: int, width: int, height: int) -> dict[str, Any]:
+    material_id = _generate_id()
     return {
-        "id": _generate_id(),
+        "id": material_id,
         "audio_fade": None,
         "category_id": "",
         "category_name": "local",
-        "check_flag": 7,
+        "check_flag": 63487,
         "crop": {
             "lower_left_x": 0.0,
             "lower_left_y": 1.0,
@@ -543,7 +597,7 @@ def _build_video_material(path: Path, duration_us: int, width: int, height: int)
         "is_unified_beauty_mode": False,
         "local_id": "",
         "local_material_id": "",
-        "material_id": "",
+        "material_id": material_id,
         "material_name": path.name,
         "material_url": "",
         "media_path": "",
@@ -577,81 +631,139 @@ def _build_text_material(
     font_name: str,
     letter_spacing: float = 0,
 ) -> dict[str, Any]:
-    utf16_bytes = len(text.encode("utf-16le"))
-    style_payload = {
-        "styles": [
-            {
-                "range": [0, utf16_bytes],
-                "size": font_size,
-                "bold": False,
-                "italic": False,
-                "underline": False,
-                "fill": {
-                    "alpha": 1,
-                    "content": {
-                        "render_type": "solid",
-                        "solid": {"alpha": 1, "color": text_color},
-                    },
-                },
-            }
-        ],
-        "text": text,
+    # 结构对齐 pyJianYingDraft（真机验证过的最小字段集）：
+    # range 为字符数而非字节数，颜色为 0-1 RGB 数组，描边放 styles[].strokes。
+    style: dict[str, Any] = {
+        "range": [0, len(text)],
+        "size": font_size,
+        "bold": False,
+        "italic": False,
+        "underline": False,
+        "fill": {
+            "alpha": 1.0,
+            "content": {
+                "render_type": "solid",
+                "solid": {"alpha": 1.0, "color": _hex_to_rgb_floats(text_color)},
+            },
+        },
+        "strokes": [],
     }
+
+    border_raw = str(border_color or "").strip().lstrip("#")
+    if len(border_raw) == 8 and border_raw[:2].lower() == "00":
+        border_color = ""  # #00AARRGGBB 全透明描边 = 无描边
+
+    check_flag = 7
+    if border_color:
+        check_flag |= 8
+        style["strokes"] = [
+            {
+                "content": {"solid": {"alpha": 1.0, "color": _hex_to_rgb_floats(border_color, (0.0, 0.0, 0.0))}},
+                "width": 0.08,
+            }
+        ]
+
+    font_meta = _lookup_meta("fonts", font_name)
+    if font_meta:
+        # path 只需非空占位，剪映按 id 自行解析字体资源
+        style["font"] = {"id": font_meta.get("resource_id", ""), "path": "D:"}
+
+    style_payload = {"styles": [style], "text": text}
     return {
         "id": _generate_id(),
         "type": "text",
         "content": json.dumps(style_payload, ensure_ascii=False, separators=(",", ":")),
         "alignment": alignment,
-        "font_size": font_size,
-        "text_color": text_color,
         "typesetting": 0,
-        "letter_spacing": letter_spacing,
-        "line_spacing": line_spacing,
+        "letter_spacing": letter_spacing * 0.05,
+        "line_spacing": 0.02 + line_spacing * 0.05,
         "line_feed": 1,
         "line_max_width": 0.82,
         "force_apply_line_max_width": False,
-        "check_flag": 7,
-        "fixed_width": -1,
-        "fixed_height": -1,
-        "border_color": border_color,
+        "check_flag": check_flag,
+        "global_alpha": 1.0,
         "font_name": font_name,
     }
 
 
-def _base_segment(material_id: str, start_us: int, duration_us: int, render_index: int, clip_override: dict[str, Any] | None = None) -> dict[str, Any]:
-    clip = {
-        "alpha": 1.0,
-        "flip": {"horizontal": False, "vertical": False},
-        "rotation": 0.0,
-        "scale": {"x": 1.0, "y": 1.0},
-        "transform": {"x": 0.0, "y": 0.0},
-    }
-    if clip_override:
-        for key, value in clip_override.items():
-            if key in {"alpha", "rotation"}:
-                clip[key] = value
-            elif key == "scale":
-                clip["scale"].update(value or {})
-            elif key == "transform":
-                clip["transform"].update(value or {})
-
+def _new_speed_material() -> dict[str, Any]:
     return {
+        "curve_speed": None,
+        "id": _generate_id(),
+        "mode": 0,
+        "speed": 1.0,
+        "type": "speed",
+    }
+
+
+def _base_segment(
+    material_id: str,
+    start_us: int,
+    duration_us: int,
+    render_index: int,
+    clip_override: dict[str, Any] | None = None,
+    *,
+    kind: str = "video",
+    draft: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    segment = {
         "id": _generate_id(),
         "material_id": material_id,
         "target_timerange": {"start": start_us, "duration": duration_us},
-        "source_timerange": {"start": 0, "duration": duration_us},
-        "speed": 1.0,
-        "volume": 1.0,
+        "enable_adjust": True,
+        "enable_color_correct_adjust": False,
+        "enable_color_curves": True,
+        "enable_color_match_adjust": False,
+        "enable_color_wheels": True,
+        "enable_lut": True,
+        "enable_smart_color_adjust": False,
+        "last_nonzero_volume": 1.0,
         "visible": True,
-        "clip": clip,
-        "extra_material_refs": [],
         "common_keyframes": [],
         "keyframe_refs": [],
+        "extra_material_refs": [],
         "render_index": render_index,
         "track_render_index": 0,
         "track_attribute": 0,
         "reverse": False,
     }
+
+    if kind == "effect":
+        return segment
+
+    # 音/视/文本片段：speed 配套素材是剪映打开草稿的硬性要求
+    segment["source_timerange"] = None if kind == "text" else {"start": 0, "duration": duration_us}
+    segment["speed"] = 1.0
+    segment["volume"] = 1.0
+    segment["is_tone_modify"] = False
+    if draft is not None:
+        speed_material = _new_speed_material()
+        draft["materials"]["speeds"].append(speed_material)
+        segment["extra_material_refs"].append(speed_material["id"])
+
+    if kind in {"video", "text"}:
+        clip = {
+            "alpha": 1.0,
+            "flip": {"horizontal": False, "vertical": False},
+            "rotation": 0.0,
+            "scale": {"x": 1.0, "y": 1.0},
+            "transform": {"x": 0.0, "y": 0.0},
+        }
+        if clip_override:
+            for key, value in clip_override.items():
+                if key in {"alpha", "rotation"}:
+                    clip[key] = value
+                elif key == "scale":
+                    clip["scale"].update(value or {})
+                elif key == "transform":
+                    clip["transform"].update(value or {})
+        segment["clip"] = clip
+        segment["uniform_scale"] = {"on": True, "value": 1.0}
+
+    if kind == "video":
+        segment["hdr_settings"] = {"intensity": 1.0, "mode": 1, "nits": 1000}
+
+    return segment
 
 
 def _find_segment_by_id(draft: dict[str, Any], segment_id: str) -> dict[str, Any] | None:
@@ -681,38 +793,101 @@ def _normalize_keyframe_property(value: str) -> str:
     return mapping.get(raw, raw or "KFTypePositionX")
 
 
-def _build_effect_material(effect_name: str) -> dict[str, Any]:
-    effect_id = str(effect_name or "").strip() or "1039448"
-    return {
-        "adjust_params": [
-            {"default_value": 0.33, "name": "effects_adjust_speed", "value": 0.33},
-            {"default_value": 1.0, "name": "effects_adjust_background_animation", "value": 1.0},
-        ],
-        "algorithm_artifact_path": "",
+def _build_effect_material(effect_name: str) -> tuple[dict[str, Any], bool]:
+    """按名字从元数据表解析特效，返回 (素材, 是否命中元数据)。
+
+    未命中时只能把入参当 effect_id 使用，剪映端大概率无法加载对应资源。
+    """
+    name = str(effect_name or "").strip()
+    meta = _lookup_meta("video_scene_effects", name) or _lookup_meta("video_character_effects", name)
+    effect_type = "video_effect"
+    if meta is None:
+        resource_id = ""
+        effect_id = name
+        adjust_params: list[dict[str, Any]] = []
+    else:
+        if _lookup_meta("video_scene_effects", name) is None:
+            effect_type = "face_effect"
+        resource_id = str(meta.get("resource_id", ""))
+        effect_id = str(meta.get("effect_id", ""))
+        adjust_params = [
+            {
+                "default_value": param.get("default_value", 0.0),
+                "max_value": param.get("max_value", 1.0),
+                "min_value": param.get("min_value", 0.0),
+                "name": param.get("name", ""),
+                "parameterIndex": index,
+                "portIndex": 0,
+                "value": param.get("default_value", 0.0),
+            }
+            for index, param in enumerate(meta.get("params", []))
+        ]
+
+    material = {
+        "adjust_params": adjust_params,
         "apply_target_type": 2,
-        "apply_time_range": {"duration": 0, "start": 0},
-        "category_id": effect_id,
-        "category_name": "local",
+        "apply_time_range": None,
+        "category_id": "",
+        "category_name": "",
         "common_keyframes": [],
         "disable_effect_faces": [],
         "effect_id": effect_id,
         "formula_id": "",
         "id": _generate_id(),
-        "name": effect_name,
-        "path": "",
+        "name": name,
         "platform": "all",
-        "render_index": 0,
-        "request_id": "",
-        "type": "video_effect",
+        "render_index": 11000,
+        "resource_id": resource_id,
+        "source_platform": 0,
+        "time_range": None,
+        "track_render_index": 0,
+        "type": effect_type,
         "value": 1.0,
         "version": "",
     }
+    return material, meta is not None
 
 
-def append_audios(draft_id: str, audio_infos: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_animation_material(animations: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "id": _generate_id(),
+        "type": "sticker_animation",
+        "multi_language_current": "none",
+        "animations": animations,
+    }
+
+
+def _resolve_video_animation(name: str, animation_type: str, start_us: int, duration_us: Any) -> dict[str, Any] | None:
+    table = {"in": "video_intros", "out": "video_outros", "group": "video_group_animations"}[animation_type]
+    meta = _lookup_meta(table, name)
+    if meta is None:
+        return None
+    duration = _duration_to_us(duration_us) or int(meta.get("duration_us") or 500_000)
+    return {
+        "anim_adjust_params": None,
+        "platform": "all",
+        "panel": "video",
+        "material_type": "video",
+        "name": str(name).strip(),
+        "id": str(meta.get("effect_id", "")),
+        "type": animation_type,
+        "resource_id": str(meta.get("resource_id", "")),
+        "start": start_us,
+        "duration": duration,
+    }
+
+
+def append_audios(
+    draft_id: str,
+    audio_infos: list[dict[str, Any]],
+    *,
+    track_name: str | None = None,
+    render_index: int | None = None,
+) -> dict[str, Any]:
     bundle = _load_bundle(draft_id)
     draft = bundle["content"]
-    track = _ensure_track(draft, "audio", "audio")
+    track = _ensure_track(draft, "audio", track_name or "audio")
+    segment_render_index = int(render_index) if render_index is not None else 11000
     items = []
     audio_ids = []
 
@@ -735,8 +910,9 @@ def append_audios(draft_id: str, audio_infos: list[dict[str, Any]]) -> dict[str,
         draft["materials"]["audios"].append(material)
         audio_ids.append(material["id"])
 
-        segment = _base_segment(material["id"], start_us, duration_us, 11000)
+        segment = _base_segment(material["id"], start_us, duration_us, segment_render_index, kind="audio", draft=draft)
         segment["volume"] = float(info.get("volume", 1) or 1)
+        segment["last_nonzero_volume"] = segment["volume"] or 1.0
         track["segments"].append(segment)
         items.append({"id": segment["id"], "start": start_us, "end": end_us})
 
@@ -751,11 +927,20 @@ def append_audios(draft_id: str, audio_infos: list[dict[str, Any]]) -> dict[str,
     }
 
 
-def append_images(draft_id: str, image_infos: list[dict[str, Any]], alpha: Any = None) -> dict[str, Any]:
+def append_images(
+    draft_id: str,
+    image_infos: list[dict[str, Any]],
+    alpha: Any = None,
+    *,
+    track_name: str | None = None,
+    render_index: int | None = None,
+) -> dict[str, Any]:
     bundle = _load_bundle(draft_id)
     draft = bundle["content"]
-    track = _ensure_track(draft, "video", "video")
+    track = _ensure_track(draft, "video", track_name or "video")
+    segment_render_index = int(render_index) if render_index is not None else 14000
     items = []
+    warnings: list[str] = []
 
     for info in image_infos or []:
         if not isinstance(info, dict):
@@ -785,7 +970,29 @@ def append_images(draft_id: str, image_infos: list[dict[str, Any]], alpha: Any =
                 "y": float(info.get("transform_y", 0) or 0),
             },
         }
-        segment = _base_segment(material["id"], start_us, duration_us, 14000, clip_override=clip_override)
+        segment = _base_segment(material["id"], start_us, duration_us, segment_render_index, clip_override=clip_override, kind="video", draft=draft)
+
+        animations = []
+        in_name = str(info.get("in_animation") or "").strip()
+        if in_name:
+            animation = _resolve_video_animation(in_name, "in", 0, info.get("in_animation_duration"))
+            if animation is None:
+                warnings.append(f"未知入场动画已忽略: {in_name}")
+            else:
+                animations.append(animation)
+        out_name = str(info.get("out_animation") or "").strip()
+        if out_name:
+            animation = _resolve_video_animation(out_name, "out", 0, info.get("out_animation_duration"))
+            if animation is None:
+                warnings.append(f"未知出场动画已忽略: {out_name}")
+            else:
+                animation["start"] = max(0, duration_us - animation["duration"])
+                animations.append(animation)
+        if animations:
+            animation_material = _build_animation_material(animations)
+            draft["materials"]["material_animations"].append(animation_material)
+            segment["extra_material_refs"].append(animation_material["id"])
+
         track["segments"].append(segment)
         items.append({"id": segment["id"], "start": start_us, "end": end_us})
 
@@ -796,6 +1003,7 @@ def append_images(draft_id: str, image_infos: list[dict[str, Any]], alpha: Any =
         "segment_ids": [item["id"] for item in items],
         "segment_infos": items,
         "track_id": track["id"],
+        "warnings": warnings,
     }
 
 
@@ -816,12 +1024,15 @@ def append_captions(
     text_color: str = "#FFFFFF",
     transform_x: Any = None,
     transform_y: Any = None,
+    track_name: str | None = None,
+    render_index: int | None = None,
 ) -> dict[str, Any]:
     del style_text
 
     bundle = _load_bundle(draft_id)
     draft = bundle["content"]
-    track = _ensure_track(draft, "text", "text")
+    track = _ensure_track(draft, "text", track_name or "text")
+    segment_render_index = int(render_index) if render_index is not None else 15000
     items = []
 
     clip_alpha = float(alpha if alpha not in (None, "") else 1)
@@ -831,7 +1042,7 @@ def append_captions(
     clip_y = float(transform_y if transform_y not in (None, "") else 0)
     material_font_size = float(font_size if font_size not in (None, "") else 15)
     material_letter_spacing = float(letter_spacing if letter_spacing not in (None, "") else 0)
-    material_line_spacing = float(line_spacing if line_spacing not in (None, "") else 0.02)
+    material_line_spacing = float(line_spacing if line_spacing not in (None, "") else 0)
     material_alignment = int(float(alignment if alignment not in (None, "") else 1))
 
     for info in captions or []:
@@ -870,7 +1081,7 @@ def append_captions(
                 "y": float(info.get("transform_y", clip_y) or clip_y),
             },
         }
-        segment = _base_segment(material["id"], start_us, duration_us, 15000, clip_override=clip_override)
+        segment = _base_segment(material["id"], start_us, duration_us, segment_render_index, clip_override=clip_override, kind="text", draft=draft)
         track["segments"].append(segment)
         items.append({"id": segment["id"], "start": start_us, "end": end_us})
 
@@ -910,7 +1121,7 @@ def append_keyframes(draft_id: str, keyframes: list[dict[str, Any]]) -> dict[str
                 existing = keyframe_group
                 break
         if existing is None:
-            existing = {"id": _generate_id(), "property_type": property_type, "keyframe_list": []}
+            existing = {"id": _generate_id(), "material_id": "", "property_type": property_type, "keyframe_list": []}
             segment.setdefault("common_keyframes", []).append(existing)
 
         existing["keyframe_list"].append(
@@ -919,6 +1130,9 @@ def append_keyframes(draft_id: str, keyframes: list[dict[str, Any]]) -> dict[str
                 "time_offset": offset_us,
                 "values": [value_num],
                 "curveType": "Line",
+                "graphID": "",
+                "left_control": {"x": 0.0, "y": 0.0},
+                "right_control": {"x": 0.0, "y": 0.0},
             }
         )
         existing["keyframe_list"].sort(key=lambda row: int(row.get("time_offset") or 0))
@@ -932,12 +1146,20 @@ def append_keyframes(draft_id: str, keyframes: list[dict[str, Any]]) -> dict[str
     }
 
 
-def append_effects(draft_id: str, effect_infos: list[dict[str, Any]]) -> dict[str, Any]:
+def append_effects(
+    draft_id: str,
+    effect_infos: list[dict[str, Any]],
+    *,
+    track_name: str | None = None,
+    render_index: int | None = None,
+) -> dict[str, Any]:
     bundle = _load_bundle(draft_id)
     draft = bundle["content"]
-    track = _ensure_track(draft, "effect", "effect")
+    track = _ensure_track(draft, "effect", track_name or "effect")
+    segment_render_index = int(render_index) if render_index is not None else 16000
     items = []
     effect_ids = []
+    warnings: list[str] = []
 
     for info in effect_infos or []:
         if not isinstance(info, dict):
@@ -952,11 +1174,13 @@ def append_effects(draft_id: str, effect_infos: list[dict[str, Any]]) -> dict[st
             end_us = start_us + duration_us
         duration_us = max(0, end_us - start_us)
 
-        material = _build_effect_material(effect_name)
+        material, resolved = _build_effect_material(effect_name)
+        if not resolved:
+            warnings.append(f"特效名未命中元数据表，剪映可能无法加载: {effect_name}")
         draft["materials"]["video_effects"].append(material)
         effect_ids.append(material["id"])
 
-        segment = _base_segment(material["id"], start_us, duration_us, 16000)
+        segment = _base_segment(material["id"], start_us, duration_us, segment_render_index, kind="effect")
         track["segments"].append(segment)
         items.append({"id": segment["id"], "start": start_us, "end": end_us, "effect": effect_name})
 
@@ -968,4 +1192,5 @@ def append_effects(draft_id: str, effect_infos: list[dict[str, Any]]) -> dict[st
         "segment_ids": [item["id"] for item in items],
         "segment_infos": items,
         "track_id": track["id"],
+        "warnings": warnings,
     }

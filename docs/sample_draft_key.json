@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "kind": "jianying_draft_key",
+  "meta": { "workflow": "手写样例", "run_id": "sample_doc_001", "title": "玉帝样例" },
+  "draft": { "width": 1920, "height": 1080, "name": "玉帝_样例草稿" },
+  "calls": [
+    {
+      "call_id": "bgm",
+      "tool": "add_audios",
+      "params": {
+        "audio_infos": [
+          { "audio_url": "https://example.com/bgm.mp3", "start": 0, "end": 9000000, "volume": 0.3 }
+        ]
+      }
+    },
+    {
+      "call_id": "voice",
+      "tool": "add_audios",
+      "params": {
+        "audio_infos": [
+          { "audio_url": "https://example.com/voice_01.mp3", "start": 0, "end": 4000000 },
+          { "audio_url": "https://example.com/voice_02.mp3", "start": 4000000, "end": 8000000 }
+        ]
+      }
+    },
+    {
+      "call_id": "bg_images",
+      "tool": "add_images",
+      "params": {
+        "image_infos": [
+          { "image_url": "https://example.com/bg.png", "start": 0, "end": 9000000, "transform_y": 22 }
+        ]
+      }
+    },
+    {
+      "call_id": "main_images",
+      "tool": "add_images",
+      "params": {
+        "image_infos": [
+          { "image_url": "https://example.com/scene_01.png", "start": 0, "end": 5000000, "in_animation": "Kira游动", "in_animation_duration": 500000 },
+          { "image_url": "https://example.com/scene_02.png", "start": 5000000, "end": 9000000 }
+        ]
+      }
+    },
+    {
+      "call_id": "main_captions",
+      "tool": "add_captions",
+      "params": {
+        "captions": [
+          { "text": "他是三界之主", "start": 0, "end": 4000000 },
+          { "text": "统御万神", "start": 4000000, "end": 8000000 }
+        ],
+        "font": "江湖体",
+        "font_size": 9,
+        "text_color": "#FFE95A",
+        "border_color": "#000000",
+        "transform_y": -600
+      }
+    },
+    {
+      "call_id": "camera_kf",
+      "tool": "add_keyframes",
+      "params": {
+        "keyframes": [
+          { "segment_ref": { "call_id": "main_images", "index": 0 }, "offset": 0, "property": "KFTypePositionX", "value": -0.2 },
+          { "segment_ref": { "call_id": "main_images", "index": 0 }, "offset": 5000000, "property": "KFTypePositionX", "value": 0 },
+          { "segment_ref": { "call_id": "main_images", "index": 0 }, "offset": 0, "property": "UNIFORM_SCALE", "value": 1.7 },
+          { "segment_ref": { "call_id": "main_images", "index": 0 }, "offset": 5000000, "property": "UNIFORM_SCALE", "value": 1.2 }
+        ]
+      }
+    },
+    {
+      "call_id": "opening_fx",
+      "tool": "add_effects",
+      "params": {
+        "effect_infos": [
+          { "effect": "金粉闪闪", "start": 0, "end": 2000000 }
+        ]
+      }
+    }
+  ]
+}

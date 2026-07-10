@@ -33,6 +33,14 @@
 | `wenan_timeline_range` | `http://127.0.0.1:5001/api/tools/wenan_timeline_range` | 本地实现可用 |
 | `speech_synthesis` | `http://127.0.0.1:5001/api/tools/speech_synthesis` | 当前为本地 placeholder 配音，不是官方 Coze 语音合成 |
 | `jimeng_generate_image` | `http://127.0.0.1:5001/api/tools/jimeng_generate_image` | 当前为本地 placeholder 生图，不是米核/即梦真实生图 |
+| `create_draft_from_key` | `http://127.0.0.1:5001/api/tools/create_draft_from_key` | **key 数据包一次性生成整个草稿**（POST，替代逐节点调用 create_draft/add_*）。schema 见 `docs/draft_key_schema.md`，CLI 版 `python scripts/import_draft_key.py key.json` |
+
+## 本地草稿 key 链路（摆脱剪映小助手/米核小助手）
+
+- Coze 侧：`python -m workflows.god.local_key` 从 v7 母版生成 `神工作流模板_本地草稿-v1.json`——19 个剪映小助手插件节点被替换为「汇总草稿key」代码节点（300201），201390 运镜关键帧改为输出 `segment_ref` 形式，End 节点输出 key JSON 字符串。
+- 本地侧：复制工作流运行结果里的 key → 存成文件 → `python scripts/import_draft_key.py key.json`，草稿直接写进本机剪映草稿目录（`JIANYING_DRAFT_ROOT` 可覆盖）。
+- 素材（配音/生图）仍由 Coze 官方语音合成与米核生图产出，key 里只带 URL，导入器统一预取缓存。
+- 剪映资源元数据（特效/字体/出入场动画 名字→resource_id）：`utils/data/jianying_meta.json`（源自 pyJianYingDraft 0.3.0）。
 
 ## 工具中文名对照（按模板实际使用）
 
