@@ -390,8 +390,8 @@ def _coze_workflow_tools_openapi(base_url):
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "create_draft",
-                    "summary": "Create a local JianYing draft",
-                    "description": "Create a local draft folder and return its draft_id for later add_audios/add_images/add_captions calls.",
+                    "summary": "创建本地剪映草稿",
+                    "description": "创建本地剪映草稿目录，并返回 draft_id，供后续 add_audios、add_images、add_captions 等工具继续写入素材。",
                     "requestBody": {
                         "required": False,
                         "content": {
@@ -399,10 +399,10 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "width": {"type": "integer", "description": "Canvas width in pixels."},
-                                        "height": {"type": "integer", "description": "Canvas height in pixels."},
-                                        "name": {"type": "string", "description": "Optional draft display name."},
-                                        "user_id": {"type": "integer", "description": "Optional creator id."},
+                                        "width": {"type": "integer", "description": "画布宽度，单位像素，例如 1080。"},
+                                        "height": {"type": "integer", "description": "画布高度，单位像素，例如 1920。"},
+                                        "name": {"type": "string", "description": "草稿名称，可选；不传时自动生成。"},
+                                        "user_id": {"type": "integer", "description": "创建人 ID，可选；仅用于透传记录。"},
                                     },
                                 }
                             }
@@ -410,19 +410,19 @@ def _coze_workflow_tools_openapi(base_url):
                     },
                     "responses": {
                         "200": {
-                            "description": "Draft created.",
+                            "description": "草稿创建结果。",
                             "content": {
                                 "application/json": {
                                     "schema": {
                                         "type": "object",
                                         "properties": {
-                                            "draft_id": {"type": "string"},
-                                            "draft_name": {"type": "string"},
-                                            "draft_dir": {"type": "string"},
-                                            "width": {"type": "integer"},
-                                            "height": {"type": "integer"},
-                                            "ratio": {"type": "string"},
-                                            "message": {"type": "string"},
+                                            "draft_id": {"type": "string", "description": "草稿唯一标识。"},
+                                            "draft_name": {"type": "string", "description": "草稿名称。"},
+                                            "draft_dir": {"type": "string", "description": "草稿目录的本地绝对路径。"},
+                                            "width": {"type": "integer", "description": "草稿画布宽度。"},
+                                            "height": {"type": "integer", "description": "草稿画布高度。"},
+                                            "ratio": {"type": "string", "description": "画布比例，例如 9:16。"},
+                                            "message": {"type": "string", "description": "执行结果说明。"},
                                         },
                                         "required": ["draft_id", "message"],
                                     }
@@ -436,8 +436,8 @@ def _coze_workflow_tools_openapi(base_url):
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "add_audios",
-                    "summary": "Add audio segments to a local draft",
-                    "description": "Append audio segments to a previously created local draft.",
+                    "summary": "向本地草稿追加音频片段",
+                    "description": "把一个或多个音频片段写入已创建的本地剪映草稿中。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -445,17 +445,18 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "draft_id": {"type": "string"},
+                                        "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
                                         "audio_infos": {
                                             "type": "array",
+                                            "description": "音频片段列表，每一项代表一段要插入草稿的音频。",
                                             "items": {
                                                 "type": "object",
                                                 "properties": {
-                                                    "audio_url": {"type": "string"},
-                                                    "start": {"type": "integer"},
-                                                    "end": {"type": "integer"},
-                                                    "duration": {"type": "number"},
-                                                    "volume": {"type": "number"},
+                                                    "audio_url": {"type": "string", "description": "音频链接或本地文件路径。"},
+                                                    "start": {"type": "integer", "description": "片段开始时间，单位微秒。"},
+                                                    "end": {"type": "integer", "description": "片段结束时间，单位微秒。"},
+                                                    "duration": {"type": "number", "description": "音频时长，单位秒；可选。"},
+                                                    "volume": {"type": "number", "description": "音量倍率，例如 1.0 表示原始音量。"},
                                                 },
                                             },
                                         },
@@ -467,17 +468,17 @@ def _coze_workflow_tools_openapi(base_url):
                     },
                     "responses": {
                         "200": {
-                            "description": "Audio segments appended.",
+                            "description": "音频片段写入结果。",
                             "content": {
                                 "application/json": {
                                     "schema": {
                                         "type": "object",
                                         "properties": {
-                                            "draft_id": {"type": "string"},
-                                            "message": {"type": "string"},
-                                            "track_id": {"type": "string"},
-                                            "segment_ids": {"type": "array", "items": {"type": "string"}},
-                                            "segment_infos": {"type": "array", "items": timeline_item_schema},
+                                            "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                            "message": {"type": "string", "description": "执行结果说明。"},
+                                            "track_id": {"type": "string", "description": "写入的音频轨道 ID。"},
+                                            "segment_ids": {"type": "array", "description": "新建音频片段 ID 列表。", "items": {"type": "string"}},
+                                            "segment_infos": {"type": "array", "description": "写入后的片段时间信息。", "items": timeline_item_schema},
                                         },
                                         "required": ["draft_id", "message"],
                                     }
@@ -491,8 +492,8 @@ def _coze_workflow_tools_openapi(base_url):
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "add_images",
-                    "summary": "Add image segments to a local draft",
-                    "description": "Append image segments to a previously created local draft.",
+                    "summary": "向本地草稿追加图片片段",
+                    "description": "把一个或多个图片片段写入已创建的本地剪映草稿中。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -500,22 +501,23 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "draft_id": {"type": "string"},
-                                        "alpha": {"type": "number"},
+                                        "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                        "alpha": {"type": "number", "description": "默认透明度，取值通常为 0 到 1。"},
                                         "image_infos": {
                                             "type": "array",
+                                            "description": "图片片段列表，每一项代表一张要插入草稿的图片。",
                                             "items": {
                                                 "type": "object",
                                                 "properties": {
-                                                    "image_url": {"type": "string"},
-                                                    "start": {"type": "integer"},
-                                                    "end": {"type": "integer"},
-                                                    "duration": {"type": "number"},
-                                                    "alpha": {"type": "number"},
-                                                    "scale_x": {"type": "number"},
-                                                    "scale_y": {"type": "number"},
-                                                    "transform_x": {"type": "number"},
-                                                    "transform_y": {"type": "number"},
+                                                    "image_url": {"type": "string", "description": "图片链接或本地文件路径。"},
+                                                    "start": {"type": "integer", "description": "片段开始时间，单位微秒。"},
+                                                    "end": {"type": "integer", "description": "片段结束时间，单位微秒。"},
+                                                    "duration": {"type": "number", "description": "片段时长，单位秒；可选。"},
+                                                    "alpha": {"type": "number", "description": "当前片段透明度。"},
+                                                    "scale_x": {"type": "number", "description": "X 方向缩放比例。"},
+                                                    "scale_y": {"type": "number", "description": "Y 方向缩放比例。"},
+                                                    "transform_x": {"type": "number", "description": "X 方向位移。"},
+                                                    "transform_y": {"type": "number", "description": "Y 方向位移。"},
                                                 },
                                             },
                                         },
@@ -527,17 +529,17 @@ def _coze_workflow_tools_openapi(base_url):
                     },
                     "responses": {
                         "200": {
-                            "description": "Image segments appended.",
+                            "description": "图片片段写入结果。",
                             "content": {
                                 "application/json": {
                                     "schema": {
                                         "type": "object",
                                         "properties": {
-                                            "draft_id": {"type": "string"},
-                                            "message": {"type": "string"},
-                                            "track_id": {"type": "string"},
-                                            "segment_ids": {"type": "array", "items": {"type": "string"}},
-                                            "segment_infos": {"type": "array", "items": timeline_item_schema},
+                                            "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                            "message": {"type": "string", "description": "执行结果说明。"},
+                                            "track_id": {"type": "string", "description": "写入的图片轨道 ID。"},
+                                            "segment_ids": {"type": "array", "description": "新建图片片段 ID 列表。", "items": {"type": "string"}},
+                                            "segment_infos": {"type": "array", "description": "写入后的片段时间信息。", "items": timeline_item_schema},
                                         },
                                         "required": ["draft_id", "message"],
                                     }
@@ -551,8 +553,8 @@ def _coze_workflow_tools_openapi(base_url):
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "add_captions",
-                    "summary": "Add captions to a local draft",
-                    "description": "Append text caption segments to a previously created local draft.",
+                    "summary": "向本地草稿追加字幕片段",
+                    "description": "把一个或多个字幕片段写入已创建的本地剪映草稿中。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -560,31 +562,32 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "draft_id": {"type": "string"},
+                                        "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
                                         "captions": {
                                             "type": "array",
+                                            "description": "字幕片段列表，每一项代表一段字幕。",
                                             "items": {
                                                 "type": "object",
                                                 "properties": {
-                                                    "text": {"type": "string"},
-                                                    "start": {"type": "integer"},
-                                                    "end": {"type": "integer"},
-                                                    "duration": {"type": "number"},
+                                                    "text": {"type": "string", "description": "字幕文本内容。"},
+                                                    "start": {"type": "integer", "description": "字幕开始时间，单位微秒。"},
+                                                    "end": {"type": "integer", "description": "字幕结束时间，单位微秒。"},
+                                                    "duration": {"type": "number", "description": "字幕时长，单位秒；可选。"},
                                                 },
                                             },
                                         },
-                                        "font": {"type": "string"},
-                                        "font_size": {"type": "number"},
-                                        "text_color": {"type": "string"},
-                                        "border_color": {"type": "string"},
-                                        "alignment": {"type": "integer"},
-                                        "line_spacing": {"type": "number"},
-                                        "alpha": {"type": "number"},
-                                        "scale_x": {"type": "number"},
-                                        "scale_y": {"type": "number"},
-                                        "transform_x": {"type": "number"},
-                                        "transform_y": {"type": "number"},
-                                        "style_text": {"type": "integer"},
+                                        "font": {"type": "string", "description": "字体名称，可选。"},
+                                        "font_size": {"type": "number", "description": "字号大小。"},
+                                        "text_color": {"type": "string", "description": "文字颜色，支持十六进制颜色值。"},
+                                        "border_color": {"type": "string", "description": "描边颜色，支持十六进制颜色值。"},
+                                        "alignment": {"type": "integer", "description": "对齐方式，通常 0/1/2 分别表示左对齐、居中、右对齐。"},
+                                        "line_spacing": {"type": "number", "description": "行间距。"},
+                                        "alpha": {"type": "number", "description": "透明度，取值通常为 0 到 1。"},
+                                        "scale_x": {"type": "number", "description": "X 方向缩放比例。"},
+                                        "scale_y": {"type": "number", "description": "Y 方向缩放比例。"},
+                                        "transform_x": {"type": "number", "description": "X 方向位移。"},
+                                        "transform_y": {"type": "number", "description": "Y 方向位移。"},
+                                        "style_text": {"type": "integer", "description": "样式文本模式或预设编号，可选。"},
                                     },
                                     "required": ["draft_id", "captions"],
                                 }
@@ -593,17 +596,17 @@ def _coze_workflow_tools_openapi(base_url):
                     },
                     "responses": {
                         "200": {
-                            "description": "Caption segments appended.",
+                            "description": "字幕片段写入结果。",
                             "content": {
                                 "application/json": {
                                     "schema": {
                                         "type": "object",
                                         "properties": {
-                                            "draft_id": {"type": "string"},
-                                            "message": {"type": "string"},
-                                            "track_id": {"type": "string"},
-                                            "segment_ids": {"type": "array", "items": {"type": "string"}},
-                                            "segment_infos": {"type": "array", "items": timeline_item_schema},
+                                            "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                            "message": {"type": "string", "description": "执行结果说明。"},
+                                            "track_id": {"type": "string", "description": "写入的字幕轨道 ID。"},
+                                            "segment_ids": {"type": "array", "description": "新建字幕片段 ID 列表。", "items": {"type": "string"}},
+                                            "segment_infos": {"type": "array", "description": "写入后的片段时间信息。", "items": timeline_item_schema},
                                         },
                                         "required": ["draft_id", "message"],
                                     }
@@ -617,7 +620,8 @@ def _coze_workflow_tools_openapi(base_url):
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "audio_link_collector",
-                    "summary": "Extract audio links from plugin batch outputs",
+                    "summary": "从批量输出中提取音频链接",
+                    "description": "从插件批量输出结果中提取可用的音频链接列表。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -625,20 +629,21 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "outputList": {"type": "array", "items": {"type": "object"}},
+                                        "outputList": {"type": "array", "description": "上游节点返回的批量输出数组。", "items": {"type": "object"}},
                                     },
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Audio links.", "content": {"application/json": {"schema": {"type": "object", "properties": {"links": {"type": "array", "items": {"type": "string"}}}}}}}},
+                    "responses": {"200": {"description": "音频链接提取结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"links": {"type": "array", "description": "提取出的音频链接列表。", "items": {"type": "string"}}}}}}}},
                 }
             },
             "/tools/audio_timelines": {
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "audio_timelines",
-                    "summary": "Build sequential timelines from audio links",
+                    "summary": "根据音频链接生成顺序时间线",
+                    "description": "按音频顺序依次计算时间线，可用于后续 add_audios 或字幕对齐。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -646,22 +651,23 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "links": {"type": "array", "items": {"type": "string"}},
-                                        "gap_us": {"type": "integer"},
+                                        "links": {"type": "array", "description": "音频链接列表。", "items": {"type": "string"}},
+                                        "gap_us": {"type": "integer", "description": "相邻音频之间额外插入的间隔，单位微秒。"},
                                     },
                                     "required": ["links"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Audio timelines.", "content": {"application/json": {"schema": {"type": "object", "properties": {"timelines": {"type": "array", "items": timeline_item_schema}, "all_timelines": {"type": "array", "items": timeline_item_schema}}}}}}},
+                    "responses": {"200": {"description": "音频时间线生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"timelines": {"type": "array", "description": "生成的音频时间线。", "items": timeline_item_schema}, "all_timelines": {"type": "array", "description": "完整时间线结果。", "items": timeline_item_schema}}}}}}},
                 }
             },
             "/tools/audio_infos": {
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "audio_infos",
-                    "summary": "Build add_audios payloads from links and timelines",
+                    "summary": "根据音频链接和时间线生成音频信息",
+                    "description": "把音频链接与时间线组合成 add_audios 可直接使用的 payload。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -669,24 +675,25 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "mp3_urls": {"type": "array", "items": {"type": "string"}},
-                                        "timelines": {"type": "array", "items": timeline_item_schema},
-                                        "audio_effect": {"type": "string"},
-                                        "volume": {"type": "number"},
+                                        "mp3_urls": {"type": "array", "description": "音频链接列表。", "items": {"type": "string"}},
+                                        "timelines": {"type": "array", "description": "与音频一一对应的时间线。", "items": timeline_item_schema},
+                                        "audio_effect": {"type": "string", "description": "音频效果名称，可选。"},
+                                        "volume": {"type": "number", "description": "统一音量倍率，可选。"},
                                     },
                                     "required": ["mp3_urls", "timelines"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Audio infos.", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string"}}}}}}},
+                    "responses": {"200": {"description": "音频信息生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string", "description": "可直接传给 add_audios 的 JSON 字符串。"}}}}}}},
                 }
             },
             "/tools/caption_infos": {
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "caption_infos",
-                    "summary": "Build add_captions payloads from texts and timelines",
+                    "summary": "根据文本和时间线生成字幕信息",
+                    "description": "把文案和时间线组合成 add_captions 可直接使用的 payload。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -694,23 +701,24 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "texts": {"type": "array", "items": {"type": "string"}},
-                                        "timelines": {"type": "array", "items": timeline_item_schema},
-                                        "font_size": {"type": "integer"},
+                                        "texts": {"type": "array", "description": "字幕文本数组。", "items": {"type": "string"}},
+                                        "timelines": {"type": "array", "description": "与字幕逐条对应的时间线。", "items": timeline_item_schema},
+                                        "font_size": {"type": "integer", "description": "字幕字号，可选。"},
                                     },
                                     "required": ["texts", "timelines"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Caption infos.", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string"}}}}}}},
+                    "responses": {"200": {"description": "字幕信息生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string", "description": "可直接传给 add_captions 的 JSON 字符串。"}}}}}}},
                 }
             },
             "/tools/imgs_infos": {
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "imgs_infos",
-                    "summary": "Build add_images payloads from image urls and timelines",
+                    "summary": "根据图片链接和时间线生成图片信息",
+                    "description": "把图片链接和时间线组合成 add_images 可直接使用的 payload。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -718,23 +726,24 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "imgs": {"type": "array", "items": {"type": "string"}},
-                                        "timelines": {"type": "array", "items": timeline_item_schema},
-                                        "out_animation_duration": {"type": "integer"},
+                                        "imgs": {"type": "array", "description": "图片链接列表。", "items": {"type": "string"}},
+                                        "timelines": {"type": "array", "description": "与图片逐条对应的时间线。", "items": timeline_item_schema},
+                                        "out_animation_duration": {"type": "integer", "description": "出场动画时长，单位微秒，可选。"},
                                     },
                                     "required": ["imgs", "timelines"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Image infos.", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string"}}}}}}},
+                    "responses": {"200": {"description": "图片信息生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"infos": {"type": "string", "description": "可直接传给 add_images 的 JSON 字符串。"}}}}}}},
                 }
             },
             "/tools/keyframes_infos": {
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "keyframes_infos",
-                    "summary": "Build add_keyframes payloads from segment timelines",
+                    "summary": "根据片段时间线生成关键帧信息",
+                    "description": "把关键帧类型、偏移量和值组合成 add_keyframes 可直接使用的 payload。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -742,26 +751,27 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "ctype": {"type": "string"},
-                                        "offsets": {"type": "string"},
-                                        "segment_infos": {"type": "array", "items": {"type": "object"}},
-                                        "values": {"type": "string"},
-                                        "width": {"type": "integer"},
-                                        "height": {"type": "integer"},
+                                        "ctype": {"type": "string", "description": "关键帧类型，例如 x、y、scale_x、scale_y。"},
+                                        "offsets": {"type": "string", "description": "关键帧偏移量列表，通常为 JSON 字符串。"},
+                                        "segment_infos": {"type": "array", "description": "目标片段信息列表。", "items": {"type": "object"}},
+                                        "values": {"type": "string", "description": "关键帧取值列表，通常为 JSON 字符串。"},
+                                        "width": {"type": "integer", "description": "画布宽度，可选。"},
+                                        "height": {"type": "integer", "description": "画布高度，可选。"},
                                     },
                                     "required": ["ctype", "offsets", "segment_infos", "values"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Keyframe infos.", "content": {"application/json": {"schema": {"type": "object", "properties": {"keyframes_infos": {"type": "string"}}}}}}},
+                    "responses": {"200": {"description": "关键帧信息生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"keyframes_infos": {"type": "string", "description": "可直接传给 add_keyframes 的 JSON 字符串。"}}}}}}},
                 }
             },
             "/tools/rolling_effect": {
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "rolling_effect",
-                    "summary": "Build quick-flash timelines from durations and texts",
+                    "summary": "根据时长和文本生成快闪时间线",
+                    "description": "根据时长列表和文本列表生成开场快闪效果所需的时间线数据。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -769,22 +779,23 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "duration_list": {"type": "array", "items": {"type": "integer"}},
-                                        "str_list": {"type": "array", "items": {"type": "string"}},
+                                        "duration_list": {"type": "array", "description": "每段快闪持续时长列表，单位微秒。", "items": {"type": "integer"}},
+                                        "str_list": {"type": "array", "description": "与时长对应的文本列表。", "items": {"type": "string"}},
                                     },
                                     "required": ["duration_list", "str_list"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Rolling timelines.", "content": {"application/json": {"schema": {"type": "object", "properties": {"timelines": {"type": "array", "items": timeline_item_schema}, "subject_arr": {"type": "array", "items": {"type": "string"}}, "all_timeline": {"type": "array", "items": timeline_item_schema}, "error": {"type": "string"}}}}}}},
+                    "responses": {"200": {"description": "快闪时间线生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"timelines": {"type": "array", "description": "分段时间线列表。", "items": timeline_item_schema}, "subject_arr": {"type": "array", "description": "快闪文本列表。", "items": {"type": "string"}}, "all_timeline": {"type": "array", "description": "完整时间线列表。", "items": timeline_item_schema}, "error": {"type": "string", "description": "错误信息，无错误时为空字符串。"}}}}}}},
                 }
             },
             "/tools/wenan_timeline_range": {
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "wenan_timeline_range",
-                    "summary": "Zip texts with timelines",
+                    "summary": "合并文案与时间线范围",
+                    "description": "将文案数组与时间线数组按顺序合并，生成每段文案对应的时间范围。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -792,22 +803,23 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "timelines": {"type": "array", "items": timeline_item_schema},
-                                        "wenan": {"type": "array", "items": {"type": "string"}},
+                                        "timelines": {"type": "array", "description": "时间线数组。", "items": timeline_item_schema},
+                                        "wenan": {"type": "array", "description": "文案数组。", "items": {"type": "string"}},
                                     },
                                     "required": ["timelines", "wenan"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Merged text+timeline ranges.", "content": {"application/json": {"schema": {"type": "object", "properties": {"wenanTimeline": {"type": "array", "items": {"type": "object"}}, "error": {"type": "string"}}}}}}},
+                    "responses": {"200": {"description": "文案时间线合并结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"wenanTimeline": {"type": "array", "description": "文案与时间线组合后的结果数组。", "items": {"type": "object"}}, "error": {"type": "string", "description": "错误信息，无错误时为空字符串。"}}}}}}},
                 }
             },
             "/tools/align_text_to_audio": {
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "align_text_to_audio",
-                    "summary": "Split text and align it proportionally to an audio file",
+                    "summary": "按音频时长对齐文本分句",
+                    "description": "先对文本进行分句，再按音频总时长比例生成对应字幕时间线。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -815,23 +827,24 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "text": {"type": "string"},
-                                        "audio_url": {"type": "string"},
-                                        "max_chars_per_line": {"type": "integer"},
+                                        "text": {"type": "string", "description": "需要对齐的原始文案。"},
+                                        "audio_url": {"type": "string", "description": "用于对齐的音频链接或本地文件路径。"},
+                                        "max_chars_per_line": {"type": "integer", "description": "每行最大字数，可选；用于控制分句粒度。"},
                                     },
                                     "required": ["text", "audio_url"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Aligned captions.", "content": {"application/json": {"schema": {"type": "object", "properties": {"texts": {"type": "array", "items": {"type": "string"}}, "timelines": {"type": "array", "items": timeline_item_schema}, "data": {"type": "object"}}}}}}},
+                    "responses": {"200": {"description": "文本与音频对齐结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"texts": {"type": "array", "description": "分句后的文本数组。", "items": {"type": "string"}}, "timelines": {"type": "array", "description": "与文本对应的时间线数组。", "items": timeline_item_schema}, "data": {"type": "object", "description": "附加调试信息，例如总时长等。"}}}}}}},
                 }
             },
             "/tools/add_keyframes": {
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "add_keyframes",
-                    "summary": "Append keyframes to existing draft segments",
+                    "summary": "向草稿片段追加关键帧",
+                    "description": "给已有草稿片段写入关键帧数据，例如位置、缩放等动画信息。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -839,22 +852,23 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "draft_id": {"type": "string"},
-                                        "keyframes": {"type": "array", "items": {"type": "object"}},
+                                        "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                        "keyframes": {"type": "array", "description": "关键帧列表。", "items": {"type": "object"}},
                                     },
                                     "required": ["draft_id", "keyframes"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Keyframes appended.", "content": {"application/json": {"schema": {"type": "object", "properties": {"draft_id": {"type": "string"}, "message": {"type": "string"}, "applied": {"type": "integer"}}}}}}},
+                    "responses": {"200": {"description": "关键帧写入结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"draft_id": {"type": "string", "description": "目标草稿的 draft_id。"}, "message": {"type": "string", "description": "执行结果说明。"}, "applied": {"type": "integer", "description": "成功写入的关键帧数量。"}}}}}}},
                 }
             },
             "/tools/add_effects": {
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "add_effects",
-                    "summary": "Append effect segments to a local draft",
+                    "summary": "向本地草稿追加特效片段",
+                    "description": "把特效片段写入本地剪映草稿，用于开场或主体特效轨道。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -862,22 +876,23 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "draft_id": {"type": "string"},
-                                        "effect_infos": {"type": "array", "items": {"type": "object"}},
+                                        "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                        "effect_infos": {"type": "array", "description": "特效片段列表。", "items": {"type": "object"}},
                                     },
                                     "required": ["draft_id", "effect_infos"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Effects appended.", "content": {"application/json": {"schema": {"type": "object", "properties": {"draft_id": {"type": "string"}, "message": {"type": "string"}}}}}}},
+                    "responses": {"200": {"description": "特效片段写入结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"draft_id": {"type": "string", "description": "目标草稿的 draft_id。"}, "message": {"type": "string", "description": "执行结果说明。"}}}}}}},
                 }
             },
             "/tools/speech_synthesis": {
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "speech_synthesis",
-                    "summary": "Local Windows speech synthesis",
+                    "summary": "本地语音合成",
+                    "description": "使用本地 Windows 语音能力生成音频；当前实现包含占位回退逻辑，不等同于官方 Coze 语音合成。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -885,25 +900,26 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "text": {"type": "string"},
-                                        "voice_id": {"type": "string"},
-                                        "emotion": {"type": "string"},
-                                        "emotion_scale": {"type": "integer"},
-                                        "speed_ratio": {"type": "number"},
+                                        "text": {"type": "string", "description": "要合成的文本内容。"},
+                                        "voice_id": {"type": "string", "description": "音色 ID，可选；当前仅作兼容透传。"},
+                                        "emotion": {"type": "string", "description": "情绪参数，可选；当前仅作兼容透传。"},
+                                        "emotion_scale": {"type": "integer", "description": "情绪强度，可选；当前仅作兼容透传。"},
+                                        "speed_ratio": {"type": "number", "description": "语速倍率，可选。"},
                                     },
                                     "required": ["text"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Speech synthesis result.", "content": {"application/json": {"schema": {"type": "object", "properties": {"code": {"type": "number"}, "data": {"type": "object"}, "log_id": {"type": "string"}, "msg": {"type": "string"}}}}}}},
+                    "responses": {"200": {"description": "语音合成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"code": {"type": "number", "description": "状态码，0 表示成功。"}, "data": {"type": "object", "description": "返回数据，通常包含 link 和 duration。"}, "log_id": {"type": "string", "description": "日志追踪 ID。"}, "msg": {"type": "string", "description": "执行结果说明。"}}}}}}},
                 }
             },
             "/tools/jimeng_generate_image": {
                 "post": {
                     "tags": ["workflow-tools"],
                     "operationId": "jimeng_generate_image",
-                    "summary": "Local placeholder image generation",
+                    "summary": "本地占位生图",
+                    "description": "根据提示词生成本地占位图片，用于替代即梦生图节点；当前不是即梦官方真实出图能力。",
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -911,17 +927,17 @@ def _coze_workflow_tools_openapi(base_url):
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "prompt": {"type": "string"},
-                                        "key": {"type": "string"},
-                                        "model": {"type": "string"},
-                                        "ratio": {"type": "string"},
+                                        "prompt": {"type": "string", "description": "图片提示词。"},
+                                        "key": {"type": "string", "description": "兼容字段，可选；当前未实际使用。"},
+                                        "model": {"type": "string", "description": "模型名称，可选；当前未实际使用。"},
+                                        "ratio": {"type": "string", "description": "图片比例，例如 1:1、9:16，可选。"},
                                     },
                                     "required": ["prompt"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "Generated placeholder image result.", "content": {"application/json": {"schema": {"type": "object", "properties": {"message": {"type": "string"}, "task_id": {"type": "string"}, "url": {"type": "string"}}}}}}},
+                    "responses": {"200": {"description": "占位图片生成结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"message": {"type": "string", "description": "执行结果说明。"}, "task_id": {"type": "string", "description": "任务 ID。"}, "url": {"type": "string", "description": "生成图片的访问链接。"}}}}}}},
                 }
             },
         },

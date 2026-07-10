@@ -1,92 +1,97 @@
-# ?? Coze ????
+﻿# 本地 Coze 工具清单
 
-## ??
+## 说明
 
-- OpenAPI ????`http://127.0.0.1:5001/api/openapi/coze_workflow_tools.json`
-- ?????`http://127.0.0.1:5001/api/openapi/test.json`
-- `speech_synthesis` ? `jimeng_generate_image` ??????????? placeholder ???
+- OpenAPI 总入口: `http://127.0.0.1:5001/api/openapi/coze_workflow_tools.json`
+- 测试入口: `http://127.0.0.1:5001/api/openapi/test.json`
+- 单个工具统一入口: `http://127.0.0.1:5001/api/tools/<tool_name>`
+- `speech_synthesis` 和 `jimeng_generate_image` 已经有本地路由，但当前是 placeholder 版本。
+- 下表中的模板节点名直接来自模板 JSON。若某个节点标题在源模板里本身已损坏，这里会明确标注。
 
-## ?? URL
+## 工具 URL
 
-| ?? | URL | ?? |
+| 工具 | URL | 备注 |
 |---|---|---|
-| `get_audio_duration` | `http://127.0.0.1:5001/api/tools/get_audio_duration` | ???? |
-| `text_splitter` | `http://127.0.0.1:5001/api/tools/text_splitter` | ???? |
-| `timeline_merge` | `http://127.0.0.1:5001/api/tools/timeline_merge` | ???? |
-| `effect_infos` | `http://127.0.0.1:5001/api/tools/effect_infos` | ???? |
-| `create_draft` | `http://127.0.0.1:5001/api/tools/create_draft` | ???? |
-| `add_audios` | `http://127.0.0.1:5001/api/tools/add_audios` | ???? |
-| `add_images` | `http://127.0.0.1:5001/api/tools/add_images` | ???? |
-| `add_captions` | `http://127.0.0.1:5001/api/tools/add_captions` | ???? |
-| `add_keyframes` | `http://127.0.0.1:5001/api/tools/add_keyframes` | ???? |
-| `add_effects` | `http://127.0.0.1:5001/api/tools/add_effects` | ???? |
-| `align_text_to_audio` | `http://127.0.0.1:5001/api/tools/align_text_to_audio` | ???? |
-| `audio_infos` | `http://127.0.0.1:5001/api/tools/audio_infos` | ???? |
-| `audio_link_collector` | `http://127.0.0.1:5001/api/tools/audio_link_collector` | ???? |
-| `audio_timelines` | `http://127.0.0.1:5001/api/tools/audio_timelines` | ???? |
-| `caption_infos` | `http://127.0.0.1:5001/api/tools/caption_infos` | ???? |
-| `imgs_infos` | `http://127.0.0.1:5001/api/tools/imgs_infos` | ???? |
-| `keyframes_infos` | `http://127.0.0.1:5001/api/tools/keyframes_infos` | ???? |
-| `rolling_effect` | `http://127.0.0.1:5001/api/tools/rolling_effect` | ???? |
-| `wenan_timeline_range` | `http://127.0.0.1:5001/api/tools/wenan_timeline_range` | ???? |
-| `speech_synthesis` | `http://127.0.0.1:5001/api/tools/speech_synthesis` | ????? placeholder ???????????? URL???? Coze ??????? |
-| `jimeng_generate_image` | `http://127.0.0.1:5001/api/tools/jimeng_generate_image` | ????? placeholder ???????????? URL??????/??????? |
+| `get_audio_duration` | `http://127.0.0.1:5001/api/tools/get_audio_duration` | 本地实现可用 |
+| `text_splitter` | `http://127.0.0.1:5001/api/tools/text_splitter` | 本地实现可用 |
+| `timeline_merge` | `http://127.0.0.1:5001/api/tools/timeline_merge` | 本地实现可用 |
+| `effect_infos` | `http://127.0.0.1:5001/api/tools/effect_infos` | 本地实现可用 |
+| `create_draft` | `http://127.0.0.1:5001/api/tools/create_draft` | 本地实现可用 |
+| `add_audios` | `http://127.0.0.1:5001/api/tools/add_audios` | 本地实现可用 |
+| `add_images` | `http://127.0.0.1:5001/api/tools/add_images` | 本地实现可用 |
+| `add_captions` | `http://127.0.0.1:5001/api/tools/add_captions` | 本地实现可用 |
+| `add_keyframes` | `http://127.0.0.1:5001/api/tools/add_keyframes` | 本地实现可用 |
+| `add_effects` | `http://127.0.0.1:5001/api/tools/add_effects` | 本地实现可用 |
+| `align_text_to_audio` | `http://127.0.0.1:5001/api/tools/align_text_to_audio` | 本地实现可用 |
+| `audio_infos` | `http://127.0.0.1:5001/api/tools/audio_infos` | 本地实现可用 |
+| `audio_link_collector` | `http://127.0.0.1:5001/api/tools/audio_link_collector` | 本地实现可用 |
+| `audio_timelines` | `http://127.0.0.1:5001/api/tools/audio_timelines` | 本地实现可用 |
+| `caption_infos` | `http://127.0.0.1:5001/api/tools/caption_infos` | 本地实现可用 |
+| `imgs_infos` | `http://127.0.0.1:5001/api/tools/imgs_infos` | 本地实现可用 |
+| `keyframes_infos` | `http://127.0.0.1:5001/api/tools/keyframes_infos` | 本地实现可用 |
+| `rolling_effect` | `http://127.0.0.1:5001/api/tools/rolling_effect` | 本地实现可用 |
+| `wenan_timeline_range` | `http://127.0.0.1:5001/api/tools/wenan_timeline_range` | 本地实现可用 |
+| `speech_synthesis` | `http://127.0.0.1:5001/api/tools/speech_synthesis` | 当前为本地 placeholder 配音，不是官方 Coze 语音合成 |
+| `jimeng_generate_image` | `http://127.0.0.1:5001/api/tools/jimeng_generate_image` | 当前为本地 placeholder 生图，不是米核/即梦真实生图 |
 
-## ??????
+## 模板节点映射
 
-| ?? | ?? | ????? |
+| 工具 | 模板 | 节点中文名 |
 |---|---|---|
-| `get_audio_duration` | 烟工作流模板_香烟鉴赏-v1.json | get_audio_duration_1?132650??get_audio_duration_2?1545593? |
-|  | 神工作流模板_修改版-开场静态修正-v7.json | get_audio_duration_1?132650??get_audio_duration_2?1545593? |
-| `text_splitter` | 书单工作流模板_荐书-v1.json | 口播稿智能分隔?152468? |
-| `timeline_merge` | 书单工作流模板_荐书-v1.json | 合并开场&选题时间线?196731??合并开场&正文时间线?146102? |
-| `effect_infos` | 烟工作流模板_香烟鉴赏-v1.json | 特效数据生成器?199001? |
-|  | 神工作流模板_修改版-开场静态修正-v7.json | 特效数据生成器?199001? |
-| `create_draft` | 书单工作流模板_荐书-v1.json | 创建剪映草稿?121215? |
-|  | 烟工作流模板_香烟鉴赏-v1.json | 创建神话草稿?119835? |
-|  | 神工作流模板_修改版-开场静态修正-v7.json | 创建神话草稿?119835? |
-| `add_audios` | 书单工作流模板_荐书-v1.json | 添加开场人声?161537??添加发条音效?148232??添加开场选题人声?120409??添加背景音乐?121846??添加正文人声?127166? |
-|  | 烟工作流模板_香烟鉴赏-v1.json | 添加人物配音?117759??添加背景音乐?178582??添加轮盘音效?178583? |
-|  | 神工作流模板_修改版-开场静态修正-v7.json | 添加人物配音?117759??添加背景音乐?178582??添加轮盘音效?178583? |
-| `add_images` | 书单工作流模板_荐书-v1.json | 添加开场封面配图?198946??添加开场主题配图?144998??添加开场人物配图?169833??添加正文配图?191365? |
-|  | 烟工作流模板_香烟鉴赏-v1.json | 添加主体图层?192103??添加开场图层?174538??添加底层背景?174537??????????150753??添加主体前景层?201368??添加重点句特写?201371? |
-|  | 神工作流模板_修改版-开场静态修正-v7.json | 添加主体图层?192103??添加开场图层?174538??添加底层背景?174537??????????150753??添加主体前景层?201368??添加重点句特写?201371? |
-| `add_captions` | 书单工作流模板_荐书-v1.json | 添加开场字幕?124102??添加开场选题字幕?1713008??添加正文?143757??添加水印?138594? |
-|  | 烟工作流模板_香烟鉴赏-v1.json | 添加正文字幕?121500??主题锁定字幕?195903??横滑字幕轨道?108685??添加顶部标签?126860??横滑字幕轨道B?201377??横滑字幕轨道C?201378??添加右上提示?226902? |
-|  | 神工作流模板_修改版-开场静态修正-v7.json | 添加正文字幕?121500??主题锁定字幕?195903??横滑字幕轨道?108685??添加顶部标签?126860??横滑字幕轨道B?201377??横滑字幕轨道C?201378??添加右上提示?226902? |
-| `add_keyframes` | 书单工作流模板_荐书-v1.json | 添加x轴关键帧?129095??添加y轴关键帧?116900??添加正文配图关键帧?300101? |
-|  | 烟工作流模板_香烟鉴赏-v1.json | 添加横滑字幕关键帧?201391? |
-|  | 神工作流模板_修改版-开场静态修正-v7.json | 添加横滑字幕关键帧?201391? |
-| `add_effects` | 烟工作流模板_香烟鉴赏-v1.json | 添加开场特效?177705??添加主体特效?124207? |
-|  | 神工作流模板_修改版-开场静态修正-v7.json | 添加开场特效?177705??添加主体特效?124207? |
-| `align_text_to_audio` | 烟工作流模板_香烟鉴赏-v1.json | 字幕对齐?152927??字幕复核对齐?188944? |
-|  | 神工作流模板_修改版-开场静态修正-v7.json | 字幕对齐?152927??字幕复核对齐?188944? |
-| `audio_infos` | 书单工作流模板_荐书-v1.json | 根据时间线制作开场人声?150527??根据时间线制作发条音效?188768??根据时间线制作开场选题人声?158961??根据时间线制作背景音乐?183599??根据时间线制作正文人声?182030? |
-| `audio_link_collector` | 书单工作流模板_荐书-v1.json | 提取正文音频链接?150200??提取开场语音链接?152457??提取选题语音链接?181955? |
-| `audio_timelines` | 书单工作流模板_荐书-v1.json | 提取开场文案音频时间线?175569??提取选题音频时间线?190379??audio_timelines?110949? |
-| `caption_infos` | 书单工作流模板_荐书-v1.json | 根据时间线制作开场字幕?123312??根据时间线制作预制选题字幕?169841??根据时间线制作开场选题字幕?116477??根据时间线制作正文字幕?153682??根据时间线制作水印?129599? |
-| `imgs_infos` | 书单工作流模板_荐书-v1.json | 根据时间线制作开场主题配图?112803??根据时间线制作开场封面配图?136311??根据时间线制作开场人物配图?129774??根据时间线制作正文配图?169038? |
-| `keyframes_infos` | 书单工作流模板_荐书-v1.json | 根据时间线制作人物x轴关键帧?145916??根据时间线制作人物y轴关键帧?172251? |
-| `rolling_effect` | 书单工作流模板_荐书-v1.json | 开场快闪?108338? |
-| `wenan_timeline_range` | 书单工作流模板_荐书-v1.json | 文案合并时间线?107972? |
-| `speech_synthesis` | 书单工作流模板_荐书-v1.json | speech_synthesis?154758??speech_synthesis_1?1351770??speech_synthesis_2?1033952? |
-|  | 烟工作流模板_香烟鉴赏-v1.json | 分镜配音?102982??开场配音?310628??标题配音?1711088? |
-|  | 神工作流模板_修改版-开场静态修正-v7.json | 分镜配音?102982??开场配音?310628??标题配音?1711088? |
-| `jimeng_generate_image` | 书单工作流模板_荐书-v1.json | 图片生成?153667??图片生成2?1942817? |
-|  | 烟工作流模板_香烟鉴赏-v1.json | 分镜生图A?201365??神话生图?117364? |
-|  | 神工作流模板_修改版-开场静态修正-v7.json | 分镜生图A?201365??神话生图?117364? |
+| `get_audio_duration` | 烟工作流模板_香烟鉴赏-v1.json | get_audio_duration_1 (132650) / get_audio_duration_2 (1545593) |
+|  | 神工作流模板_修改版-开场静态修正-v7.json | get_audio_duration_1 (132650) / get_audio_duration_2 (1545593) |
+| `text_splitter` | 书单工作流模板_荐书-v1.json | 口播稿智能分隔 (152468) |
+| `timeline_merge` | 书单工作流模板_荐书-v1.json | 合并开场&选题时间线 (196731) / 合并开场&正文时间线 (146102) |
+| `effect_infos` | 烟工作流模板_香烟鉴赏-v1.json | 特效数据生成器 (199001) |
+|  | 神工作流模板_修改版-开场静态修正-v7.json | 特效数据生成器 (199001) |
+| `create_draft` | 书单工作流模板_荐书-v1.json | 创建剪映草稿 (121215) |
+|  | 烟工作流模板_香烟鉴赏-v1.json | 创建神话草稿 (119835) |
+|  | 神工作流模板_修改版-开场静态修正-v7.json | 创建神话草稿 (119835) |
+| `add_audios` | 书单工作流模板_荐书-v1.json | 添加开场人声 (161537) / 添加发条音效 (148232) / 添加开场选题人声 (120409) / 添加背景音乐 (121846) / 添加正文人声 (127166) |
+|  | 烟工作流模板_香烟鉴赏-v1.json | 添加人物配音 (117759) / 添加背景音乐 (178582) / 添加轮盘音效 (178583) |
+|  | 神工作流模板_修改版-开场静态修正-v7.json | 添加人物配音 (117759) / 添加背景音乐 (178582) / 添加轮盘音效 (178583) |
+| `add_images` | 书单工作流模板_荐书-v1.json | 添加开场封面配图 (198946) / 添加开场主题配图 (144998) / 添加开场人物配图 (169833) / 添加正文配图 (191365) |
+|  | 烟工作流模板_香烟鉴赏-v1.json | 添加主体图层 (192103) / 添加开场图层 (174538) / 添加底层背景 (174537) / 源模板节点名异常 (150753) / 添加主体前景层 (201368) / 添加重点句特写 (201371) |
+|  | 神工作流模板_修改版-开场静态修正-v7.json | 添加主体图层 (192103) / 添加开场图层 (174538) / 添加底层背景 (174537) / 源模板节点名异常 (150753) / 添加主体前景层 (201368) / 添加重点句特写 (201371) |
+| `add_captions` | 书单工作流模板_荐书-v1.json | 添加开场字幕 (124102) / 添加开场选题字幕 (1713008) / 添加正文 (143757) / 添加水印 (138594) |
+|  | 烟工作流模板_香烟鉴赏-v1.json | 添加正文字幕 (121500) / 主题锁定字幕 (195903) / 横滑字幕轨道 (108685) / 添加顶部标签 (126860) / 横滑字幕轨道B (201377) / 横滑字幕轨道C (201378) / 添加右上提示 (226902) |
+|  | 神工作流模板_修改版-开场静态修正-v7.json | 添加正文字幕 (121500) / 主题锁定字幕 (195903) / 横滑字幕轨道 (108685) / 添加顶部标签 (126860) / 横滑字幕轨道B (201377) / 横滑字幕轨道C (201378) / 添加右上提示 (226902) |
+| `add_keyframes` | 书单工作流模板_荐书-v1.json | 添加x轴关键帧 (129095) / 添加y轴关键帧 (116900) / 添加正文配图关键帧 (300101) |
+|  | 烟工作流模板_香烟鉴赏-v1.json | 添加横滑字幕关键帧 (201391) |
+|  | 神工作流模板_修改版-开场静态修正-v7.json | 添加横滑字幕关键帧 (201391) |
+| `add_effects` | 烟工作流模板_香烟鉴赏-v1.json | 添加开场特效 (177705) / 添加主体特效 (124207) |
+|  | 神工作流模板_修改版-开场静态修正-v7.json | 添加开场特效 (177705) / 添加主体特效 (124207) |
+| `align_text_to_audio` | 烟工作流模板_香烟鉴赏-v1.json | 字幕对齐 (152927) / 字幕复核对齐 (188944) |
+|  | 神工作流模板_修改版-开场静态修正-v7.json | 字幕对齐 (152927) / 字幕复核对齐 (188944) |
+| `audio_infos` | 书单工作流模板_荐书-v1.json | 根据时间线制作开场人声 (150527) / 根据时间线制作发条音效 (188768) / 根据时间线制作开场选题人声 (158961) / 根据时间线制作背景音乐 (183599) / 根据时间线制作正文人声 (182030) |
+| `audio_link_collector` | 书单工作流模板_荐书-v1.json | 提取正文音频链接 (150200) / 提取开场语音链接 (152457) / 提取选题语音链接 (181955) |
+| `audio_timelines` | 书单工作流模板_荐书-v1.json | 提取开场文案音频时间线 (175569) / 提取选题音频时间线 (190379) / audio_timelines (110949) |
+| `caption_infos` | 书单工作流模板_荐书-v1.json | 根据时间线制作开场字幕 (123312) / 根据时间线制作预制选题字幕 (169841) / 根据时间线制作开场选题字幕 (116477) / 根据时间线制作正文字幕 (153682) / 根据时间线制作水印 (129599) |
+| `imgs_infos` | 书单工作流模板_荐书-v1.json | 根据时间线制作开场主题配图 (112803) / 根据时间线制作开场封面配图 (136311) / 根据时间线制作开场人物配图 (129774) / 根据时间线制作正文配图 (169038) |
+| `keyframes_infos` | 书单工作流模板_荐书-v1.json | 根据时间线制作人物x轴关键帧 (145916) / 根据时间线制作人物y轴关键帧 (172251) |
+| `rolling_effect` | 书单工作流模板_荐书-v1.json | 开场快闪 (108338) |
+| `wenan_timeline_range` | 书单工作流模板_荐书-v1.json | 文案合并时间线 (107972) |
+| `speech_synthesis` | 书单工作流模板_荐书-v1.json | speech_synthesis (154758) / speech_synthesis_1 (1351770) / speech_synthesis_2 (1033952) |
+|  | 烟工作流模板_香烟鉴赏-v1.json | 分镜配音 (102982) / 开场配音 (310628) / 标题配音 (1711088) |
+|  | 神工作流模板_修改版-开场静态修正-v7.json | 分镜配音 (102982) / 开场配音 (310628) / 标题配音 (1711088) |
+| `jimeng_generate_image` | 书单工作流模板_荐书-v1.json | 图片生成 (153667) / 图片生成2 (1942817) |
+|  | 烟工作流模板_香烟鉴赏-v1.json | 分镜生图A (201365) / 神话生图 (117364) |
+|  | 神工作流模板_修改版-开场静态修正-v7.json | 分镜生图A (201365) / 神话生图 (117364) |
 
-## ??????
+## 输入输出样例
 
 ### `get_audio_duration`
 
-?????
+输入示例:
+
 ```json
 {
   "mp3_url": "https://example.com/demo.mp3"
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "success": true,
@@ -97,18 +102,21 @@
 
 ### `text_splitter`
 
-?????
+输入示例:
+
 ```json
 {
-  "text": "????????????"
+  "text": "第一句。第二句！第三句？"
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "success": true,
   "segments": [
-    "???????????"
+    "第一句，第二句，第三句"
   ],
   "message": "ok",
   "error": ""
@@ -117,7 +125,8 @@
 
 ### `timeline_merge`
 
-?????
+输入示例:
+
 ```json
 {
   "pre_timeline": [
@@ -135,7 +144,9 @@
   "gap_us": 0
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "timelines": [
@@ -161,7 +172,8 @@
 
 ### `effect_infos`
 
-?????
+输入示例:
+
 ```json
 {
   "effects": [
@@ -180,7 +192,9 @@
   ]
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "infos": "[{\"effect\": \"shake\", \"start\": 0, \"end\": 1000000}, {\"effect\": \"flash\", \"start\": 1000000, \"end\": 2000000}]",
@@ -191,7 +205,8 @@
 
 ### `create_draft`
 
-?????
+输入示例:
+
 ```json
 {
   "width": 1080,
@@ -199,7 +214,9 @@
   "name": "demo_draft"
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "draft_id": "DEMO-DRAFT-ID",
@@ -213,7 +230,8 @@
 
 ### `add_audios`
 
-?????
+输入示例:
+
 ```json
 {
   "draft_id": "DEMO-DRAFT-ID",
@@ -227,7 +245,9 @@
   ]
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "draft_id": "DEMO-DRAFT-ID",
@@ -251,7 +271,8 @@
 
 ### `add_images`
 
-?????
+输入示例:
+
 ```json
 {
   "draft_id": "DEMO-DRAFT-ID",
@@ -264,7 +285,9 @@
   ]
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "draft_id": "DEMO-DRAFT-ID",
@@ -285,13 +308,14 @@
 
 ### `add_captions`
 
-?????
+输入示例:
+
 ```json
 {
   "draft_id": "DEMO-DRAFT-ID",
   "captions": [
     {
-      "text": "????",
+      "text": "字幕测试",
       "start": 0,
       "end": 2000000
     }
@@ -300,7 +324,9 @@
   "text_color": "#FFFFFF"
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "draft_id": "DEMO-DRAFT-ID",
@@ -321,7 +347,8 @@
 
 ### `add_keyframes`
 
-?????
+输入示例:
+
 ```json
 {
   "draft_id": "DEMO-DRAFT-ID",
@@ -341,7 +368,9 @@
   ]
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "draft_id": "DEMO-DRAFT-ID",
@@ -352,7 +381,8 @@
 
 ### `add_effects`
 
-?????
+输入示例:
+
 ```json
 {
   "draft_id": "DEMO-DRAFT-ID",
@@ -365,7 +395,9 @@
   ]
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "draft_id": "DEMO-DRAFT-ID",
@@ -382,21 +414,24 @@
 
 ### `align_text_to_audio`
 
-?????
+输入示例:
+
 ```json
 {
-  "text": "??????????????????",
+  "text": "第一句字幕。第二句字幕。第三句字幕。",
   "audio_url": "http://127.0.0.1:5001/api/generated/audio/demo.wav",
   "max_chars_per_line": 6
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "texts": [
-    "?????",
-    "?????",
-    "?????"
+    "第一句字幕",
+    "第二句字幕",
+    "第三句字幕"
   ],
   "timelines": [
     {
@@ -421,7 +456,8 @@
 
 ### `audio_infos`
 
-?????
+输入示例:
+
 ```json
 {
   "mp3_urls": [
@@ -436,7 +472,9 @@
   "volume": 0.7
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "infos": "[{\"audio_url\": \"https://example.com/a.wav\", \"start\": 0, \"end\": 1200000, \"duration\": 1200000, \"volume\": 0.7}]",
@@ -447,7 +485,8 @@
 
 ### `audio_link_collector`
 
-?????
+输入示例:
+
 ```json
 {
   "outputList": [
@@ -460,7 +499,9 @@
   ]
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "links": [
@@ -471,7 +512,8 @@
 
 ### `audio_timelines`
 
-?????
+输入示例:
+
 ```json
 {
   "links": [
@@ -480,7 +522,9 @@
   ]
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "timelines": [
@@ -508,12 +552,13 @@
 
 ### `caption_infos`
 
-?????
+输入示例:
+
 ```json
 {
   "texts": [
-    "???",
-    "???"
+    "第一句",
+    "第二句"
   ],
   "timelines": [
     {
@@ -528,10 +573,12 @@
   "font_size": 18
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
-  "infos": "[{\"text\": \"???\", \"start\": 0, \"end\": 1000000, \"font_size\": 18}, {\"text\": \"???\", \"start\": 1000000, \"end\": 2000000, \"font_size\": 18}]",
+  "infos": "[{\"text\": \"第一句\", \"start\": 0, \"end\": 1000000, \"font_size\": 18}, {\"text\": \"第二句\", \"start\": 1000000, \"end\": 2000000, \"font_size\": 18}]",
   "count": 2,
   "error": ""
 }
@@ -539,7 +586,8 @@
 
 ### `imgs_infos`
 
-?????
+输入示例:
+
 ```json
 {
   "imgs": [
@@ -558,7 +606,9 @@
   ]
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "infos": "[{\"image_url\": \"https://example.com/1.png\", \"start\": 0, \"end\": 1000000}, {\"image_url\": \"https://example.com/2.png\", \"start\": 1000000, \"end\": 2000000}]",
@@ -569,7 +619,8 @@
 
 ### `keyframes_infos`
 
-?????
+输入示例:
+
 ```json
 {
   "ctype": "KFTypePositionX",
@@ -585,7 +636,9 @@
   ]
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "keyframes_infos": "[{\"offset\": 0, \"property\": \"KFTypePositionX\", \"segment_id\": \"IMG-SEG-ID\", \"value\": 0.1111111111111111}, {\"offset\": 2000000, \"property\": \"KFTypePositionX\", \"segment_id\": \"IMG-SEG-ID\", \"value\": -0.1111111111111111}]",
@@ -596,7 +649,8 @@
 
 ### `rolling_effect`
 
-?????
+输入示例:
+
 ```json
 {
   "duration_list": [
@@ -604,17 +658,19 @@
     2000000
   ],
   "str_list": [
-    "?1",
-    "?2"
+    "主题1",
+    "主题2"
   ]
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "subject_arr": [
-    "?1",
-    "?2"
+    "主题1",
+    "主题2"
   ],
   "timelines": [
     {
@@ -642,7 +698,8 @@
 
 ### `wenan_timeline_range`
 
-?????
+输入示例:
+
 ```json
 {
   "timelines": [
@@ -652,16 +709,18 @@
     }
   ],
   "wenan": [
-    "?????"
+    "第一句文案"
   ]
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "wenanTimeline": [
     {
-      "content": "?????",
+      "content": "第一句文案",
       "start": 0,
       "end": 1000000
     }
@@ -672,17 +731,20 @@
 
 ### `speech_synthesis`
 
-> ???????? placeholder ???????????? URL???? Coze ???????
+备注: 当前为本地 placeholder 配音实现，会返回可访问的音频 URL，但不是 Coze 官方语音合成。
 
-?????
+输入示例:
+
 ```json
 {
-  "text": "??????",
+  "text": "本地语音测试",
   "voice_id": "7620288417930297386",
   "speed_ratio": 1.0
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "code": 0,
@@ -697,17 +759,20 @@
 
 ### `jimeng_generate_image`
 
-> ???????? placeholder ???????????? URL??????/???????
+备注: 当前为本地 placeholder 生图实现，会返回可访问的图片 URL，但不是米核/即梦真实生图。
 
-?????
+输入示例:
+
 ```json
 {
-  "prompt": "?????????????16?9",
+  "prompt": "敦煌壁画风格神话画面，16:9 横屏",
   "ratio": "16:9",
   "model": "jimeng-3.0"
 }
 ```
-?????
+
+输出示例:
+
 ```json
 {
   "message": "ok (local placeholder image, not Mihe/Jimeng real generation)",
