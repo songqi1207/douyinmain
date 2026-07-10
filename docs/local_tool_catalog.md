@@ -34,6 +34,50 @@
 | `speech_synthesis` | `http://127.0.0.1:5001/api/tools/speech_synthesis` | 当前为本地 placeholder 配音，不是官方 Coze 语音合成 |
 | `jimeng_generate_image` | `http://127.0.0.1:5001/api/tools/jimeng_generate_image` | 当前为本地 placeholder 生图，不是米核/即梦真实生图 |
 
+## 工具中文名对照（按模板实际使用）
+
+中文名取自 OpenAPI（`/api/openapi/coze_workflow_tools.json`）里各工具的 `summary`，Coze 导入后作为工具描述显示；工具名本身取 `operationId`（英文），与模板插件节点的 `apiName` 直接对应。
+
+以模板里真实的插件节点（`apiName`）为准统计：三个模板用到的工具并集正好是插件现有的全部 21 个工具，没有多余也没有缺失。
+
+### 三个模板都用（7 个）
+
+| 工具 (apiName) | 中文名 |
+|---|---|
+| `create_draft` | 创建本地剪映草稿 |
+| `speech_synthesis` | 本地语音合成 |
+| `jimeng_generate_image` | 本地占位生图 |
+| `add_audios` | 向本地草稿追加音频片段 |
+| `add_captions` | 向本地草稿追加字幕片段 |
+| `add_images` | 向本地草稿追加图片片段 |
+| `add_keyframes` | 向草稿片段追加关键帧 |
+
+### 只有神话 v7 / 香烟 v1 用（4 个，两模板用的工具完全相同，各共 11 个）
+
+| 工具 (apiName) | 中文名 |
+|---|---|
+| `align_text_to_audio` | 按音频时长对齐文本分句 |
+| `get_audio_duration` | 获取音频时长 |
+| `effect_infos` | 生成特效时间信息 |
+| `add_effects` | 向本地草稿追加特效片段 |
+
+### 只有书单 v1 用（10 个，书单共用 17 个）
+
+| 工具 (apiName) | 中文名 |
+|---|---|
+| `text_splitter` | 中文智能分句 |
+| `audio_link_collector` | 从批量输出中提取音频链接 |
+| `audio_timelines` | 根据音频链接生成顺序时间线 |
+| `timeline_merge` | 合并开场与正文时间线 |
+| `wenan_timeline_range` | 合并文案与时间线范围 |
+| `audio_infos` | 根据音频链接和时间线生成音频信息 |
+| `caption_infos` | 根据文本和时间线生成字幕信息 |
+| `imgs_infos` | 根据图片链接和时间线生成图片信息 |
+| `keyframes_infos` | 根据片段时间线生成关键帧信息 |
+| `rolling_effect` | 根据时长和文本生成快闪时间线 |
+
+备注：神话/香烟模板文件里也出现 `audio_infos`、`caption_infos`、`imgs_infos`、`keyframes_infos` 字样，但那是代码节点里的引用，不是插件节点，故不计入其使用列表。
+
 ## 模板节点映射
 
 | 工具 | 模板 | 节点中文名 |
