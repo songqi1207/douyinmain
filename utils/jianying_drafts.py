@@ -429,9 +429,18 @@ def _load_bundle(draft_id: str) -> dict[str, Any]:
     if not target_id:
         raise ValueError("missing draft_id")
 
-    draft_dir = _draft_root() / target_id
+    draft_root = _draft_root()
+    draft_dir = draft_root / target_id
     content_path = draft_dir / "draft_content.json"
     meta_path = draft_dir / "draft_meta_info.json"
+    if not content_path.exists() or not meta_path.exists():
+        lowered = target_id.lower()
+        for candidate in draft_root.iterdir():
+            if candidate.is_dir() and candidate.name.lower() == lowered:
+                draft_dir = candidate
+                content_path = draft_dir / "draft_content.json"
+                meta_path = draft_dir / "draft_meta_info.json"
+                break
     if not content_path.exists() or not meta_path.exists():
         raise FileNotFoundError(f"draft not found: {target_id}")
 
@@ -477,6 +486,23 @@ def create_draft(width: Any = 1920, height: Any = 1080, name: str = "", user_id:
         "width": width_int,
         "height": height_int,
         "ratio": bundle["content"]["canvas_config"]["ratio"],
+        "message": "ok",
+    }
+
+
+def get_draft_info(draft_id: str) -> dict[str, Any]:
+    bundle = _load_bundle(draft_id)
+    content = bundle["content"]
+    meta = bundle["meta"]
+    canvas = content.get("canvas_config") or {}
+    return {
+        "draft_id": str(meta.get("draft_id") or draft_id),
+        "draft_name": str(meta.get("draft_name") or content.get("name") or ""),
+        "draft_dir": str(bundle["draft_dir"]),
+        "width": int(canvas.get("width") or 0),
+        "height": int(canvas.get("height") or 0),
+        "ratio": str(canvas.get("ratio") or "original"),
+        "duration": int(content.get("duration") or 0),
         "message": "ok",
     }
 

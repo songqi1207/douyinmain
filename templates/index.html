@@ -427,6 +427,167 @@
         padding: 16px 20px;
       }
 
+      .checkbox-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .checkbox-card {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        border: 1px solid #d8e3f5;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.82);
+        font-size: 14px;
+        color: #415069;
+      }
+
+      .checkbox-card input {
+        width: 16px;
+        height: 16px;
+        accent-color: #3b63ff;
+      }
+
+      .helper-block {
+        margin-top: 10px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: #f7faff;
+        border: 1px solid #dbe7fb;
+        font-size: 13px;
+        line-height: 1.75;
+        color: #5f6f86;
+      }
+
+      .helper-block strong {
+        color: #274472;
+      }
+
+      .upload-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .code-card {
+        display: none;
+        margin-top: 18px;
+        padding: 18px;
+        border: 1px solid #d9e6fd;
+        border-radius: 18px;
+        background: linear-gradient(180deg, #f9fbff 0%, #f3f7ff 100%);
+      }
+
+      .code-card.show {
+        display: block;
+      }
+
+      .code-card h4 {
+        margin-bottom: 10px;
+        font-size: 15px;
+        color: #24426a;
+      }
+
+      .code-card p {
+        margin-bottom: 10px;
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .code-output {
+        margin: 0;
+        max-height: 360px;
+        overflow: auto;
+        padding: 14px 16px;
+        border-radius: 14px;
+        background: #0f172a;
+        color: #dbeafe;
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .inline-metrics {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .metric-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: #eef4ff;
+        border: 1px solid #dbe7ff;
+        color: #31589f;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .mode-block {
+        margin-top: 18px;
+        padding: 20px;
+        border: 1px solid #dbe7fb;
+        border-radius: 22px;
+        background: linear-gradient(180deg, #ffffff 0%, #f7faff 100%);
+      }
+
+      .mode-block h4 {
+        margin-bottom: 8px;
+        font-size: 18px;
+        color: #20395f;
+      }
+
+      .mode-block p {
+        margin-bottom: 14px;
+        font-size: 13px;
+        line-height: 1.75;
+        color: #67778e;
+      }
+
+      .grid-two {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .inline-readonly {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        min-height: 48px;
+        border: 1px solid #dbe4f2;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.88);
+        font-size: 14px;
+        color: #31435f;
+        word-break: break-all;
+      }
+
+      .inline-readonly.empty {
+        color: #95a2b6;
+      }
+
+      .section-label {
+        margin: 18px 0 10px;
+        font-size: 13px;
+        font-weight: 700;
+        color: #56709f;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+
       .tips-card h4 {
         margin-bottom: 8px;
         font-size: 14px;
@@ -601,6 +762,10 @@
           flex-direction: column;
         }
 
+        .grid-two {
+          grid-template-columns: 1fr;
+        }
+
         .primary-btn,
         .secondary-btn,
         .full-width {
@@ -648,6 +813,16 @@
                 输入神名和分镜数，生成神话题材工作流。
               </div>
             </button>
+            <button
+              class="biz-item"
+              data-type="draft_key"
+              onclick="selectBiz('draft_key')"
+            >
+              <div class="biz-item-title">🧩 本地草稿导入</div>
+              <div class="biz-item-desc">
+                粘贴工作流输出的 key，直接转换为本地剪映草稿。
+              </div>
+            </button>
           </div>
         </aside>
 
@@ -662,6 +837,7 @@
               </div>
               <button
                 class="btn secondary-btn"
+                id="sampleVideoBtn"
                 type="button"
                 onclick="openSampleVideo()"
               >
@@ -961,6 +1137,105 @@
                 生成神明工作流
               </button>
             </div>
+
+            <div class="form-section" id="draftKeyForm">
+              <div class="mode-block">
+                <h4>Key 一次性导入模式</h4>
+                <p>
+                  这里就是你要的模式。把工作流最终输出的
+                  <code>draft_key</code> 粘进来，直接在本机生成草稿，并给出 Windows 可访问路径。
+                </p>
+              </div>
+
+              <div class="form-group">
+                <label>Draft Key JSON <span class="required">*</span></label>
+                <textarea
+                  id="draftKeyInput"
+                  rows="18"
+                  placeholder='请粘贴 Coze End 节点输出的 key JSON，或形如 {"key": {...}} / {"key_json":"..."} 的内容'
+                ></textarea>
+              </div>
+
+              <div class="upload-row">
+                <button
+                  class="btn secondary-btn"
+                  type="button"
+                  onclick="triggerDraftKeyFile()"
+                >
+                  选择本地 JSON 文件
+                </button>
+                <button
+                  class="btn secondary-btn"
+                  type="button"
+                  onclick="fillDraftKeySample()"
+                >
+                  填入示例 Key
+                </button>
+                <button
+                  class="btn secondary-btn"
+                  type="button"
+                  onclick="clearDraftKeyInput()"
+                >
+                  清空输入
+                </button>
+                <input
+                  id="draftKeyFile"
+                  type="file"
+                  accept=".json,application/json,text/plain"
+                  style="display: none"
+                  onchange="handleDraftKeyFile(event)"
+                />
+              </div>
+
+              <div class="checkbox-row">
+                <label class="checkbox-card">
+                  <input type="checkbox" id="draftKeyDryRun" />
+                  <span>仅校验，不落本地草稿（dry_run）</span>
+                </label>
+                <label class="checkbox-card">
+                  <input type="checkbox" id="draftKeyForce" />
+                  <span>同一 key 已导入时强制重导（force）</span>
+                </label>
+              </div>
+
+              <div class="helper-block">
+                <strong>说明：</strong>这个入口不是调用米核/剪映小助手插件，而是直接把
+                key 交给本地接口
+                <code>/api/tools/create_draft_from_key</code>，由后端按
+                key 里的调用顺序写入本地草稿目录。
+              </div>
+
+              <div class="button-row" style="margin-top: 18px">
+                <button
+                  class="btn primary-btn"
+                  id="importDraftKeyBtn"
+                  type="button"
+                  onclick="importDraftKey()"
+                >
+                  一键生成本地草稿
+                </button>
+              </div>
+
+              <div class="code-card" id="draftKeyResultCard">
+                <h4 id="draftKeyResultTitle">导入结果</h4>
+                <div class="inline-metrics" id="draftKeyMetrics"></div>
+                <p id="draftKeyResultDesc"></p>
+                <div class="section-label">Windows 草稿路径</div>
+                <div class="button-row" style="margin-bottom: 10px">
+                  <button
+                    class="btn secondary-btn"
+                    type="button"
+                    onclick="copyDraftKeyDir()"
+                  >
+                    复制路径
+                  </button>
+                </div>
+                <div class="inline-readonly empty" id="draftKeyDirDisplay">
+                  暂无路径
+                </div>
+                <pre class="code-output" id="draftKeyResultJson"></pre>
+              </div>
+            </div>
           </section>
 
           <section class="result-card" id="resultSection">
@@ -1044,6 +1319,7 @@
       let currentBiz = "";
       let currentDownloadUrl = "";
       let currentPreviewVideoUrl = "";
+      let liveDraftId = "";
 
       const bizMeta = {
         book: {
@@ -1063,6 +1339,12 @@
           desc: "输入神名和分镜数量，生成神话主题工作流。",
           previewTitle: "每天认识一个神 示例视频",
           previewUrl: "/api/preview_video/god",
+        },
+        draft_key: {
+          title: "本地草稿导入",
+          desc: "粘贴工作流最终输出的 key，直接转换为本地剪映草稿，并返回 Windows 可访问路径。",
+          previewTitle: "",
+          previewUrl: "",
         },
       };
 
@@ -1113,12 +1395,19 @@
         document
           .getElementById("godForm")
           .classList.toggle("active", type === "god");
+        document
+          .getElementById("draftKeyForm")
+          .classList.toggle("active", type === "draft_key");
 
         const meta = bizMeta[type] || bizMeta.book;
         document.getElementById("currentBizTitle").textContent = meta.title;
         document.getElementById("currentBizDesc").textContent = meta.desc;
         currentPreviewVideoUrl =
           meta.previewUrl || `/api/preview_video/${type}`;
+        const sampleBtn = document.getElementById("sampleVideoBtn");
+        if (sampleBtn) {
+          sampleBtn.style.display = meta.previewUrl ? "inline-flex" : "none";
+        }
 
         document.getElementById("resultSection").classList.remove("show");
 
@@ -1126,8 +1415,10 @@
           document.getElementById("bookName").focus();
         } else if (type === "cigarette") {
           document.getElementById("cigaretteName").focus();
-        } else {
+        } else if (type === "god") {
           document.getElementById("godName").focus();
+        } else {
+          document.getElementById("draftKeyInput").focus();
         }
       }
 
@@ -1406,6 +1697,480 @@
         } finally {
           btn.disabled = false;
           btn.textContent = "生成神明工作流";
+        }
+      }
+
+      function triggerDraftKeyFile() {
+        const input = document.getElementById("draftKeyFile");
+        if (input) {
+          input.click();
+        }
+      }
+
+      function handleDraftKeyFile(event) {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function () {
+          document.getElementById("draftKeyInput").value = String(
+            reader.result || "",
+          );
+          showToast(`已载入 ${file.name}`, "success");
+        };
+        reader.onerror = function () {
+          showToast("读取文件失败", "error");
+        };
+        reader.readAsText(file, "utf-8");
+      }
+
+      function clearDraftKeyInput() {
+        document.getElementById("draftKeyInput").value = "";
+        const resultCard = document.getElementById("draftKeyResultCard");
+        resultCard.classList.remove("show");
+      }
+
+      function refreshLiveDraftIdDisplay() {
+        const el = document.getElementById("liveDraftIdDisplay");
+        if (!el) return;
+        if (liveDraftId) {
+          el.textContent = liveDraftId;
+          el.classList.remove("empty");
+        } else {
+          el.textContent = "尚未创建草稿";
+          el.classList.add("empty");
+        }
+      }
+
+      function resetLiveDraftSession() {
+        liveDraftId = "";
+        refreshLiveDraftIdDisplay();
+        document.getElementById("liveDraftPayload").value = "";
+        setDirDisplay("liveDraftDirDisplay", "");
+        document
+          .getElementById("liveDraftResultCard")
+          .classList.remove("show");
+        showToast("已清空当前 draft_id 会话", "success");
+      }
+
+      function setDirDisplay(elementId, path) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        const normalized = String(path || "");
+        if (normalized) {
+          el.textContent = normalized;
+          el.classList.remove("empty");
+        } else {
+          el.textContent = "暂无路径";
+          el.classList.add("empty");
+        }
+      }
+
+      async function copyTextValue(text, successMsg = "已复制") {
+        const value = String(text || "").trim();
+        if (!value) {
+          showToast("没有可复制的内容", "error");
+          return;
+        }
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(value);
+          } else {
+            const textarea = document.createElement("textarea");
+            textarea.value = value;
+            textarea.style.position = "fixed";
+            textarea.style.opacity = "0";
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand("copy");
+            document.body.removeChild(textarea);
+          }
+          showToast(successMsg, "success");
+        } catch (err) {
+          showToast("复制失败，请手动复制", "error");
+        }
+      }
+
+      function copyLiveDraftDir() {
+        const text = document.getElementById("liveDraftDirDisplay")?.textContent || "";
+        copyTextValue(text, "草稿路径已复制");
+      }
+
+      function copyDraftKeyDir() {
+        const text = document.getElementById("draftKeyDirDisplay")?.textContent || "";
+        copyTextValue(text, "草稿路径已复制");
+      }
+
+      function getLiveDraftToolSample(tool) {
+        const samples = {
+          add_audios: {
+            audio_infos: [
+              {
+                audio_url: "https://example.com/demo.wav",
+                start: 0,
+                end: 2000000,
+                volume: 0.8,
+              },
+            ],
+          },
+          add_images: {
+            image_infos: [
+              {
+                image_url: "https://example.com/demo.png",
+                start: 0,
+                end: 3000000,
+                scale_x: 1,
+                scale_y: 1,
+              },
+            ],
+          },
+          add_captions: {
+            captions: [
+              {
+                text: "这是逐节点模式示例字幕",
+                start: 0,
+                end: 2500000,
+              },
+            ],
+            font_size: 12,
+            text_color: "#FFE95A",
+            border_color: "#000000",
+            alignment: 1,
+          },
+          add_keyframes: {
+            keyframes: [
+              {
+                segment_id: "请替换为 add_images 返回的 segment_id",
+                offset: 0,
+                property: "KFTypePositionX",
+                value: 0,
+              },
+              {
+                segment_id: "请替换为 add_images 返回的 segment_id",
+                offset: 2000000,
+                property: "KFTypePositionX",
+                value: 0.18,
+              },
+            ],
+          },
+          add_effects: {
+            effect_infos: [
+              {
+                effect: "金粉闪闪",
+                start: 0,
+                end: 2000000,
+              },
+            ],
+          },
+        };
+        return samples[tool] || {};
+      }
+
+      function fillLiveDraftSample() {
+        const tool = document.getElementById("liveDraftTool").value;
+        const payload = getLiveDraftToolSample(tool);
+        document.getElementById("liveDraftPayload").value = JSON.stringify(
+          payload,
+          null,
+          2,
+        );
+      }
+
+      function renderLiveDraftResult(title, desc, payload) {
+        const card = document.getElementById("liveDraftResultCard");
+        const metrics = document.getElementById("liveDraftMetrics");
+        document.getElementById("liveDraftResultTitle").textContent = title;
+        document.getElementById("liveDraftResultDesc").textContent = desc;
+        document.getElementById("liveDraftResultJson").textContent =
+          JSON.stringify(payload, null, 2);
+        setDirDisplay("liveDraftDirDisplay", payload?.draft_dir || "");
+        metrics.innerHTML = "";
+
+        const chips = [];
+        if (payload && payload.draft_id) chips.push(`draft_id: ${payload.draft_id}`);
+        if (payload && payload.track_id) chips.push(`track: ${payload.track_id}`);
+        if (payload && Array.isArray(payload.segment_ids)) {
+          chips.push(`segments: ${payload.segment_ids.length}`);
+        }
+        if (payload && Array.isArray(payload.effect_ids)) {
+          chips.push(`effects: ${payload.effect_ids.length}`);
+        }
+        if (typeof payload?.applied === "number") {
+          chips.push(`applied: ${payload.applied}`);
+        }
+
+        chips.forEach((item) => {
+          const span = document.createElement("span");
+          span.className = "metric-chip";
+          span.textContent = item;
+          metrics.appendChild(span);
+        });
+
+        card.classList.add("show");
+        setTimeout(() => {
+          card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }, 80);
+      }
+
+      async function createLiveDraft() {
+        const btn = document.getElementById("createLiveDraftBtn");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading"></span> 创建中...';
+
+        try {
+          const payload = {
+            width: Number(document.getElementById("liveDraftWidth").value || 1920),
+            height: Number(document.getElementById("liveDraftHeight").value || 1080),
+            name: document.getElementById("liveDraftName").value.trim(),
+          };
+          const resp = await fetch("/api/tools/create_draft", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await resp.json();
+          if (!resp.ok) {
+            renderLiveDraftResult("创建草稿失败", data.message || "请求失败", data);
+            showToast(data.message || "创建草稿失败", "error");
+            return;
+          }
+          liveDraftId = data.draft_id || "";
+          refreshLiveDraftIdDisplay();
+          renderLiveDraftResult(
+            "草稿创建成功",
+            "后续 add_* 工具会自动复用这个 draft_id。",
+            data,
+          );
+          showToast("草稿创建成功", "success");
+        } catch (err) {
+          showToast("网络错误，请重试", "error");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "创建本地草稿";
+        }
+      }
+
+      async function runLiveDraftTool() {
+        if (!liveDraftId) {
+          showToast("请先创建本地草稿", "error");
+          return;
+        }
+
+        const raw = document.getElementById("liveDraftPayload").value.trim();
+        if (!raw) {
+          showToast("请先填写工具参数 JSON", "error");
+          return;
+        }
+
+        let payload;
+        try {
+          payload = JSON.parse(raw);
+        } catch (err) {
+          showToast("工具参数不是合法 JSON", "error");
+          return;
+        }
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+          showToast("工具参数顶层必须是对象", "error");
+          return;
+        }
+
+        const tool = document.getElementById("liveDraftTool").value;
+        const btn = document.getElementById("runLiveDraftToolBtn");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading"></span> 执行中...';
+
+        try {
+          const req = { ...payload, draft_id: liveDraftId };
+          const resp = await fetch(`/api/tools/${tool}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(req),
+          });
+          const data = await resp.json();
+
+          if (!resp.ok) {
+            renderLiveDraftResult(`${tool} 执行失败`, data.message || "请求失败", data);
+            showToast(data.message || `${tool} 失败`, "error");
+            return;
+          }
+
+          if (data.draft_id) {
+            liveDraftId = data.draft_id;
+            refreshLiveDraftIdDisplay();
+          }
+          renderLiveDraftResult(
+            `${tool} 执行成功`,
+            "草稿已经被实时更新，当前页面保存的 draft_id 可继续复用。",
+            data,
+          );
+          showToast(`${tool} 执行成功`, "success");
+        } catch (err) {
+          showToast("网络错误，请重试", "error");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "执行当前工具";
+        }
+      }
+
+      function fillDraftKeySample() {
+        const sample = {
+          schema_version: "1.0",
+          kind: "jianying_draft_key",
+          meta: {
+            workflow: "本地草稿示例",
+            run_id: "demo_local_key_001",
+            title: "本地草稿示例",
+          },
+          draft: {
+            width: 1920,
+            height: 1080,
+            name: "本地草稿示例",
+          },
+          calls: [
+            {
+              call_id: "demo_caption",
+              tool: "add_captions",
+              params: {
+                captions: [
+                  {
+                    text: "这是一个本地草稿 key 示例",
+                    start: 0,
+                    end: 3000000,
+                  },
+                ],
+                font: "江湖体",
+                font_size: 12,
+                text_color: "#FFE95A",
+                border_color: "#000000",
+                alignment: 1,
+                transform_y: -480,
+              },
+            },
+          ],
+        };
+        document.getElementById("draftKeyInput").value = JSON.stringify(
+          sample,
+          null,
+          2,
+        );
+        showToast("已填入示例 key", "success");
+      }
+
+      function normalizeDraftKeyPayload(text) {
+        let parsed;
+        try {
+          parsed = JSON.parse(text);
+        } catch (err) {
+          throw new Error("输入内容不是合法 JSON");
+        }
+
+        if (parsed && typeof parsed === "object" && typeof parsed.draft_key === "string") {
+          parsed = JSON.parse(parsed.draft_key);
+        }
+        if (parsed && typeof parsed === "object" && parsed.key_json && typeof parsed.key_json === "string") {
+          parsed = JSON.parse(parsed.key_json);
+        }
+        if (parsed && typeof parsed === "object" && parsed.key && typeof parsed.key === "object") {
+          parsed = parsed.key;
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("key 顶层必须是对象");
+        }
+        return parsed;
+      }
+
+      function renderDraftKeyResult(payload) {
+        const resultCard = document.getElementById("draftKeyResultCard");
+        const resultTitle = document.getElementById("draftKeyResultTitle");
+        const resultDesc = document.getElementById("draftKeyResultDesc");
+        const resultJson = document.getElementById("draftKeyResultJson");
+        const metrics = document.getElementById("draftKeyMetrics");
+        const draftId = payload.draft_id || payload.imported_draft_id || "";
+        const alreadyImported = Boolean(payload.already_imported);
+        const dryRun = Boolean(payload.dry_run);
+        const importedCalls =
+          payload.call_count ??
+          payload.imported_call_count ??
+          payload.calls_executed ??
+          "";
+
+        resultTitle.textContent = dryRun
+          ? "Key 校验完成"
+          : alreadyImported
+            ? "草稿已存在，返回已有导入结果"
+            : "本地草稿生成完成";
+
+        resultDesc.textContent =
+          payload.message ||
+          (dryRun
+            ? "这个 key 已通过校验，但没有真正写入本地草稿。"
+            : "后端已经按 key 中的调用顺序写入本地草稿目录。");
+        setDirDisplay("draftKeyDirDisplay", payload.draft_dir || "");
+
+        metrics.innerHTML = "";
+        const chips = [];
+        if (draftId) chips.push(`draft_id: ${draftId}`);
+        if (importedCalls !== "") chips.push(`calls: ${importedCalls}`);
+        if (alreadyImported) chips.push("幂等命中");
+        if (dryRun) chips.push("dry_run");
+        chips.forEach((item) => {
+          const span = document.createElement("span");
+          span.className = "metric-chip";
+          span.textContent = item;
+          metrics.appendChild(span);
+        });
+
+        resultJson.textContent = JSON.stringify(payload, null, 2);
+        resultCard.classList.add("show");
+        setTimeout(() => {
+          resultCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }, 80);
+      }
+
+      async function importDraftKey() {
+        const raw = document.getElementById("draftKeyInput").value.trim();
+        if (!raw) {
+          showToast("请先粘贴 draft key JSON", "error");
+          return;
+        }
+
+        let key;
+        try {
+          key = normalizeDraftKeyPayload(raw);
+        } catch (err) {
+          showToast(err.message || "key 解析失败", "error");
+          return;
+        }
+
+        const btn = document.getElementById("importDraftKeyBtn");
+        const dryRun = document.getElementById("draftKeyDryRun").checked;
+        const force = document.getElementById("draftKeyForce").checked;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading"></span> 导入中...';
+
+        try {
+          const resp = await fetch("/api/tools/create_draft_from_key", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key, dry_run: dryRun, force }),
+          });
+          const data = await resp.json();
+
+          if (!resp.ok) {
+            renderDraftKeyResult(data);
+            showToast(data.message || "导入失败", "error");
+            return;
+          }
+
+          renderDraftKeyResult(data);
+          showToast(
+            dryRun ? "校验完成" : "本地草稿生成成功",
+            "success",
+          );
+        } catch (err) {
+          showToast("网络错误，请重试", "error");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "一键生成本地草稿";
         }
       }
 

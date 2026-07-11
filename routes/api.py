@@ -9,7 +9,7 @@ import subprocess
 import traceback
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlsplit
 from unicodedata import normalize
 
 from flask import Blueprint, request, jsonify, Response, send_file
@@ -51,6 +51,7 @@ from utils.jianying_drafts import (
     append_captions as append_draft_captions,
     append_effects as append_draft_effects,
     append_keyframes as append_draft_keyframes,
+    get_draft_info as get_jianying_draft_info,
 )
 from utils.local_media_generation import (
     generate_placeholder_image,
@@ -114,6 +115,36 @@ def _coze_list_param(data, primary_key, alias_keys=()):
             return []
         return parsed if isinstance(parsed, list) else []
     return []
+
+
+def _draft_url_for_id(draft_id: str) -> str:
+    return f"{_external_base_url().rstrip('/')}/api/tools/get_draft?draft_id={quote(str(draft_id or '').strip())}"
+
+
+def _draft_id_from_url(draft_url) -> str:
+    raw = str(draft_url or "").strip()
+    if not raw:
+        return ""
+    try:
+        query = parse_qs(urlsplit(raw).query)
+    except Exception:
+        return ""
+    return str((query.get("draft_id") or [""])[0]).strip()
+
+
+def _resolve_request_draft_id(data) -> str:
+    draft_id = str(data.get("draft_id", "")).strip()
+    if draft_id:
+        return draft_id
+    return _draft_id_from_url(data.get("draft_url"))
+
+
+def _attach_draft_url(payload, draft_id: str):
+    body = dict(payload or {})
+    if draft_id:
+        body.setdefault("draft_id", draft_id)
+        body.setdefault("draft_url", _draft_url_for_id(draft_id))
+    return body
 
 
 def _coze_audio_tools_openapi(base_url):
@@ -395,7 +426,7 @@ def _coze_workflow_tools_openapi(base_url):
                     "tags": ["workflow-tools"],
                     "operationId": "create_draft",
                     "summary": "创建本地剪映草稿",
-                    "description": "创建本地剪映草稿目录，并返回 draft_id，供后续 add_audios、add_images、add_captions 等工具继续写入素材。",
+                    "description": "创建本地剪映草稿目录，并返回 draft_id 与 draft_url，供后续 add_audios、add_images、add_captions 等工具继续写入素材。",
                     "requestBody": {
                         "required": False,
                         "content": {
@@ -421,6 +452,7 @@ def _coze_workflow_tools_openapi(base_url):
                                         "type": "object",
                                         "properties": {
                                             "draft_id": {"type": "string", "description": "草稿唯一标识。"},
+                                            "draft_url": {"type": "string", "description": "草稿访问地址，可直接传给兼容 capcut-mate 风格的后续工具调用。"},
                                             "draft_name": {"type": "string", "description": "草稿名称。"},
                                             "draft_dir": {"type": "string", "description": "草稿目录的本地绝对路径。"},
                                             "width": {"type": "integer", "description": "草稿画布宽度。"},
@@ -429,6 +461,42 @@ def _coze_workflow_tools_openapi(base_url):
                                             "message": {"type": "string", "description": "执行结果说明。"},
                                         },
                                         "required": ["draft_id", "message"],
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/tools/get_draft": {
+                "get": {
+                    "tags": ["workflow-tools"],
+                    "operationId": "get_draft",
+                    "summary": "查询本地剪映草稿",
+                    "description": "根据 draft_id 或 draft_url 查询本地草稿信息，并返回 Windows 可访问路径。",
+                    "parameters": [
+                        {"name": "draft_id", "in": "query", "schema": {"type": "string"}, "description": "草稿 ID。"},
+                        {"name": "draft_url", "in": "query", "schema": {"type": "string"}, "description": "草稿地址；与 draft_id 二选一即可。"},
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "草稿查询结果。",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "draft_id": {"type": "string", "description": "草稿唯一标识。"},
+                                            "draft_url": {"type": "string", "description": "草稿访问地址。"},
+                                            "draft_name": {"type": "string", "description": "草稿名称。"},
+                                            "draft_dir": {"type": "string", "description": "草稿目录的本地绝对路径。"},
+                                            "width": {"type": "integer", "description": "草稿画布宽度。"},
+                                            "height": {"type": "integer", "description": "草稿画布高度。"},
+                                            "ratio": {"type": "string", "description": "画布比例，例如 9:16。"},
+                                            "duration": {"type": "integer", "description": "当前草稿总时长，单位微秒。"},
+                                            "message": {"type": "string", "description": "执行结果说明。"},
+                                        },
+                                        "required": ["draft_id", "draft_dir", "message"],
                                     }
                                 }
                             },
@@ -450,6 +518,7 @@ def _coze_workflow_tools_openapi(base_url):
                                     "type": "object",
                                     "properties": {
                                         "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                        "draft_url": {"type": "string", "description": "目标草稿的 draft_url。与 draft_id 二选一即可。"},
                                         "audio_infos": {
                                             "type": "array",
                                             "description": "音频片段列表，每一项代表一段要插入草稿的音频。",
@@ -465,7 +534,7 @@ def _coze_workflow_tools_openapi(base_url):
                                             },
                                         },
                                     },
-                                    "required": ["draft_id", "audio_infos"],
+                                    "required": ["audio_infos"],
                                 }
                             }
                         },
@@ -479,6 +548,7 @@ def _coze_workflow_tools_openapi(base_url):
                                         "type": "object",
                                         "properties": {
                                             "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                            "draft_url": {"type": "string", "description": "目标草稿的 draft_url。"},
                                             "message": {"type": "string", "description": "执行结果说明。"},
                                             "track_id": {"type": "string", "description": "写入的音频轨道 ID。"},
                                             "segment_ids": {"type": "array", "description": "新建音频片段 ID 列表。", "items": {"type": "string"}},
@@ -507,6 +577,7 @@ def _coze_workflow_tools_openapi(base_url):
                                     "type": "object",
                                     "properties": {
                                         "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                        "draft_url": {"type": "string", "description": "目标草稿的 draft_url。与 draft_id 二选一即可。"},
                                         "alpha": {"type": "number", "description": "默认透明度，取值通常为 0 到 1。"},
                                         "image_infos": {
                                             "type": "array",
@@ -527,7 +598,7 @@ def _coze_workflow_tools_openapi(base_url):
                                             },
                                         },
                                     },
-                                    "required": ["draft_id", "image_infos"],
+                                    "required": ["image_infos"],
                                 }
                             }
                         },
@@ -541,6 +612,7 @@ def _coze_workflow_tools_openapi(base_url):
                                         "type": "object",
                                         "properties": {
                                             "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                            "draft_url": {"type": "string", "description": "目标草稿的 draft_url。"},
                                             "message": {"type": "string", "description": "执行结果说明。"},
                                             "track_id": {"type": "string", "description": "写入的图片轨道 ID。"},
                                             "segment_ids": {"type": "array", "description": "新建图片片段 ID 列表。", "items": {"type": "string"}},
@@ -568,6 +640,7 @@ def _coze_workflow_tools_openapi(base_url):
                                     "type": "object",
                                     "properties": {
                                         "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                        "draft_url": {"type": "string", "description": "目标草稿的 draft_url。与 draft_id 二选一即可。"},
                                         "captions": {
                                             "type": "array",
                                             "description": "字幕片段列表，每一项代表一段字幕。",
@@ -594,7 +667,7 @@ def _coze_workflow_tools_openapi(base_url):
                                         "transform_y": {"type": "number", "description": "Y 方向位移。"},
                                         "style_text": {"type": "integer", "description": "样式文本模式或预设编号，可选。"},
                                     },
-                                    "required": ["draft_id", "captions"],
+                                    "required": ["captions"],
                                 }
                             }
                         },
@@ -608,6 +681,7 @@ def _coze_workflow_tools_openapi(base_url):
                                         "type": "object",
                                         "properties": {
                                             "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                            "draft_url": {"type": "string", "description": "目标草稿的 draft_url。"},
                                             "message": {"type": "string", "description": "执行结果说明。"},
                                             "track_id": {"type": "string", "description": "写入的字幕轨道 ID。"},
                                             "segment_ids": {"type": "array", "description": "新建字幕片段 ID 列表。", "items": {"type": "string"}},
@@ -902,6 +976,7 @@ def _coze_workflow_tools_openapi(base_url):
                                     "type": "object",
                                     "properties": {
                                         "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                        "draft_url": {"type": "string", "description": "目标草稿的 draft_url。与 draft_id 二选一即可。"},
                                         "keyframes": {
                                             "type": "array",
                                             "description": "关键帧列表。",
@@ -918,12 +993,12 @@ def _coze_workflow_tools_openapi(base_url):
                                             },
                                         },
                                     },
-                                    "required": ["draft_id", "keyframes"],
+                                    "required": ["keyframes"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "关键帧写入结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"draft_id": {"type": "string", "description": "目标草稿的 draft_id。"}, "message": {"type": "string", "description": "执行结果说明。"}, "applied": {"type": "integer", "description": "成功写入的关键帧数量。"}}}}}}},
+                    "responses": {"200": {"description": "关键帧写入结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"draft_id": {"type": "string", "description": "目标草稿的 draft_id。"}, "draft_url": {"type": "string", "description": "目标草稿的 draft_url。"}, "message": {"type": "string", "description": "执行结果说明。"}, "applied": {"type": "integer", "description": "成功写入的关键帧数量。"}}}}}}},
                 }
             },
             "/tools/add_effects": {
@@ -940,6 +1015,7 @@ def _coze_workflow_tools_openapi(base_url):
                                     "type": "object",
                                     "properties": {
                                         "draft_id": {"type": "string", "description": "目标草稿的 draft_id。"},
+                                        "draft_url": {"type": "string", "description": "目标草稿的 draft_url。与 draft_id 二选一即可。"},
                                         "effect_infos": {
                                             "type": "array",
                                             "description": "特效片段列表。",
@@ -956,12 +1032,12 @@ def _coze_workflow_tools_openapi(base_url):
                                             },
                                         },
                                     },
-                                    "required": ["draft_id", "effect_infos"],
+                                    "required": ["effect_infos"],
                                 }
                             }
                         },
                     },
-                    "responses": {"200": {"description": "特效片段写入结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"draft_id": {"type": "string", "description": "目标草稿的 draft_id。"}, "message": {"type": "string", "description": "执行结果说明。"}, "effect_ids": {"type": "array", "description": "新建特效素材 ID 列表。", "items": {"type": "string"}}, "segment_ids": {"type": "array", "description": "新建特效片段 ID 列表。", "items": {"type": "string"}}, "segment_infos": {"type": "array", "description": "写入后的特效片段信息。", "items": {"type": "object", "properties": {"id": {"type": "string", "description": "片段 ID。"}, "start": {"type": "integer", "description": "开始时间，单位微秒。"}, "end": {"type": "integer", "description": "结束时间，单位微秒。"}, "effect": {"type": "string", "description": "特效名称。"}}, "required": ["id", "start", "end", "effect"]}}, "track_id": {"type": "string", "description": "写入的特效轨道 ID。"}}}}}}},
+                    "responses": {"200": {"description": "特效片段写入结果。", "content": {"application/json": {"schema": {"type": "object", "properties": {"draft_id": {"type": "string", "description": "目标草稿的 draft_id。"}, "draft_url": {"type": "string", "description": "目标草稿的 draft_url。"}, "message": {"type": "string", "description": "执行结果说明。"}, "effect_ids": {"type": "array", "description": "新建特效素材 ID 列表。", "items": {"type": "string"}}, "segment_ids": {"type": "array", "description": "新建特效片段 ID 列表。", "items": {"type": "string"}}, "segment_infos": {"type": "array", "description": "写入后的特效片段信息。", "items": {"type": "object", "properties": {"id": {"type": "string", "description": "片段 ID。"}, "start": {"type": "integer", "description": "开始时间，单位微秒。"}, "end": {"type": "integer", "description": "结束时间，单位微秒。"}, "effect": {"type": "string", "description": "特效名称。"}}, "required": ["id", "start", "end", "effect"]}}, "track_id": {"type": "string", "description": "写入的特效轨道 ID。"}}}}}}},
                 }
             },
             "/tools/speech_synthesis": {
@@ -1300,14 +1376,33 @@ def api_create_draft():
         data = request.args
 
     try:
-        return jsonify(create_jianying_draft(
+        payload = create_jianying_draft(
             width=data.get("width", 1920),
             height=data.get("height", 1080),
             name=str(data.get("name", "")).strip(),
             user_id=data.get("user_id"),
-        ))
+        )
+        return jsonify(_attach_draft_url(payload, payload.get("draft_id", "")))
     except Exception as e:
         return jsonify({"message": str(e)}), 400
+
+
+@api_bp.route("/tools/get_draft", methods=["GET", "POST"])
+def api_get_draft():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    draft_id = _resolve_request_draft_id(data)
+    if not draft_id:
+        return jsonify({"message": "missing draft_id or draft_url"}), 400
+
+    try:
+        payload = get_jianying_draft_info(draft_id)
+        return jsonify(_attach_draft_url(payload, payload.get("draft_id", draft_id)))
+    except Exception as e:
+        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
 
 
 @api_bp.route("/tools/add_audios", methods=["GET", "POST"])
@@ -1317,17 +1412,18 @@ def api_add_audios():
     else:
         data = request.args
 
-    draft_id = str(data.get("draft_id", "")).strip()
+    draft_id = _resolve_request_draft_id(data)
     audio_infos = _coze_list_param(data, "audio_infos", ("audio_infos_json",))
     if not draft_id:
-        return jsonify({"message": "missing draft_id"}), 400
+        return jsonify({"message": "missing draft_id or draft_url"}), 400
     if not isinstance(audio_infos, list):
         return jsonify({"message": "audio_infos must be a list"}), 400
 
     try:
-        return jsonify(append_draft_audios(draft_id, audio_infos))
+        payload = append_draft_audios(draft_id, audio_infos)
+        return jsonify(_attach_draft_url(payload, draft_id))
     except Exception as e:
-        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+        return jsonify(_attach_draft_url({"message": str(e)}, draft_id)), 400
 
 
 @api_bp.route("/tools/add_images", methods=["GET", "POST"])
@@ -1337,21 +1433,22 @@ def api_add_images():
     else:
         data = request.args
 
-    draft_id = str(data.get("draft_id", "")).strip()
+    draft_id = _resolve_request_draft_id(data)
     image_infos = _coze_list_param(data, "image_infos", ("image_infos_json",))
     if not draft_id:
-        return jsonify({"message": "missing draft_id"}), 400
+        return jsonify({"message": "missing draft_id or draft_url"}), 400
     if not isinstance(image_infos, list):
         return jsonify({"message": "image_infos must be a list"}), 400
 
     try:
-        return jsonify(append_draft_images(
+        payload = append_draft_images(
             draft_id,
             image_infos,
             alpha=data.get("alpha"),
-        ))
+        )
+        return jsonify(_attach_draft_url(payload, draft_id))
     except Exception as e:
-        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+        return jsonify(_attach_draft_url({"message": str(e)}, draft_id)), 400
 
 
 @api_bp.route("/tools/add_captions", methods=["GET", "POST"])
@@ -1361,15 +1458,15 @@ def api_add_captions():
     else:
         data = request.args
 
-    draft_id = str(data.get("draft_id", "")).strip()
+    draft_id = _resolve_request_draft_id(data)
     captions = _coze_list_param(data, "captions", ("captions_json",))
     if not draft_id:
-        return jsonify({"message": "missing draft_id"}), 400
+        return jsonify({"message": "missing draft_id or draft_url"}), 400
     if not isinstance(captions, list):
         return jsonify({"message": "captions must be a list"}), 400
 
     try:
-        return jsonify(append_draft_captions(
+        payload = append_draft_captions(
             draft_id,
             captions,
             alpha=data.get("alpha"),
@@ -1385,9 +1482,10 @@ def api_add_captions():
             text_color=str(data.get("text_color", "#FFFFFF")).strip() or "#FFFFFF",
             transform_x=data.get("transform_x"),
             transform_y=data.get("transform_y"),
-        ))
+        )
+        return jsonify(_attach_draft_url(payload, draft_id))
     except Exception as e:
-        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+        return jsonify(_attach_draft_url({"message": str(e)}, draft_id)), 400
 
 
 @api_bp.route("/tools/add_keyframes", methods=["GET", "POST"])
@@ -1397,17 +1495,18 @@ def api_add_keyframes():
     else:
         data = request.args
 
-    draft_id = str(data.get("draft_id", "")).strip()
+    draft_id = _resolve_request_draft_id(data)
     keyframes = _coze_list_param(data, "keyframes", ("keyframes_json",))
     if not draft_id:
-        return jsonify({"message": "missing draft_id"}), 400
+        return jsonify({"message": "missing draft_id or draft_url"}), 400
     if not isinstance(keyframes, list):
         return jsonify({"message": "keyframes must be a list"}), 400
 
     try:
-        return jsonify(append_draft_keyframes(draft_id, keyframes))
+        payload = append_draft_keyframes(draft_id, keyframes)
+        return jsonify(_attach_draft_url(payload, draft_id))
     except Exception as e:
-        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+        return jsonify(_attach_draft_url({"message": str(e)}, draft_id)), 400
 
 
 @api_bp.route("/tools/add_effects", methods=["GET", "POST"])
@@ -1417,17 +1516,18 @@ def api_add_effects():
     else:
         data = request.args
 
-    draft_id = str(data.get("draft_id", "")).strip()
+    draft_id = _resolve_request_draft_id(data)
     effect_infos = _coze_list_param(data, "effect_infos", ("effect_infos_json",))
     if not draft_id:
-        return jsonify({"message": "missing draft_id"}), 400
+        return jsonify({"message": "missing draft_id or draft_url"}), 400
     if not isinstance(effect_infos, list):
         return jsonify({"message": "effect_infos must be a list"}), 400
 
     try:
-        return jsonify(append_draft_effects(draft_id, effect_infos))
+        payload = append_draft_effects(draft_id, effect_infos)
+        return jsonify(_attach_draft_url(payload, draft_id))
     except Exception as e:
-        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+        return jsonify(_attach_draft_url({"message": str(e)}, draft_id)), 400
 
 
 @api_bp.route("/tools/create_draft_from_key", methods=["POST"])

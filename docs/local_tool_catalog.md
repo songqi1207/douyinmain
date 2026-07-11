@@ -17,6 +17,7 @@
 | `timeline_merge` | `http://127.0.0.1:5001/api/tools/timeline_merge` | 本地实现可用 |
 | `effect_infos` | `http://127.0.0.1:5001/api/tools/effect_infos` | 本地实现可用 |
 | `create_draft` | `http://127.0.0.1:5001/api/tools/create_draft` | 本地实现可用 |
+| `get_draft` | `http://127.0.0.1:5001/api/tools/get_draft` | 查询本地草稿信息，返回 Windows 可访问路径；兼容 `draft_id` / `draft_url` |
 | `add_audios` | `http://127.0.0.1:5001/api/tools/add_audios` | 本地实现可用 |
 | `add_images` | `http://127.0.0.1:5001/api/tools/add_images` | 本地实现可用 |
 | `add_captions` | `http://127.0.0.1:5001/api/tools/add_captions` | 本地实现可用 |
@@ -41,6 +42,12 @@
 - 本地侧：复制工作流运行结果里的 key → 存成文件 → `python scripts/import_draft_key.py key.json`，草稿直接写进本机剪映草稿目录（`JIANYING_DRAFT_ROOT` 可覆盖）。
 - 素材（配音/生图）仍由 Coze 官方语音合成与米核生图产出，key 里只带 URL，导入器统一预取缓存。
 - 剪映资源元数据（特效/字体/出入场动画 名字→resource_id）：`utils/data/jianying_meta.json`（源自 pyJianYingDraft 0.3.0）。
+
+## draft_id / draft_url 兼容说明
+
+- `create_draft` 现在同时返回 `draft_id` 和 `draft_url`。
+- `add_audios`、`add_images`、`add_captions`、`add_keyframes`、`add_effects` 现在支持传 `draft_id`，也支持直接传 `draft_url`。
+- `get_draft` 可用于把 `draft_id` 或 `draft_url` 解析成真实本地草稿路径，适合前端直接展示给 Windows 打开。
 
 ## 工具中文名对照（按模板实际使用）
 
