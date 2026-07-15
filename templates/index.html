@@ -1140,6 +1140,79 @@
 
             <div class="form-section" id="draftKeyForm">
               <div class="mode-block">
+                <h4>Draft ID 同步到本地</h4>
+                <p>
+                  输入服务器生成的 <code>draft_id</code>，可以先查询它是否已经在本机存在；
+                  如果还不在本机，就直接从服务器拉取这份草稿并导入到当前 Windows 剪映草稿目录。
+                </p>
+              </div>
+
+              <div class="form-group">
+                <label>Remote Base URL <span class="required">*</span></label>
+                <input
+                  id="draftRemoteBaseUrl"
+                  type="text"
+                  value="https://api.songqi.online"
+                  data-hint="直连 IP:端口 请优先填 http，域名反代再用 https"
+                  placeholder="例如：https://api.songqi.online"
+                />
+              </div>
+
+              <div class="form-group">
+                <label>Draft ID <span class="required">*</span></label>
+                <input
+                  id="draftLookupId"
+                  type="text"
+                  placeholder="例如：2EB6F4E6-6BC1-4C2F-BC88-F4B31F25D085"
+                />
+              </div>
+
+              <div class="upload-row">
+                <button
+                  class="btn secondary-btn"
+                  type="button"
+                  onclick="fillDraftLookupSample()"
+                >
+                  填入示例 Draft ID
+                </button>
+                <button
+                  class="btn secondary-btn"
+                  type="button"
+                  onclick="clearDraftLookupInput()"
+                >
+                  清空 Draft ID
+                </button>
+              </div>
+
+              <div class="button-row" style="margin-top: 18px">
+                <button
+                  class="btn primary-btn"
+                  id="syncDraftBtn"
+                  type="button"
+                  onclick="syncDraftToLocal()"
+                >
+                  从服务器同步到本地
+                </button>
+                <button
+                  class="btn secondary-btn"
+                  id="queryDraftBtn"
+                  type="button"
+                  onclick="queryDraftById()"
+                >
+                  查询本地草稿路径
+                </button>
+              </div>
+
+              <div class="helper-block">
+                <strong>说明：</strong>
+                “从服务器同步到本地”会调用本机
+                <code>/api/tools/import_remote_draft</code>，
+                自动去远端下载该
+                <code>draft_id</code>
+                的草稿包，导入成功后再返回本机 Windows 草稿路径。
+              </div>
+
+              <div class="mode-block">
                 <h4>Key 一次性导入模式</h4>
                 <p>
                   这里就是你要的模式。把工作流最终输出的
@@ -1341,8 +1414,8 @@
           previewUrl: "/api/preview_video/god",
         },
         draft_key: {
-          title: "本地草稿导入",
-          desc: "粘贴工作流最终输出的 key，直接转换为本地剪映草稿，并返回 Windows 可访问路径。",
+          title: "草稿路径查询 / Key 导入",
+          desc: "优先输入工作流输出的 draft_id 查询本地保存路径；如果拿到的是完整 key，再用下方入口导入本地草稿。",
           previewTitle: "",
           previewUrl: "",
         },
@@ -1418,7 +1491,7 @@
         } else if (type === "god") {
           document.getElementById("godName").focus();
         } else {
-          document.getElementById("draftKeyInput").focus();
+          document.getElementById("draftLookupId").focus();
         }
       }
 
@@ -1725,6 +1798,20 @@
 
       function clearDraftKeyInput() {
         document.getElementById("draftKeyInput").value = "";
+        const resultCard = document.getElementById("draftKeyResultCard");
+        resultCard.classList.remove("show");
+      }
+
+      function fillDraftLookupSample() {
+        document.getElementById("draftRemoteBaseUrl").value =
+          "https://api.songqi.online";
+        document.getElementById("draftLookupId").value =
+          "2EB6F4E6-6BC1-4C2F-BC88-F4B31F25D085";
+        showToast("已填入示例 draft_id", "success");
+      }
+
+      function clearDraftLookupInput() {
+        document.getElementById("draftLookupId").value = "";
         const resultCard = document.getElementById("draftKeyResultCard");
         resultCard.classList.remove("show");
       }
@@ -2124,6 +2211,138 @@
         setTimeout(() => {
           resultCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }, 80);
+      }
+
+      function renderDraftLookupResult(payload) {
+        const resultCard = document.getElementById("draftKeyResultCard");
+        const resultTitle = document.getElementById("draftKeyResultTitle");
+        const resultDesc = document.getElementById("draftKeyResultDesc");
+        const resultJson = document.getElementById("draftKeyResultJson");
+        const metrics = document.getElementById("draftKeyMetrics");
+
+        resultTitle.textContent = "本地草稿路径查询结果";
+        resultDesc.textContent =
+          payload.message || "已根据 draft_id 查询到当前草稿保存位置。";
+        setDirDisplay("draftKeyDirDisplay", payload.draft_dir || "");
+
+        metrics.innerHTML = "";
+        const chips = [];
+        if (payload.draft_id) chips.push(`draft_id: ${payload.draft_id}`);
+        if (payload.draft_name) chips.push(`name: ${payload.draft_name}`);
+        if (payload.ratio) chips.push(`ratio: ${payload.ratio}`);
+        chips.forEach((item) => {
+          const span = document.createElement("span");
+          span.className = "metric-chip";
+          span.textContent = item;
+          metrics.appendChild(span);
+        });
+
+        resultJson.textContent = JSON.stringify(payload, null, 2);
+        resultCard.classList.add("show");
+        setTimeout(() => {
+          resultCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }, 80);
+      }
+
+      async function queryDraftById() {
+        const draftId = document.getElementById("draftLookupId").value.trim();
+        if (!draftId) {
+          showToast("请先输入 draft_id", "error");
+          return;
+        }
+
+        const btn = document.getElementById("queryDraftBtn");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading"></span> 查询中...';
+
+        try {
+          const resp = await fetch("/api/tools/get_draft", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ draft_id: draftId }),
+          });
+          const data = await resp.json();
+
+          if (!resp.ok) {
+            renderDraftLookupResult(data);
+            showToast(data.message || "查询失败", "error");
+            return;
+          }
+
+          renderDraftLookupResult(data);
+          showToast("草稿路径查询成功", "success");
+        } catch (err) {
+          showToast("网络错误，请重试", "error");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "查询本地草稿路径";
+        }
+      }
+
+      function normalizeRemoteBaseUrl(raw) {
+        let value = String(raw || "").trim();
+        if (!value) {
+          return "";
+        }
+        if (!value.includes("://")) {
+          const host = value.split("/", 1)[0];
+          const bareHost = host.split(":", 1)[0];
+          const isDirectHost =
+            bareHost === "localhost" ||
+            bareHost === "127.0.0.1" ||
+            /^\\d+\\.\\d+\\.\\d+\\.\\d+$/.test(bareHost);
+          value = `${isDirectHost || host.includes(":") ? "http" : "https"}://${value}`;
+        }
+        value = value.replace(/\/+$/, "");
+        value = value.replace(/^https:\/\/(\d+\.\d+\.\d+\.\d+):(\d+)(\/|$)/i, "http://$1:$2$3");
+        return value;
+      }
+
+      async function syncDraftToLocal() {
+        const draftId = document.getElementById("draftLookupId").value.trim();
+        const remoteBaseUrl = normalizeRemoteBaseUrl(
+          document.getElementById("draftRemoteBaseUrl").value.trim(),
+        );
+
+        if (!draftId) {
+          showToast("请先输入 draft_id", "error");
+          return;
+        }
+        if (!remoteBaseUrl) {
+          showToast("请先输入远端服务地址", "error");
+          return;
+        }
+        document.getElementById("draftRemoteBaseUrl").value = remoteBaseUrl;
+
+        const btn = document.getElementById("syncDraftBtn");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading"></span> 同步中...';
+
+        try {
+          const resp = await fetch("/api/tools/import_remote_draft", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              draft_id: draftId,
+              remote_base_url: remoteBaseUrl,
+            }),
+          });
+          const data = await resp.json();
+
+          if (!resp.ok) {
+            renderDraftLookupResult(data);
+            showToast(data.message || "同步失败", "error");
+            return;
+          }
+
+          renderDraftLookupResult(data);
+          showToast("草稿已同步到本地", "success");
+        } catch (err) {
+          showToast("网络错误，请重试", "error");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "从服务器同步到本地";
+        }
       }
 
       async function importDraftKey() {

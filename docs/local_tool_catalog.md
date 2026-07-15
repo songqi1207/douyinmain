@@ -18,6 +18,8 @@
 | `effect_infos` | `http://127.0.0.1:5001/api/tools/effect_infos` | 本地实现可用 |
 | `create_draft` | `http://127.0.0.1:5001/api/tools/create_draft` | 本地实现可用 |
 | `get_draft` | `http://127.0.0.1:5001/api/tools/get_draft` | 查询本地草稿信息，返回 Windows 可访问路径；兼容 `draft_id` / `draft_url` |
+| `export_draft_archive` | `http://127.0.0.1:5001/api/tools/export_draft_archive` | 根据 `draft_id` 导出整份草稿 zip 包，供其它机器拉取 |
+| `import_remote_draft` | `http://127.0.0.1:5001/api/tools/import_remote_draft` | 根据远端 `draft_id` / 草稿包 URL 拉取草稿并导入到当前机器 |
 | `add_audios` | `http://127.0.0.1:5001/api/tools/add_audios` | 本地实现可用 |
 | `add_images` | `http://127.0.0.1:5001/api/tools/add_images` | 本地实现可用 |
 | `add_captions` | `http://127.0.0.1:5001/api/tools/add_captions` | 本地实现可用 |
@@ -48,6 +50,8 @@
 - `create_draft` 现在同时返回 `draft_id` 和 `draft_url`。
 - `add_audios`、`add_images`、`add_captions`、`add_keyframes`、`add_effects` 现在支持传 `draft_id`，也支持直接传 `draft_url`。
 - `get_draft` 可用于把 `draft_id` 或 `draft_url` 解析成真实本地草稿路径，适合前端直接展示给 Windows 打开。
+- `export_draft_archive` 可把服务器上已有的 `draft_id` 打成 zip。
+- `import_remote_draft` 可在本机通过远端 `draft_id` 或现成 `package_url` 拉回草稿，落到当前机器的剪映草稿目录。
 
 ## 工具中文名对照（按模板实际使用）
 

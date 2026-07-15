@@ -8,11 +8,14 @@ import json
 import mimetypes
 import os
 import shutil
+import tempfile
 import time
 import uuid
+import zipfile
+import ipaddress
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import requests
 
@@ -505,6 +508,195 @@ def get_draft_info(draft_id: str) -> dict[str, Any]:
         "duration": int(content.get("duration") or 0),
         "message": "ok",
     }
+
+
+def _deep_replace_paths(value: Any, replacements: list[tuple[str, str]]) -> Any:
+    if isinstance(value, dict):
+        return {key: _deep_replace_paths(item, replacements) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_deep_replace_paths(item, replacements) for item in value]
+    if isinstance(value, str):
+        text = value
+        for old, new in replacements:
+            if old:
+                text = text.replace(old, new)
+        return text
+    return value
+
+
+def _is_ip_host(hostname: str) -> bool:
+    try:
+        ipaddress.ip_address(str(hostname or "").strip())
+        return True
+    except ValueError:
+        return False
+
+
+def _looks_like_direct_host(hostname: str) -> bool:
+    host = str(hostname or "").strip().lower()
+    return host in {"localhost", "127.0.0.1", "0.0.0.0"} or _is_ip_host(host)
+
+
+def _normalize_remote_base_url(remote_base_url: str) -> str:
+    raw = str(remote_base_url or "").strip().rstrip("/")
+    if not raw:
+        return ""
+    if "://" not in raw:
+        host = raw.split("/", 1)[0]
+        scheme = "http" if _looks_like_direct_host(host.split(":", 1)[0]) or ":" in host else "https"
+        raw = f"{scheme}://{raw}"
+    parsed = urlparse(raw)
+    if parsed.scheme == "https" and _looks_like_direct_host(parsed.hostname or "") and parsed.port not in (None, 443):
+        parsed = parsed._replace(scheme="http")
+        return urlunparse(parsed).rstrip("/")
+    return raw
+
+
+def _candidate_archive_urls(draft_id: str, remote_base_url: str = "", package_url: str = "") -> list[str]:
+    explicit = str(package_url or "").strip()
+    if explicit:
+        return [explicit]
+
+    base_url = _normalize_remote_base_url(remote_base_url)
+    if not base_url:
+        return []
+
+    candidates = [f"{base_url}/api/tools/export_draft_archive?draft_id={draft_id}"]
+    parsed = urlparse(base_url)
+    if parsed.scheme == "https" and _looks_like_direct_host(parsed.hostname or "") and parsed.port not in (None, 443):
+        http_base = urlunparse(parsed._replace(scheme="http")).rstrip("/")
+        fallback = f"{http_base}/api/tools/export_draft_archive?draft_id={draft_id}"
+        if fallback not in candidates:
+            candidates.append(fallback)
+    return candidates
+
+
+def _http_get_without_proxy(url: str, timeout: int, stream: bool = False) -> requests.Response:
+    session = requests.Session()
+    session.trust_env = False
+    return session.get(url, timeout=timeout, stream=stream)
+
+
+def export_draft_archive(draft_id: str) -> dict[str, Any]:
+    bundle = _load_bundle(draft_id)
+    draft_dir = Path(bundle["draft_dir"])
+    export_root = _PROJECT_ROOT / "temp" / "exported_drafts"
+    export_root.mkdir(parents=True, exist_ok=True)
+    archive_path = export_root / f"{draft_dir.name}.zip"
+
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for item in draft_dir.rglob("*"):
+            if item.is_file():
+                zf.write(item, item.relative_to(draft_dir))
+
+    return {
+        "draft_id": draft_dir.name,
+        "draft_dir": str(draft_dir),
+        "archive_path": str(archive_path),
+        "message": "ok",
+    }
+
+
+def import_remote_draft(
+    draft_id: str,
+    remote_base_url: str = "",
+    package_url: str = "",
+    force: Any = False,
+) -> dict[str, Any]:
+    target_id = str(draft_id or "").strip()
+    if not target_id:
+        raise ValueError("missing draft_id")
+
+    force_flag = str(force).strip().lower() in {"1", "true", "yes", "on"} if not isinstance(force, bool) else force
+    archive_candidates = _candidate_archive_urls(
+        draft_id=target_id,
+        remote_base_url=remote_base_url,
+        package_url=package_url,
+    )
+    if not archive_candidates:
+        raise ValueError("missing remote_base_url or package_url")
+
+    draft_root = _draft_root()
+    target_dir = draft_root / target_id
+    if target_dir.exists():
+        if force_flag:
+            shutil.rmtree(target_dir, ignore_errors=True)
+        else:
+            existing = get_draft_info(target_id)
+            existing["already_exists"] = True
+            existing["message"] = "draft already exists locally"
+            return existing
+
+    with tempfile.TemporaryDirectory(prefix="draft_import_") as temp_dir:
+        archive_path = Path(temp_dir) / f"{target_id}.zip"
+        response = None
+        last_error = None
+        archive_url = archive_candidates[0]
+        for candidate in archive_candidates:
+            archive_url = candidate
+            try:
+                response = _http_get_without_proxy(candidate, timeout=_REMOTE_TIMEOUT, stream=True)
+                response.raise_for_status()
+                break
+            except Exception as exc:
+                last_error = exc
+                response = None
+        if response is None:
+            raise RuntimeError(
+                f"failed to download remote draft archive from {archive_url}: "
+                + (str(last_error) if last_error else "unknown error")
+            )
+        with archive_path.open("wb") as fh:
+            for chunk in response.iter_content(chunk_size=1024 * 256):
+                if chunk:
+                    fh.write(chunk)
+
+        extract_dir = Path(temp_dir) / "extract"
+        extract_dir.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            zf.extractall(extract_dir)
+
+        content_path = extract_dir / "draft_content.json"
+        meta_path = extract_dir / "draft_meta_info.json"
+        if not content_path.exists() or not meta_path.exists():
+            raise FileNotFoundError("invalid draft archive: missing core json files")
+
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        content = json.loads(content_path.read_text(encoding="utf-8"))
+
+        old_dir = str(meta.get("draft_fold_path") or "")
+        old_root = str(meta.get("draft_root_path") or "")
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for item in extract_dir.iterdir():
+            dest = target_dir / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, dest)
+
+        replacements = [
+            (old_dir, str(target_dir)),
+            (old_root, str(draft_root)),
+        ]
+        content = _deep_replace_paths(content, replacements)
+        meta = _deep_replace_paths(meta, replacements)
+        meta["draft_id"] = target_id
+        meta["draft_fold_path"] = str(target_dir)
+        meta["draft_root_path"] = str(draft_root)
+        meta["draft_name"] = str(meta.get("draft_name") or content.get("name") or target_id)
+
+        imported_bundle = {
+            "draft_dir": target_dir,
+            "content": content,
+            "meta": meta,
+        }
+        _write_bundle(imported_bundle)
+
+    result = get_draft_info(target_id)
+    result["source_archive_url"] = archive_url
+    result["message"] = "ok"
+    return result
 
 
 def _guess_remote_suffix(url: str, content_type: str = "") -> str:

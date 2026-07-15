@@ -52,6 +52,8 @@ from utils.jianying_drafts import (
     append_effects as append_draft_effects,
     append_keyframes as append_draft_keyframes,
     get_draft_info as get_jianying_draft_info,
+    export_draft_archive as export_jianying_draft_archive,
+    import_remote_draft as import_remote_jianying_draft,
 )
 from utils.local_media_generation import (
     generate_placeholder_image,
@@ -1400,6 +1402,50 @@ def api_get_draft():
 
     try:
         payload = get_jianying_draft_info(draft_id)
+        return jsonify(_attach_draft_url(payload, payload.get("draft_id", draft_id)))
+    except Exception as e:
+        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+
+
+@api_bp.route("/tools/export_draft_archive", methods=["GET", "POST"])
+def api_export_draft_archive():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.args
+
+    draft_id = _resolve_request_draft_id(data)
+    if not draft_id:
+        return jsonify({"message": "missing draft_id or draft_url"}), 400
+
+    try:
+        payload = export_jianying_draft_archive(draft_id)
+        archive_path = payload["archive_path"]
+        return send_file(
+            archive_path,
+            as_attachment=True,
+            attachment_filename=f"{payload['draft_id']}.zip",
+            mimetype="application/zip",
+            conditional=True,
+        )
+    except Exception as e:
+        return jsonify({"draft_id": draft_id, "message": str(e)}), 400
+
+
+@api_bp.route("/tools/import_remote_draft", methods=["POST"])
+def api_import_remote_draft():
+    data = request.get_json(silent=True) or {}
+    draft_id = str(data.get("draft_id", "")).strip()
+    if not draft_id:
+        return jsonify({"message": "missing draft_id"}), 400
+
+    try:
+        payload = import_remote_jianying_draft(
+            draft_id=draft_id,
+            remote_base_url=str(data.get("remote_base_url", "")).strip(),
+            package_url=str(data.get("package_url", "")).strip(),
+            force=data.get("force", False),
+        )
         return jsonify(_attach_draft_url(payload, payload.get("draft_id", draft_id)))
     except Exception as e:
         return jsonify({"draft_id": draft_id, "message": str(e)}), 400
