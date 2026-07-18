@@ -31,6 +31,7 @@ from utils.jianying_drafts import (
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _CACHE_DIR = _PROJECT_ROOT / "temp" / "draft_key_cache"
 _REGISTRY_PATH = _PROJECT_ROOT / "temp" / "draft_key_imports.json"
+_RENDER_KEYS_DIR = _PROJECT_ROOT / "temp" / "draft_render_keys"
 
 _DOWNLOAD_ATTEMPTS = 3
 _DOWNLOAD_TIMEOUT = 60
@@ -129,6 +130,22 @@ def _load_registry() -> dict[str, Any]:
 def _save_registry(registry: dict[str, Any]) -> None:
     _REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
     _REGISTRY_PATH.write_text(json.dumps(registry, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _save_render_key(draft_id: str, key: dict[str, Any]) -> Path:
+    """Persist the semantic source used by the FFmpeg renderer.
+
+    JianYing's draft JSON contains resource IDs and flattened track data, while
+    draft_key keeps the portable intent (asset URL, caption style, keyframes,
+    and effect names).  Keeping this sidecar makes ``draft_id -> MP4`` possible
+    without reverse engineering the generated JianYing folder again.
+    """
+    _RENDER_KEYS_DIR.mkdir(parents=True, exist_ok=True)
+    target = _RENDER_KEYS_DIR / f"{draft_id}.json"
+    temporary = target.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(key, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(target)
+    return target
 
 
 def _validate_key(key: Any) -> list[str]:
@@ -299,6 +316,10 @@ def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool 
     if existing and not force:
         draft_dir = Path(str(existing.get("draft_dir") or ""))
         if draft_dir.exists():
+            render_key_path = _save_render_key(str(existing.get("draft_id") or ""), key)
+            existing["render_key_path"] = str(render_key_path)
+            registry[fingerprint] = existing
+            _save_registry(registry)
             return {**existing, "already_imported": True, "message": "ok"}
         registry.pop(fingerprint, None)
 
@@ -404,6 +425,7 @@ def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool 
             }
         )
 
+    render_key_path = _save_render_key(draft_id, key)
     report = {
         "draft_id": draft_id,
         "draft_name": created["draft_name"],
@@ -412,6 +434,7 @@ def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool 
         "already_imported": False,
         "calls": report_calls,
         "warnings": warnings,
+        "render_key_path": str(render_key_path),
         "message": "ok",
     }
     registry[fingerprint] = {
@@ -420,6 +443,7 @@ def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool 
         "draft_dir": created["draft_dir"],
         "fingerprint": fingerprint,
         "imported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "render_key_path": str(render_key_path),
     }
     _save_registry(registry)
     return report

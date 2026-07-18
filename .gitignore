@@ -15,6 +15,7 @@ coverage.xml
 
 .env
 .env.*
+!.env.example
 
 *.mov
 *.mp4
@@ -45,3 +46,16 @@ covers/*
 covers/flip_frames/
 
 dy-tt-main/
+
+# 会员站参考工作流附件（本地验证用，约 285 MB，不随代码提交）
+downloads/reference_workflows/
+
+frontend/node_modules/
+frontend/node_modules_failed/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# PyInstaller 临时构建目录；dist 中的桥接 EXE 是交付产物。
+build/
