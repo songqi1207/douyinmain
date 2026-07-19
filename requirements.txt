@@ -5,3 +5,9 @@ beautifulsoup4
 gunicorn
 python-dotenv
 Pillow
+fastapi
+uvicorn[standard]
+python-multipart
+redis
+rq
+volcengine==1.0.226

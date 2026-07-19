@@ -1,7 +1,7 @@
 {
   "name": "douyinmain-coze-web-tests",
   "private": true,
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "test:coze-plugin": "node scripts/test_coze_plugin_page.mjs"
   },

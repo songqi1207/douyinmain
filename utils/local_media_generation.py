@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 import textwrap
 import uuid
@@ -18,6 +19,67 @@ from utils.audio_probe import probe_audio_duration
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _GENERATED_ROOT = _PROJECT_ROOT / "temp" / "generated"
+
+
+def list_system_voices() -> list[dict]:
+    """Discover the voices the Windows System.Speech engine can really use."""
+    script = "\n".join(
+        [
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+            "Add-Type -AssemblyName System.Speech",
+            "$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer",
+            "$voices = @($synth.GetInstalledVoices() | Where-Object { $_.Enabled } | ForEach-Object {",
+            "  [PSCustomObject]@{",
+            "    id = $_.VoiceInfo.Name",
+            "    name = $_.VoiceInfo.Description",
+            "    culture = $_.VoiceInfo.Culture.Name",
+            "    gender = [string]$_.VoiceInfo.Gender",
+            "    age = [string]$_.VoiceInfo.Age",
+            "  }",
+            "})",
+            "$synth.Dispose()",
+            "$voices | ConvertTo-Json -Compress",
+        ]
+    )
+    try:
+        completed = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", script],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if completed.returncode != 0 or not completed.stdout.strip():
+        return []
+    try:
+        payload = json.loads(completed.stdout.strip())
+    except json.JSONDecodeError:
+        return []
+    rows = payload if isinstance(payload, list) else [payload]
+    voices = []
+    for row in rows:
+        if not isinstance(row, dict) or not str(row.get("id") or "").strip():
+            continue
+        raw_gender = str(row.get("gender") or "Neutral").lower()
+        gender = raw_gender if raw_gender in {"female", "male"} else "neutral"
+        culture = str(row.get("culture") or "").strip()
+        voices.append(
+            {
+                "id": str(row["id"]).strip(),
+                "name": str(row.get("name") or row["id"]).strip(),
+                "gender": gender,
+                "gender_label": {"female": "女声", "male": "男声", "neutral": "中性"}[gender],
+                "language": culture or "未知",
+                "description": f"本机已安装的 System.Speech 音色（{culture or '未标注语言'}）",
+                "model": "Windows System.Speech",
+                "provider": "local-system",
+                "available": True,
+            }
+        )
+    return voices
 
 
 def _ensure_dir(kind: str) -> Path:
@@ -144,9 +206,7 @@ def synthesize_speech(
             f"$synth.Rate = {rate}",
             f"$text = Get-Content -LiteralPath '{escaped_text_path}' -Raw -Encoding UTF8",
             f"$wav = '{escaped_wav_path}'",
-            "try {",
-            f"  if ('{escaped_voice_name}'.Trim()) {{ $synth.SelectVoice('{escaped_voice_name}') }}",
-            "} catch { }",
+            f"if ('{escaped_voice_name}'.Trim()) {{ $synth.SelectVoice('{escaped_voice_name}') }}",
             "$synth.SetOutputToWaveFile($wav)",
             "$synth.Speak($text)",
             "$synth.Dispose()",
@@ -160,10 +220,10 @@ def synthesize_speech(
         errors="replace",
         timeout=120,
     )
-    placeholder_used = False
     if synth.returncode != 0 or not wav_path.exists() or wav_path.stat().st_size <= 128:
-        _render_placeholder_audio(wav_path, content, speed)
-        placeholder_used = True
+        wav_path.unlink(missing_ok=True)
+        detail = ((synth.stderr or "") + "\n" + (synth.stdout or "")).strip()
+        raise RuntimeError(detail or "本机语音合成失败")
 
     try:
         text_path.unlink(missing_ok=True)
@@ -172,10 +232,9 @@ def synthesize_speech(
 
     try:
         duration = probe_audio_duration(str(wav_path))
-    except Exception:
-        _render_placeholder_audio(wav_path, content, speed)
-        duration = probe_audio_duration(str(wav_path))
-        placeholder_used = True
+    except Exception as exc:
+        wav_path.unlink(missing_ok=True)
+        raise RuntimeError(f"生成的音频无法读取：{exc}") from exc
     return {
         "code": 0,
         "data": {
@@ -183,7 +242,7 @@ def synthesize_speech(
             "link": generated_public_url(base_url, "audio", wav_path.name),
         },
         "log_id": task_id,
-        "msg": "ok (local placeholder audio)" if placeholder_used else "ok",
+        "msg": "ok",
     }
 
 

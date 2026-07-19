@@ -16,6 +16,7 @@ coverage.xml
 .env
 .env.*
 !.env.example
+!.env.render-worker.example
 
 *.mov
 *.mp4

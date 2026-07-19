@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>图片工作流中心</title>
+  <style>
+    :root{--bg:#111214;--panel:#1b1c1f;--panel2:#242529;--line:#3b3c40;--text:#f3f4f6;--muted:#9ca3af;--accent:#f7b955;--accent2:#ffcf70}
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 20% 0,#24262c 0,#111214 44%);color:var(--text);font:14px/1.6 system-ui,-apple-system,"Microsoft YaHei",sans-serif}
+    .shell{width:min(1240px,calc(100% - 32px));margin:0 auto;padding:28px 0 60px}.top{display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:24px}.eyebrow{color:var(--accent);font-size:12px;letter-spacing:.18em}.top h1{font-size:30px;margin:5px 0 0}.top p{margin:6px 0 0;color:var(--muted)}
+    .search{width:300px;background:var(--panel);border:1px solid var(--line);border-radius:12px;color:var(--text);padding:12px 14px;outline:0}.search:focus{border-color:var(--accent)}
+    .layout{display:grid;grid-template-columns:220px 1fr;gap:22px}.side{background:rgba(27,28,31,.88);border:1px solid var(--line);border-radius:14px;padding:14px;height:max-content;position:sticky;top:18px}.side h2{font-size:13px;color:var(--muted);margin:0 0 10px}.cat{width:100%;border:0;border-radius:9px;background:transparent;color:var(--muted);padding:11px 12px;text-align:left;cursor:pointer;display:flex;justify-content:space-between}.cat:hover,.cat.active{color:var(--text);background:#303136}.cat.active{box-shadow:inset 3px 0 var(--accent)}.count{color:#6b7280}
+    .bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}.bar h2{font-size:18px;margin:0}.bar small{color:var(--muted)}.chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px}.chip{border:1px solid var(--line);background:transparent;border-radius:99px;color:var(--muted);padding:5px 11px;cursor:pointer}.chip.active,.chip:hover{border-color:var(--accent);color:var(--accent2)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:14px}.card{background:linear-gradient(145deg,#202125,#18191b);border:1px solid var(--line);border-radius:13px;overflow:hidden;min-height:238px;display:flex;flex-direction:column}.cover{height:116px;background:linear-gradient(135deg,#27282c,#101113);display:flex;align-items:center;justify-content:center;color:#777;font-size:42px}.body{padding:14px;display:flex;flex-direction:column;gap:8px;flex:1}.code{color:var(--accent);font-size:12px}.name{font-size:16px;font-weight:700;line-height:1.4}.desc{color:var(--muted);font-size:12px;min-height:38px}.tags{display:flex;flex-wrap:wrap;gap:5px}.tag{background:#2c2d31;color:#bfc2c8;border-radius:5px;padding:2px 7px;font-size:11px}.foot{display:flex;align-items:center;justify-content:space-between;margin-top:auto;color:var(--muted);font-size:12px}.start{border:0;background:var(--accent);color:#1a1a1a;border-radius:7px;padding:7px 12px;font-weight:700;cursor:pointer}.start:hover{background:var(--accent2)}.empty{color:var(--muted);padding:50px;text-align:center;border:1px dashed var(--line);border-radius:12px;grid-column:1/-1}
+    @media(max-width:760px){.top{display:block}.search{width:100%;margin-top:15px}.layout{grid-template-columns:1fr}.side{position:static}.side nav{display:flex;overflow:auto;gap:5px}.cat{min-width:max-content}.cat span:first-child{margin-right:8px}}
+  </style>
+</head>
+<body>
+<main class="shell">
+  <header class="top"><div><div class="eyebrow">PRIVATE WORKFLOW HUB</div><h1>图片工作流中心</h1><p>图片、图文、商品素材和图片转视频，统一在后台封装。</p></div><input id="search" class="search" placeholder="搜索工作流、标签或场景"></header>
+  <div class="layout"><aside class="side"><h2>工作流分类</h2><nav id="categories"></nav></aside><section><div class="bar"><h2>全部图片工作流</h2><small id="total"></small></div><div class="chips" id="chips"></div><div class="grid" id="grid"></div></section></div>
+</main>
+<script>
+  const state={kind:'全部',tag:'',q:''};
+  const $=s=>document.querySelector(s);
+  async function loadCategories(){const d=await fetch('/api/workflow-categories').then(r=>r.json());$('#categories').innerHTML=d.categories.map(c=>`<button class="cat ${c.kind===state.kind?'active':''}" data-kind="${c.kind}"><span>${c.name}</span><span class="count">${c.count}</span></button>`).join('');document.querySelectorAll('.cat').forEach(b=>b.onclick=()=>{state.kind=b.dataset.kind;state.tag='';render()})}
+  async function render(){await loadCategories();const url=new URL('/api/workflows',location);if(state.kind)url.searchParams.set('kind',state.kind);if(state.tag)url.searchParams.set('tag',state.tag);if(state.q)url.searchParams.set('q',state.q);const d=await fetch(url).then(r=>r.json());$('#total').textContent=`共 ${d.total} 个`;const tags=[...new Set(d.workflows.flatMap(w=>w.tags))];$('#chips').innerHTML=`<button class="chip ${!state.tag?'active':''}" data-tag="">全部标签</button>`+tags.map(t=>`<button class="chip ${state.tag===t?'active':''}" data-tag="${t}">${t}</button>`).join('');document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{state.tag=b.dataset.tag;render()});$('#grid').innerHTML=d.workflows.length?d.workflows.map(w=>`<article class="card"><div class="cover">${w.kind==='图文卡片'?'▧':w.kind==='图片转视频'?'▶':'✦'}</div><div class="body"><div class="code">${w.code} · ${w.kind}</div><div class="name">${w.name}</div><div class="desc">${w.description}</div><div class="tags">${w.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div><div class="foot"><span>输出：${w.output}</span><button class="start" data-code="${w.code}">开始制作</button></div></div></article>`).join(''):'<div class="empty">没有匹配的工作流</div>';document.querySelectorAll('.start').forEach(b=>b.onclick=()=>alert(`${b.dataset.code} 已进入制作队列入口，接入 provider 后即可生成。`))}
+  $('#search').oninput=e=>{state.q=e.target.value;render()};render();
+</script>
+</body></html>
