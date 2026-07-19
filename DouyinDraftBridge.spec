@@ -9,7 +9,10 @@ a = Analysis(
     [str(root / "desktop_bridge_main.py")],
     pathex=[str(root)],
     binaries=[],
-    datas=[(str(root / "utils" / "data" / "jianying_meta.json"), "utils/data")],
+    datas=[
+        (str(root / "utils" / "data" / "jianying_meta.json"), "utils/data"),
+        (str(root / "scripts" / "run_mihe_sync_automation.ps1"), "scripts"),
+    ],
     hiddenimports=["PIL.Image", "requests"],
     hookspath=[],
     hooksconfig={},
