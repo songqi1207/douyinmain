@@ -496,24 +496,33 @@ def _run_local_workflow(job: dict) -> list[dict]:
     code = job["workflow_code"]
     inputs = job["inputs"]
     destination = RESULT_DIR / f"{code.lower()}-{job['id']}.json"
+    generated_destination = destination
 
     if code == "OWN02":
         from workflows.cigarette import generate_cigarette_workflow
+        from workflows.god.local_key import convert_workflow_to_local_key
 
         workflow, _warning = generate_cigarette_workflow(
             str(inputs.get("theme") or inputs.get("cigarette_name") or "").strip(),
             cover_url=str(inputs.get("cover_url") or "").strip(),
             voice_id=str(inputs.get("voice_id") or "").strip(),
         )
+        convert_workflow_to_local_key(
+            workflow,
+            workflow_name="香烟工作流_本地草稿",
+            draft_name=f"香烟_{str(inputs.get('theme') or inputs.get('cigarette_name') or '').strip()}",
+            run_prefix="cigarette_local_",
+        )
         destination.write_text(json.dumps(workflow, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     else:
         if code == "OWN01":
+            generated_destination = destination.with_name(f".{destination.name}.source.json")
             command = [
                 "node",
                 str(ROOT / "generate-book-template.js"),
                 str(inputs.get("theme") or inputs.get("book_name") or "").strip(),
                 "--out",
-                str(destination),
+                str(generated_destination),
             ]
             option_map = {
                 "author": "--author",
@@ -523,12 +532,13 @@ def _run_local_workflow(job: dict) -> list[dict]:
                 "voice_id": "--yinse",
             }
         elif code == "OWN03":
+            generated_destination = destination.with_name(f".{destination.name}.source.json")
             command = [
                 "node",
                 str(ROOT / "generate-god-template.js"),
                 str(inputs.get("theme") or inputs.get("god_name") or "").strip(),
                 "--out",
-                str(destination),
+                str(generated_destination),
             ]
             option_map = {
                 "description": "--desc",
@@ -555,10 +565,34 @@ def _run_local_workflow(job: dict) -> list[dict]:
                 timeout=120,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
+            generated_destination.unlink(missing_ok=True)
             raise ProviderError("local_generator_failed", "本地工作流生成器无法运行") from exc
-        if process.returncode != 0 or not destination.is_file():
+        if process.returncode != 0 or not generated_destination.is_file():
             detail = (process.stderr or process.stdout or "").strip()[-300:]
+            generated_destination.unlink(missing_ok=True)
             raise ProviderError("local_generator_failed", detail or "本地工作流生成失败")
+
+        if code in {"OWN01", "OWN03"}:
+            from workflows.god.local_key import generate_local_key_workflow
+
+            theme = str(inputs.get("theme") or "").strip()
+            profile = {
+                "OWN01": ("书单工作流_本地草稿", f"书单_{theme}", "book_local_"),
+                "OWN03": ("神工作流模板_本地草稿", f"神话解说_{theme}", "god_local_"),
+            }[code]
+            try:
+                generate_local_key_workflow(
+                    generated_destination,
+                    destination,
+                    workflow_name=profile[0],
+                    draft_name=profile[1],
+                    run_prefix=profile[2],
+                )
+            except Exception as exc:
+                destination.unlink(missing_ok=True)
+                raise ProviderError("local_generator_failed", f"生成 draft_key 工作流失败: {exc}") from exc
+            finally:
+                generated_destination.unlink(missing_ok=True)
 
     if not destination.is_file():
         raise ProviderError("local_generator_failed", "本地工作流没有生成结果文件")

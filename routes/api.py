@@ -63,6 +63,7 @@ from utils.local_media_generation import (
 from utils.template_loader import find_preview_video, get_preview_video_url
 from workflows.book.builder import generate_book_workflow
 from workflows.cigarette import generate_cigarette_workflow
+from workflows.god.local_key import convert_workflow_to_local_key, generate_local_key_workflow
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -1765,8 +1766,9 @@ def api_generate_book():
         safe_name = re.sub(r'[^\w一-鿿]', '', book_name)[:20]
         filename = f"每天认识一本书_{safe_name}_{timestamp}.txt"
         out_path = _REPO_ROOT / filename
+        source_path = out_path.with_name(f".{out_path.name}.source.json")
 
-        cmd = ["node", str(BOOK_TEMPLATE_GENERATOR), book_name, "--out", str(out_path)]
+        cmd = ["node", str(BOOK_TEMPLATE_GENERATOR), book_name, "--out", str(source_path)]
         if author:
             cmd += ["--author", author]
         if visual_style:
@@ -1785,8 +1787,23 @@ def api_generate_book():
             cmd += ["--texiao", texiao]
 
         ok, detail = _run_node_generator(cmd)
-        if not ok or not out_path.exists():
+        if not ok or not source_path.exists():
+            source_path.unlink(missing_ok=True)
             return jsonify({"error": f"生成失败: {detail[-500:] or 'node 生成器执行失败'}"}), 500
+
+        try:
+            conversion = generate_local_key_workflow(
+                source_path,
+                out_path,
+                workflow_name="书单工作流_本地草稿",
+                draft_name=f"书单_{book_name}",
+                run_prefix="book_local_",
+            )
+        except Exception as conversion_error:
+            out_path.unlink(missing_ok=True)
+            return jsonify({"error": f"生成 draft_key 工作流失败: {conversion_error}"}), 500
+        finally:
+            source_path.unlink(missing_ok=True)
 
         warning = None
         if "不在内置画面气质库" in detail:
@@ -1801,6 +1818,8 @@ def api_generate_book():
             "download_url": f"/api/download/{filename}",
             "preview_video_url": get_preview_video_url("book"),
             "book_info": {"title": book_name, "author": author, "summary": summary},
+            "workflow_output": "draft_key",
+            "draft_call_count": len(conversion["calls"]),
             "warning": warning,
         })
     except Exception as e:
@@ -1834,6 +1853,12 @@ def _generate_book_from_link(data, book_name, author, cover, shuliang,
             from_link=True,
             url=url,
         )
+        conversion = convert_workflow_to_local_key(
+            workflow,
+            workflow_name="书单工作流_本地草稿",
+            draft_name=f"书单_{book_name}",
+            run_prefix="book_local_",
+        )
         book_info["cover_workflow_url"] = cover_url_for_coze_workflow(
             book_info.get("cover", ""), pub
         )
@@ -1851,6 +1876,8 @@ def _generate_book_from_link(data, book_name, author, cover, shuliang,
             "download_url": f"/api/download/{filename}",
             "preview_video_url": get_preview_video_url("book"),
             "book_info": book_info,
+            "workflow_output": "draft_key",
+            "draft_call_count": len(conversion["calls"]),
         })
     except Exception as e:
         traceback.print_exc()
@@ -1869,6 +1896,12 @@ def api_generate_cigarette():
 
     try:
         workflow, warning = generate_cigarette_workflow(cigarette_name, cover_url=cover_url, voice_id=voice_id)
+        conversion = convert_workflow_to_local_key(
+            workflow,
+            workflow_name="香烟工作流_本地草稿",
+            draft_name=f"香烟_{cigarette_name}",
+            run_prefix="cigarette_local_",
+        )
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_name = re.sub(r'[^\w\u4e00-\u9fff]', '', cigarette_name)[:20]
@@ -1883,6 +1916,8 @@ def api_generate_cigarette():
             "download_url": f"/api/download/{filename}",
             "preview_video_url": get_preview_video_url("cigarette"),
             "cigarette_name": cigarette_name,
+            "workflow_output": "draft_key",
+            "draft_call_count": len(conversion["calls"]),
             "warning": warning,
         })
     except Exception as e:
@@ -1910,8 +1945,9 @@ def api_generate_god():
         filename = f"每天认识一个神_{safe_name}_{timestamp}.txt"
 
         out_path = _REPO_ROOT / filename
+        source_path = out_path.with_name(f".{out_path.name}.source.json")
 
-        cmd = ["node", str(GOD_TEMPLATE_GENERATOR), god_name, "--out", str(out_path)]
+        cmd = ["node", str(GOD_TEMPLATE_GENERATOR), god_name, "--out", str(source_path)]
         if desc:
             cmd += ["--desc", desc]
         if wenan:
@@ -1934,9 +1970,18 @@ def api_generate_god():
             cwd=str(_REPO_ROOT),
             timeout=120,
         )
-        if proc.returncode != 0 or not out_path.exists():
+        if proc.returncode != 0 or not source_path.exists():
             detail = (proc.stderr or proc.stdout or "").strip()[-500:]
+            source_path.unlink(missing_ok=True)
             return jsonify({"error": f"生成失败: {detail or 'node 生成器执行失败'}"}), 500
+
+        try:
+            conversion = generate_local_key_workflow(source_path, out_path)
+        except Exception as conversion_error:
+            out_path.unlink(missing_ok=True)
+            return jsonify({"error": f"生成 draft_key 工作流失败: {conversion_error}"}), 500
+        finally:
+            source_path.unlink(missing_ok=True)
 
         warning = None
         if "不在内置形象库" in (proc.stderr or ""):
@@ -1951,6 +1996,8 @@ def api_generate_god():
             "download_url": f"/api/download/{filename}",
             "preview_video_url": get_preview_video_url("god"),
             "god_name": god_name,
+            "workflow_output": "draft_key",
+            "draft_call_count": len(conversion["calls"]),
             "warning": warning,
         })
     except Exception as e:

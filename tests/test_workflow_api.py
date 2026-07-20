@@ -179,6 +179,19 @@ class WorkflowApiTests(unittest.TestCase):
             result = self.client.get(job["results"][0]["url"])
             self.assertEqual(result.status_code, 200)
             self.assertEqual(result.json()["type"], "coze-workflow-clipboard-data")
+            end = next(
+                node
+                for node in result.json()["json"]["nodes"]
+                if str(node.get("id")) == "900001"
+            )
+            output_names = [
+                item["name"]
+                for item in end["data"]["inputs"]["inputParameters"]
+            ]
+            self.assertEqual(output_names, ["draft_key"])
+            self.assertTrue(
+                any(str(node.get("id")) == "300201" for node in result.json()["json"]["nodes"])
+            )
 
     def test_starter_workflow_schemas_and_document_upload(self):
         g259 = self.client.get("/api/v1/workflows/G259", params={"category": "起号"})
