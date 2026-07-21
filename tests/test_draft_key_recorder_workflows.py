@@ -379,6 +379,13 @@ class DraftKeyRecorderWorkflowTests(unittest.TestCase):
         nodes = {str(node["id"]): node for node in workflow["json"]["nodes"]}
         recorder = nodes[report["recorder_node_id"]]
         calls = {call["call_id"]: call for call in report["calls"]}
+        for node_id in ("126860", "226902"):
+            font_param = next(
+                item
+                for item in nodes[node_id]["data"]["inputs"]["inputParameters"]
+                if item["name"] == "font"
+            )
+            self.assertEqual(font_param["input"]["value"]["content"], "出云龙")
 
         params = {}
         caption_payload = json.dumps(

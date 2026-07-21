@@ -1340,6 +1340,15 @@
               >
                 查看示例视频
               </button>
+              <button
+                class="btn secondary-btn"
+                id="acceptanceReportBtn"
+                type="button"
+                style="display: none"
+                onclick="downloadAcceptanceReport()"
+              >
+                下载验收报告
+              </button>
             </div>
           </section>
 
@@ -1398,6 +1407,7 @@
     <script>
       let currentBiz = "";
       let currentDownloadUrl = "";
+      let currentAcceptanceReportUrl = "";
       let currentPreviewVideoUrl = "";
       let liveDraftId = "";
 
@@ -1461,6 +1471,8 @@
 
       function selectBiz(type) {
         currentBiz = type;
+        currentAcceptanceReportUrl = "";
+        document.getElementById("acceptanceReportBtn").style.display = "none";
 
         document.querySelectorAll(".biz-item").forEach((item) => {
           item.classList.toggle("active", item.dataset.type === type);
@@ -1756,15 +1768,26 @@
 
           if (data.success) {
             currentDownloadUrl = data.download_url;
+            currentAcceptanceReportUrl = data.acceptance_report_url || "";
+            document.getElementById("acceptanceReportBtn").style.display =
+              currentAcceptanceReportUrl ? "inline-flex" : "none";
             currentPreviewVideoUrl =
               data.preview_video_url ||
               bizMeta.god.previewUrl ||
               "/api/preview_video/god";
             document.getElementById("downloadBtn").textContent = "下载 draft_key JSON";
-            showToast("剪映草稿生成成功", "success");
+            const acceptance = data.acceptance_report || {};
+            const acceptanceText = acceptance.status_text || "验收报告已生成";
+            const acceptanceType =
+              acceptance.status === "failed"
+                ? "error"
+                : acceptance.status === "warning"
+                  ? ""
+                  : "success";
+            showToast(`剪映草稿生成成功；${acceptanceText}`, acceptanceType);
             showResult(
-              "剪映草稿生成成功",
-              `草稿 ID：${data.draft_id}；本地目录：${data.draft_dir}`,
+              `剪映草稿生成成功 · ${acceptanceText}`,
+              `草稿 ID：${data.draft_id}；本地目录：${data.draft_dir}；通过 ${acceptance.summary?.passed_checks || 0} 项，警告 ${acceptance.summary?.warning_checks || 0} 项，失败 ${acceptance.summary?.failed_checks || 0} 项。`,
             );
           } else {
             showToast(data.error || "生成失败", "error");
@@ -2506,6 +2529,12 @@
       function downloadFile() {
         if (currentDownloadUrl) {
           window.location.href = currentDownloadUrl;
+        }
+      }
+
+      function downloadAcceptanceReport() {
+        if (currentAcceptanceReportUrl) {
+          window.location.href = currentAcceptanceReportUrl;
         }
       }
 

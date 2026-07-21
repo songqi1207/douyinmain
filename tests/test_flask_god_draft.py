@@ -20,10 +20,44 @@ class FlaskGodDraftTests(unittest.TestCase):
             "draft": {"width": 1080, "height": 1920, "name": "西王母"},
             "calls": [
                 {
-                    "call_id": "caption",
+                    "call_id": "audio",
+                    "tool": "add_audios",
+                    "params": {"audio_infos": [{"audio_url": "https://example.test/a.mp3", "start": 0, "end": 1_000_000}]},
+                },
+                {
+                    "call_id": "main_images",
+                    "tool": "add_images",
+                    "params": {"image_infos": [{"image_url": "https://example.test/a.jpg", "start": 0, "end": 1_000_000, "in_animation": "Kira游动"}]},
+                },
+                {
+                    "call_id": "slide_a",
                     "tool": "add_captions",
-                    "params": {"captions": [{"text": "西王母", "start": 0, "end": 1_000_000}]},
-                }
+                    "params": {"font": "出云龙", "in_animation": "滚入", "captions": [{"text": "西王母", "start": 0, "end": 500_000}]},
+                },
+                {
+                    "call_id": "title_lock",
+                    "tool": "add_captions",
+                    "params": {"font": "出云龙", "in_animation": "放大", "captions": [{"text": "西王母", "start": 500_000, "end": 1_000_000}]},
+                },
+                {
+                    "call_id": "main_captions",
+                    "tool": "add_captions",
+                    "params": {"font": "江湖体", "text_color": "#FFDE00", "captions": [{"text": "昆仑女仙之首", "start": 0, "end": 1_000_000}]},
+                },
+                {
+                    "call_id": "camera_kf",
+                    "tool": "add_keyframes",
+                    "params": {"keyframes": [
+                        {"segment_ref": {"call_id": "main_images", "index": 0}, "property": "KFTypePositionX", "time_offset": 0, "value": 0},
+                        {"segment_ref": {"call_id": "main_images", "index": 0}, "property": "KFTypePositionY", "time_offset": 0, "value": 0},
+                        {"segment_ref": {"call_id": "main_images", "index": 0}, "property": "UNIFORM_SCALE", "time_offset": 0, "value": 1},
+                    ]},
+                },
+                {
+                    "call_id": "effects",
+                    "tool": "add_effects",
+                    "params": {"effect_infos": [{"effect_title": "金粉闪闪", "start": 0, "end": 1_000_000}]},
+                },
             ],
         }
         coze = MagicMock(status_code=200)
@@ -43,6 +77,9 @@ class FlaskGodDraftTests(unittest.TestCase):
         }
 
         with tempfile.TemporaryDirectory(prefix="flask-god-draft-") as temporary:
+            draft_dir = Path(temporary) / "LOCAL-DRAFT-ID"
+            draft_dir.mkdir()
+            local_report["draft_dir"] = str(draft_dir)
             with (
                 patch.dict(
                     os.environ,
@@ -69,7 +106,9 @@ class FlaskGodDraftTests(unittest.TestCase):
                 payload = response.get_json()
                 self.assertTrue(payload["success"])
                 self.assertEqual(payload["draft_id"], "LOCAL-DRAFT-ID")
-                self.assertEqual(payload["draft_dir"], "C:/Jianying/LOCAL-DRAFT-ID")
+                self.assertEqual(payload["draft_dir"], str(draft_dir))
+                self.assertEqual(payload["acceptance_report"]["status"], "passed")
+                self.assertEqual(payload["acceptance_report"]["details"]["fonts"]["出云龙"], 2)
 
                 request_json = post.call_args.kwargs["json"]
                 self.assertEqual(request_json["workflow_id"], "published-workflow-id")
@@ -84,6 +123,15 @@ class FlaskGodDraftTests(unittest.TestCase):
                     self.assertEqual(json.loads(downloaded.data), key)
                 finally:
                     downloaded.close()
+
+                acceptance = self.client.get(payload["acceptance_report_url"])
+                try:
+                    self.assertEqual(acceptance.status_code, 200)
+                    saved_report = json.loads(acceptance.data)
+                    self.assertEqual(saved_report["draft_id"], "LOCAL-DRAFT-ID")
+                    self.assertEqual(saved_report["status_text"], "验收通过")
+                finally:
+                    acceptance.close()
 
     def test_coze_request_retries_without_broken_environment_proxy(self):
         direct_response = MagicMock(status_code=200)

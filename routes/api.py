@@ -45,6 +45,7 @@ from utils.draft_key_importer import (
     KeyValidationError,
     import_draft_key,
 )
+from utils.draft_key_acceptance import build_draft_key_acceptance_report
 from utils.jianying_drafts import (
     create_draft as create_jianying_draft,
     append_audios as append_draft_audios,
@@ -2022,6 +2023,13 @@ def api_generate_god_draft():
         result_name = f"{report['draft_id']}.json"
         result_path = _FLASK_DRAFT_KEY_DIR / result_name
         result_path.write_text(json.dumps(draft_key, ensure_ascii=False, indent=2), encoding="utf-8")
+        acceptance = build_draft_key_acceptance_report(draft_key, report, profile="god")
+        acceptance_name = f"{report['draft_id']}.acceptance.json"
+        acceptance_path = _FLASK_DRAFT_KEY_DIR / acceptance_name
+        acceptance_path.write_text(
+            json.dumps(acceptance, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         return jsonify(
             {
                 "success": True,
@@ -2031,6 +2039,8 @@ def api_generate_god_draft():
                 "draft_dir": report["draft_dir"],
                 "warnings": report.get("warnings") or [],
                 "download_url": f"/api/flask_draft_key/{result_name}",
+                "acceptance_report": acceptance,
+                "acceptance_report_url": f"/api/flask_draft_key/{acceptance_name}",
                 "message": report.get("message") or "草稿生成成功",
             }
         )
