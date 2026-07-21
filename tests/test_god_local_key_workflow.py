@@ -146,7 +146,7 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
                     self.assertTrue((draft_dir / "draft_content.json").is_file())
                     self.assertTrue((draft_dir / "draft_meta_info.json").is_file())
                     self.assertEqual(draft_dir.name, imported["draft_name"])
-                    self.assertNotEqual(draft_dir.name, imported["draft_id"])
+                    self.assertEqual(draft_dir.name, imported["draft_id"])
                     self.assertEqual(str(uuid.UUID(imported["draft_id"])).upper(), imported["draft_id"])
 
                     draft_content = json.loads((draft_dir / "draft_content.json").read_text(encoding="utf-8"))
@@ -159,7 +159,7 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
                             self.assertTrue(material_path.is_file())
                             self.assertIn(draft_dir.resolve(), material_path.resolve().parents)
 
-    def test_duplicate_draft_names_use_jianying_suffix_but_keep_unique_uuid_ids(self):
+    def test_every_draft_uses_its_uuid_as_folder_and_display_name(self):
         with tempfile.TemporaryDirectory(prefix="workflow-draft-names-") as temporary:
             from utils.jianying_drafts import create_draft, get_draft_info
 
@@ -168,8 +168,12 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
                 first = create_draft(1080, 1920, draft_name)
                 second = create_draft(1080, 1920, draft_name)
 
-                self.assertEqual(Path(first["draft_dir"]).name, draft_name)
-                self.assertEqual(Path(second["draft_dir"]).name, f"{draft_name} (1)")
+                self.assertEqual(Path(first["draft_dir"]).name, first["draft_id"])
+                self.assertEqual(Path(second["draft_dir"]).name, second["draft_id"])
+                self.assertEqual(first["draft_name"], first["draft_id"])
+                self.assertEqual(second["draft_name"], second["draft_id"])
+                self.assertEqual(first["requested_name"], draft_name)
+                self.assertEqual(second["requested_name"], draft_name)
                 self.assertNotEqual(first["draft_id"], second["draft_id"])
                 self.assertEqual(get_draft_info(first["draft_id"])["draft_dir"], first["draft_dir"])
                 self.assertEqual(get_draft_info(second["draft_id"])["draft_dir"], second["draft_dir"])

@@ -135,22 +135,11 @@ def _safe_name(value: str, fallback: str = "coze_draft") -> str:
     return raw[:80] or fallback
 
 
-def _create_unique_draft_directory(draft_root: Path, draft_name: str) -> tuple[str, Path]:
-    """Create a JianYing draft folder without changing its internal UUID.
-
-    JianYing uses the folder name as the user-facing draft name.  Reusing a
-    name therefore follows JianYing's ``name (1)``, ``name (2)`` convention,
-    while ``draft_id`` remains an independent UUID in the draft metadata.
-    """
-    index = 0
-    while True:
-        resolved_name = draft_name if index == 0 else f"{draft_name} ({index})"
-        draft_dir = draft_root / resolved_name
-        try:
-            draft_dir.mkdir(parents=False, exist_ok=False)
-            return resolved_name, draft_dir
-        except FileExistsError:
-            index += 1
+def _is_fallback_draft_root(path: Path | str) -> bool:
+    try:
+        return Path(path).resolve() == _FALLBACK_DRAFT_ROOT.resolve()
+    except OSError:
+        return False
 
 
 def _ensure_track(draft: dict[str, Any], track_type: str, track_name: str) -> dict[str, Any]:
@@ -519,10 +508,19 @@ def create_draft(width: Any = 1920, height: Any = 1080, name: str = "", user_id:
         raise ValueError("width and height must be numeric")
 
     draft_root = _draft_root()
-    draft_id = _generate_id()
     suffix = time.strftime("%Y%m%d_%H%M%S", time.localtime())
     requested_name = _safe_name(name, fallback=f"coze_draft_{suffix}")
-    draft_name, draft_dir = _create_unique_draft_directory(draft_root, requested_name)
+    # 与米核草稿保持同一种目录约定：目录名、剪映显示名和内部 draft_id
+    # 全部使用 UUID，拿到 draft_id 后可以直接定位文件夹。
+    while True:
+        draft_id = _generate_id()
+        draft_name = draft_id
+        draft_dir = draft_root / draft_id
+        try:
+            draft_dir.mkdir(parents=False, exist_ok=False)
+            break
+        except FileExistsError:  # UUID 碰撞概率极低，但仍保证不会覆盖现有草稿。
+            continue
     (draft_dir / "assets" / "audio").mkdir(parents=True, exist_ok=True)
     (draft_dir / "assets" / "video").mkdir(parents=True, exist_ok=True)
 
@@ -542,7 +540,10 @@ def create_draft(width: Any = 1920, height: Any = 1080, name: str = "", user_id:
     return {
         "draft_id": draft_id,
         "draft_name": draft_name,
+        "requested_name": requested_name,
         "draft_dir": str(draft_dir),
+        "draft_root": str(draft_root),
+        "draft_root_is_fallback": _is_fallback_draft_root(draft_root),
         "width": width_int,
         "height": height_int,
         "ratio": bundle["content"]["canvas_config"]["ratio"],
