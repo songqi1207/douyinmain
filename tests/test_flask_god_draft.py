@@ -85,6 +85,30 @@ class FlaskGodDraftTests(unittest.TestCase):
                 finally:
                     downloaded.close()
 
+    def test_coze_request_retries_without_broken_environment_proxy(self):
+        direct_response = MagicMock(status_code=200)
+        direct_session = MagicMock()
+        direct_session.post.return_value = direct_response
+
+        with (
+            patch.object(
+                api_routes.requests,
+                "post",
+                side_effect=api_routes.requests.exceptions.ProxyError("proxy unavailable"),
+            ),
+            patch.object(api_routes.requests, "Session", return_value=direct_session),
+        ):
+            response = api_routes._post_coze_workflow(
+                "https://api.coze.cn/v1/workflow/run",
+                headers={"Authorization": "Bearer test-token"},
+                payload={"workflow_id": "test-id", "parameters": {}},
+            )
+
+        self.assertIs(response, direct_response)
+        self.assertFalse(direct_session.trust_env)
+        direct_session.post.assert_called_once()
+        direct_session.close.assert_called_once()
+
     def test_local_bridge_allows_private_network_preflight(self):
         response = self.client.options(
             "/api/tools/create_draft_from_key",

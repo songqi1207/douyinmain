@@ -108,6 +108,24 @@ def _find_nested_field(value, field):
     return None
 
 
+def _post_coze_workflow(url, *, headers, payload):
+    """Use the configured proxy first, then retry directly if it is stale."""
+    request_kwargs = {
+        "headers": headers,
+        "json": payload,
+        "timeout": (20, 1200),
+    }
+    try:
+        return requests.post(url, **request_kwargs)
+    except requests.exceptions.ProxyError:
+        direct_session = requests.Session()
+        direct_session.trust_env = False
+        try:
+            return direct_session.post(url, **request_kwargs)
+        finally:
+            direct_session.close()
+
+
 def _run_node_generator(cmd):
     """跑 node 模板生成器,返回 (ok, stderr+stdout 摘要)。"""
     proc = subprocess.run(
@@ -1984,11 +2002,10 @@ def api_generate_god_draft():
     parameters = build_god_provider_parameters(inputs)
     parameters["mihe_key"] = (os.getenv("MIHE_KEY") or "").strip()
     try:
-        response = requests.post(
+        response = _post_coze_workflow(
             (os.getenv("COZE_API_BASE_URL") or "https://api.coze.cn").rstrip("/") + "/v1/workflow/run",
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            json={"workflow_id": workflow_id, "parameters": parameters},
-            timeout=(20, 1200),
+            payload={"workflow_id": workflow_id, "parameters": parameters},
         )
         payload = response.json()
         if response.status_code >= 400 or payload.get("code") not in (None, 0):
