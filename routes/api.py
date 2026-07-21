@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 from unicodedata import normalize
 
+import requests
 from flask import Blueprint, request, jsonify, Response, send_file
 
 from config import (
@@ -64,6 +65,8 @@ from utils.template_loader import find_preview_video, get_preview_video_url
 from workflows.book.builder import generate_book_workflow
 from workflows.cigarette import generate_cigarette_workflow
 from workflows.draft_key_recorder import add_draft_key_recorder, generate_recorded_workflow
+from workflows.god.provider import build_god_provider_parameters
+from workflow_registry import published_workflow_id
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -71,6 +74,38 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 GOD_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-god-template.js"
 BOOK_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-book-template.js"
 CIG_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-cigarette-template.js"
+_FLASK_DRAFT_KEY_DIR = _REPO_ROOT / "temp" / "flask_draft_keys"
+
+
+def _decode_nested_json(value):
+    if isinstance(value, dict):
+        return {key: _decode_nested_json(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_decode_nested_json(child) for child in value]
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith(("{", "[")):
+            try:
+                return _decode_nested_json(json.loads(stripped))
+            except (TypeError, ValueError):
+                pass
+    return value
+
+
+def _find_nested_field(value, field):
+    if isinstance(value, dict):
+        if field in value:
+            return value[field]
+        for child in value.values():
+            found = _find_nested_field(child, field)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _find_nested_field(child, field)
+            if found is not None:
+                return found
+    return None
 
 
 def _run_node_generator(cmd):
@@ -1926,7 +1961,85 @@ def api_generate_cigarette():
 
 
 @api_bp.route("/generate_god", methods=["POST"])
-def api_generate_god():
+def api_generate_god_draft():
+    """Run the published god workflow and write its draft_key into local JianYing."""
+    data = request.get_json(silent=True) or {}
+    god_name = str(data.get("god_name") or "").strip()
+    if not god_name:
+        return jsonify({"success": False, "error": "请输入神名"}), 400
+
+    token = (os.getenv("COZE_API_TOKEN") or "").strip()
+    workflow_id = published_workflow_id("OWN03")
+    if not token or not workflow_id:
+        return jsonify({"success": False, "error": "请先在 .env 配置 COZE_API_TOKEN 和 COZE_WORKFLOW_OWN03"}), 503
+
+    inputs = {
+        "god_name": god_name,
+        "description": str(data.get("desc") or "").strip(),
+        "scene_count": data.get("shuliang") or 10,
+        "script": str(data.get("wenan") or "").strip(),
+        "audio_url": str(data.get("audio") or "").strip(),
+        "voice_id": str(data.get("voice_id") or "").strip(),
+    }
+    parameters = build_god_provider_parameters(inputs)
+    parameters["mihe_key"] = (os.getenv("MIHE_KEY") or "").strip()
+    try:
+        response = requests.post(
+            (os.getenv("COZE_API_BASE_URL") or "https://api.coze.cn").rstrip("/") + "/v1/workflow/run",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={"workflow_id": workflow_id, "parameters": parameters},
+            timeout=(20, 1200),
+        )
+        payload = response.json()
+        if response.status_code >= 400 or payload.get("code") not in (None, 0):
+            message = payload.get("msg") or payload.get("message") or f"HTTP {response.status_code}"
+            return jsonify({"success": False, "error": f"扣子工作流执行失败：{message}"}), 502
+
+        normalized = _decode_nested_json(payload.get("data", payload))
+        draft_key = _decode_nested_json(_find_nested_field(normalized, "draft_key"))
+        if not isinstance(draft_key, dict):
+            return jsonify({"success": False, "error": "扣子工作流已完成，但返回结果中没有 draft_key"}), 502
+
+        report = import_draft_key(draft_key, force=False, dry_run=False)
+        _FLASK_DRAFT_KEY_DIR.mkdir(parents=True, exist_ok=True)
+        result_name = f"{report['draft_id']}.json"
+        result_path = _FLASK_DRAFT_KEY_DIR / result_name
+        result_path.write_text(json.dumps(draft_key, ensure_ascii=False, indent=2), encoding="utf-8")
+        return jsonify(
+            {
+                "success": True,
+                "god_name": god_name,
+                "draft_id": report["draft_id"],
+                "draft_name": report.get("draft_name"),
+                "draft_dir": report["draft_dir"],
+                "warnings": report.get("warnings") or [],
+                "download_url": f"/api/flask_draft_key/{result_name}",
+                "message": report.get("message") or "草稿生成成功",
+            }
+        )
+    except requests.RequestException as exc:
+        return jsonify({"success": False, "error": f"无法连接扣子工作流：{exc}"}), 502
+    except KeyValidationError as exc:
+        return jsonify({"success": False, "error": "draft_key 校验失败", "errors": exc.errors}), 400
+    except AssetDownloadError as exc:
+        return jsonify({"success": False, "error": "草稿素材下载失败", "failed_urls": exc.failed}), 502
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"success": False, "error": f"生成草稿失败：{exc}"}), 500
+
+
+@api_bp.route("/flask_draft_key/<filename>")
+def api_download_flask_draft_key(filename):
+    if filename != Path(filename).name:
+        return jsonify({"error": "无效文件名"}), 400
+    target = (_FLASK_DRAFT_KEY_DIR / filename).resolve()
+    if _FLASK_DRAFT_KEY_DIR.resolve() not in target.parents or not target.is_file():
+        return jsonify({"error": "文件不存在"}), 404
+    return send_file(target, mimetype="application/json", as_attachment=True, download_name=filename)
+
+
+@api_bp.route("/generate_god_workflow", methods=["POST"])
+def api_generate_god_workflow():
     """以 v7 剪贴板模板为母版换神（调用 generate-god-template.js 做字节级定点替换）。"""
     data = request.json or {}
     god_name = data.get("god_name", "").strip()
