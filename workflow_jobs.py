@@ -500,18 +500,18 @@ def _run_local_workflow(job: dict) -> list[dict]:
 
     if code == "OWN02":
         from workflows.cigarette import generate_cigarette_workflow
-        from workflows.god.local_key import convert_workflow_to_local_key
+        from workflows.draft_key_recorder import add_draft_key_recorder
 
         workflow, _warning = generate_cigarette_workflow(
             str(inputs.get("theme") or inputs.get("cigarette_name") or "").strip(),
             cover_url=str(inputs.get("cover_url") or "").strip(),
             voice_id=str(inputs.get("voice_id") or "").strip(),
         )
-        convert_workflow_to_local_key(
+        add_draft_key_recorder(
             workflow,
-            workflow_name="香烟工作流_本地草稿",
+            workflow_name="香烟工作流_米核插件+draft_key记录",
             draft_name=f"香烟_{str(inputs.get('theme') or inputs.get('cigarette_name') or '').strip()}",
-            run_prefix="cigarette_local_",
+            run_prefix="cigarette_recorded_",
         )
         destination.write_text(json.dumps(workflow, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     else:
@@ -573,15 +573,15 @@ def _run_local_workflow(job: dict) -> list[dict]:
             raise ProviderError("local_generator_failed", detail or "本地工作流生成失败")
 
         if code in {"OWN01", "OWN03"}:
-            from workflows.god.local_key import generate_local_key_workflow
+            from workflows.draft_key_recorder import generate_recorded_workflow
 
             theme = str(inputs.get("theme") or "").strip()
             profile = {
-                "OWN01": ("书单工作流_本地草稿", f"书单_{theme}", "book_local_"),
-                "OWN03": ("神工作流模板_本地草稿", f"神话解说_{theme}", "god_local_"),
+                "OWN01": ("书单工作流_米核插件+draft_key记录", f"书单_{theme}", "book_recorded_"),
+                "OWN03": ("神工作流_米核插件+draft_key记录", f"神话解说_{theme}", "god_recorded_"),
             }[code]
             try:
-                generate_local_key_workflow(
+                generate_recorded_workflow(
                     generated_destination,
                     destination,
                     workflow_name=profile[0],

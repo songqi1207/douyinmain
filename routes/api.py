@@ -63,7 +63,7 @@ from utils.local_media_generation import (
 from utils.template_loader import find_preview_video, get_preview_video_url
 from workflows.book.builder import generate_book_workflow
 from workflows.cigarette import generate_cigarette_workflow
-from workflows.god.local_key import convert_workflow_to_local_key, generate_local_key_workflow
+from workflows.draft_key_recorder import add_draft_key_recorder, generate_recorded_workflow
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -1792,12 +1792,12 @@ def api_generate_book():
             return jsonify({"error": f"生成失败: {detail[-500:] or 'node 生成器执行失败'}"}), 500
 
         try:
-            conversion = generate_local_key_workflow(
+            conversion = generate_recorded_workflow(
                 source_path,
                 out_path,
-                workflow_name="书单工作流_本地草稿",
+                workflow_name="书单工作流_米核插件+draft_key记录",
                 draft_name=f"书单_{book_name}",
-                run_prefix="book_local_",
+                run_prefix="book_recorded_",
             )
         except Exception as conversion_error:
             out_path.unlink(missing_ok=True)
@@ -1818,7 +1818,7 @@ def api_generate_book():
             "download_url": f"/api/download/{filename}",
             "preview_video_url": get_preview_video_url("book"),
             "book_info": {"title": book_name, "author": author, "summary": summary},
-            "workflow_output": "draft_key",
+            "workflow_output": "draft_id+draft_key",
             "draft_call_count": len(conversion["calls"]),
             "warning": warning,
         })
@@ -1853,11 +1853,11 @@ def _generate_book_from_link(data, book_name, author, cover, shuliang,
             from_link=True,
             url=url,
         )
-        conversion = convert_workflow_to_local_key(
+        conversion = add_draft_key_recorder(
             workflow,
-            workflow_name="书单工作流_本地草稿",
+            workflow_name="书单工作流_米核插件+draft_key记录",
             draft_name=f"书单_{book_name}",
-            run_prefix="book_local_",
+            run_prefix="book_recorded_",
         )
         book_info["cover_workflow_url"] = cover_url_for_coze_workflow(
             book_info.get("cover", ""), pub
@@ -1876,7 +1876,7 @@ def _generate_book_from_link(data, book_name, author, cover, shuliang,
             "download_url": f"/api/download/{filename}",
             "preview_video_url": get_preview_video_url("book"),
             "book_info": book_info,
-            "workflow_output": "draft_key",
+            "workflow_output": "draft_id+draft_key",
             "draft_call_count": len(conversion["calls"]),
         })
     except Exception as e:
@@ -1896,11 +1896,11 @@ def api_generate_cigarette():
 
     try:
         workflow, warning = generate_cigarette_workflow(cigarette_name, cover_url=cover_url, voice_id=voice_id)
-        conversion = convert_workflow_to_local_key(
+        conversion = add_draft_key_recorder(
             workflow,
-            workflow_name="香烟工作流_本地草稿",
+            workflow_name="香烟工作流_米核插件+draft_key记录",
             draft_name=f"香烟_{cigarette_name}",
-            run_prefix="cigarette_local_",
+            run_prefix="cigarette_recorded_",
         )
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1916,7 +1916,7 @@ def api_generate_cigarette():
             "download_url": f"/api/download/{filename}",
             "preview_video_url": get_preview_video_url("cigarette"),
             "cigarette_name": cigarette_name,
-            "workflow_output": "draft_key",
+            "workflow_output": "draft_id+draft_key",
             "draft_call_count": len(conversion["calls"]),
             "warning": warning,
         })
@@ -1976,7 +1976,13 @@ def api_generate_god():
             return jsonify({"error": f"生成失败: {detail or 'node 生成器执行失败'}"}), 500
 
         try:
-            conversion = generate_local_key_workflow(source_path, out_path)
+            conversion = generate_recorded_workflow(
+                source_path,
+                out_path,
+                workflow_name="神工作流_米核插件+draft_key记录",
+                draft_name=f"神话解说_{god_name}",
+                run_prefix="god_recorded_",
+            )
         except Exception as conversion_error:
             out_path.unlink(missing_ok=True)
             return jsonify({"error": f"生成 draft_key 工作流失败: {conversion_error}"}), 500
@@ -1996,7 +2002,7 @@ def api_generate_god():
             "download_url": f"/api/download/{filename}",
             "preview_video_url": get_preview_video_url("god"),
             "god_name": god_name,
-            "workflow_output": "draft_key",
+            "workflow_output": "draft_id+draft_key",
             "draft_call_count": len(conversion["calls"]),
             "warning": warning,
         })

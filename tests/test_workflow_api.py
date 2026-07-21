@@ -188,9 +188,10 @@ class WorkflowApiTests(unittest.TestCase):
                 item["name"]
                 for item in end["data"]["inputs"]["inputParameters"]
             ]
-            self.assertEqual(output_names, ["draft_key"])
+            self.assertEqual(output_names[-2:], ["draft_id", "draft_key"])
+            self.assertIn("output", output_names)
             self.assertTrue(
-                any(str(node.get("id")) == "300201" for node in result.json()["json"]["nodes"])
+                any(str(node.get("id")) == "390001" for node in result.json()["json"]["nodes"])
             )
 
     def test_starter_workflow_schemas_and_document_upload(self):
