@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -34,7 +35,8 @@ _REGISTRY_PATH = _PROJECT_ROOT / "temp" / "draft_key_imports.json"
 _RENDER_KEYS_DIR = _PROJECT_ROOT / "temp" / "draft_render_keys"
 
 _DOWNLOAD_ATTEMPTS = 3
-_DOWNLOAD_TIMEOUT = 60
+_DOWNLOAD_TIMEOUT = (10, 30)
+_DOWNLOAD_WORKERS = 8
 
 _SEGMENT_TOOLS = {"add_audios", "add_images", "add_captions", "add_effects"}
 _KNOWN_TOOLS = _SEGMENT_TOOLS | {"add_keyframes"}
@@ -243,29 +245,55 @@ def _cache_path(url: str) -> Path:
     return _CACHE_DIR / f"{digest}{suffix}"
 
 
+def _download_asset(url: str) -> tuple[str | None, str | None]:
+    target = _cache_path(url)
+    if target.exists() and target.stat().st_size > 0:
+        return str(target), None
+
+    last_error = ""
+    for attempt in range(_DOWNLOAD_ATTEMPTS):
+        direct_session = None
+        try:
+            try:
+                response = requests.get(url, timeout=_DOWNLOAD_TIMEOUT)
+            except requests.exceptions.ProxyError:
+                # A stale HTTP(S)_PROXY must not make a local draft impossible.
+                # Retry the same asset without inheriting environment proxies.
+                direct_session = requests.Session()
+                direct_session.trust_env = False
+                response = direct_session.get(url, timeout=_DOWNLOAD_TIMEOUT)
+            response.raise_for_status()
+            target.write_bytes(response.content)
+            return str(target), None
+        except Exception as exc:  # noqa: BLE001
+            last_error = str(exc)
+            if attempt + 1 < _DOWNLOAD_ATTEMPTS:
+                time.sleep(min(2**attempt, 4))
+        finally:
+            if direct_session is not None:
+                direct_session.close()
+    return None, last_error
+
+
 def _prefetch_assets(urls: list[str]) -> tuple[dict[str, str], dict[str, str]]:
     asset_map: dict[str, str] = {}
     failed: dict[str, str] = {}
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    for url in urls:
-        target = _cache_path(url)
-        if target.exists() and target.stat().st_size > 0:
-            asset_map[url] = str(target)
-            continue
-        last_error = ""
-        for attempt in range(_DOWNLOAD_ATTEMPTS):
+    unique_urls = list(dict.fromkeys(urls))
+    worker_count = max(1, min(_DOWNLOAD_WORKERS, len(unique_urls)))
+    with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="draft-key-download") as pool:
+        futures = {pool.submit(_download_asset, url): url for url in unique_urls}
+        for future in as_completed(futures):
+            url = futures[future]
             try:
-                response = requests.get(url, timeout=_DOWNLOAD_TIMEOUT)
-                response.raise_for_status()
-                target.write_bytes(response.content)
-                asset_map[url] = str(target)
-                break
+                local_path, error = future.result()
             except Exception as exc:  # noqa: BLE001
-                last_error = str(exc)
-                time.sleep(min(2**attempt, 4))
-        else:
-            failed[url] = last_error
+                local_path, error = None, str(exc)
+            if local_path:
+                asset_map[url] = local_path
+            else:
+                failed[url] = error or "unknown download error"
     return asset_map, failed
 
 
