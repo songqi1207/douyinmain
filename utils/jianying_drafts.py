@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -40,6 +41,17 @@ _TRACK_RANK = {
     "text": 5,
 }
 _REMOTE_TIMEOUT = 60
+
+
+def _normalize_caption_text(value: Any) -> str:
+    """Restore line breaks escaped by nested workflow JSON payloads."""
+    text = str(value or "")
+    # Coze/Mihe payloads can JSON-encode caption lists more than once.  In that
+    # case a line break reaches us as ``\n`` or ``\\n`` instead of a real LF.
+    text = re.sub(r"(?:\\+r)?\\+n", "\n", text)
+    text = re.sub(r"\\+r", "\n", text)
+    text = re.sub(r"\\+t", "\t", text)
+    return text.strip()
 
 # Mihe's add_captions accepts the workflow-facing name "华文行楷" but writes
 # JianYing's actual resource "毛笔行楷" into the resulting draft.
@@ -1477,7 +1489,9 @@ def append_captions(
     for info in captions or []:
         if not isinstance(info, dict):
             continue
-        text = str(info.get("text") or info.get("caption") or info.get("content") or "").strip()
+        text = _normalize_caption_text(
+            info.get("text") or info.get("caption") or info.get("content") or ""
+        )
         if not text:
             continue
         start_us = _duration_to_us(info.get("start"))

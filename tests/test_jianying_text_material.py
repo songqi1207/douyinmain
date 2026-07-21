@@ -5,10 +5,23 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from utils.jianying_drafts import _build_text_material, _resolve_text_animation, append_captions, create_draft
+from utils.jianying_drafts import (
+    _build_text_material,
+    _normalize_caption_text,
+    _resolve_text_animation,
+    append_captions,
+    create_draft,
+)
 
 
 class JianyingTextMaterialTests(unittest.TestCase):
+    def test_caption_text_restores_single_and_double_escaped_line_breaks(self):
+        expected = "《三国演义》\n\n罗贯中著"
+
+        self.assertEqual(_normalize_caption_text(r"《三国演义》\n\n罗贯中著"), expected)
+        self.assertEqual(_normalize_caption_text(r"《三国演义》\\n\\n罗贯中著"), expected)
+        self.assertEqual(_normalize_caption_text(expected), expected)
+
     def test_huawen_xingkai_uses_mihe_maobi_xingkai_resource(self):
         material = _build_text_material(
             text="正文",
