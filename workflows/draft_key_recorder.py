@@ -1,119 +1,28 @@
 #!/usr/bin/env python3
-"""Append a portable ``draft_key`` recorder to an intact Mihe workflow.
+"""Append exactly one ``draft_key`` recorder to an intact Mihe workflow.
 
-The original Mihe plugin nodes remain untouched.  A converted copy is used only
-as a recipe for the recorder inputs and for any helper nodes that must produce
-portable keyframes.  Those helpers are cloned under new ids and placed after the
-original final plugin, immediately before the End node.
+The workflow templates and all Mihe plugin nodes are left untouched.  The only
+graph change is to insert one code node immediately before End.  That node
+records the resolved inputs sent to Mihe and uses plugin ``segment_infos``
+outputs to replace server-only segment ids with portable ``segment_ref`` values.
 """
 
 from __future__ import annotations
 
 import copy
 import json
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 from workflows.god.local_key import (
-    AGGREGATE_NODE_ID,
     END_NODE_ID,
-    convert_workflow_to_local_key,
+    _LIST_PARAM,
+    _collect_call_specs,
 )
 
 
 RECORDER_NODE_ID = "390001"
-RECORDER_HELPER_ID_START = 390100
-_NODE_SPACING = 360.0
-
-
-def _walk_block_refs(value: Any) -> set[str]:
-    refs: set[str] = set()
-    if isinstance(value, dict):
-        if value.get("source") == "block-output" and value.get("blockID") is not None:
-            refs.add(str(value["blockID"]))
-        for child in value.values():
-            refs.update(_walk_block_refs(child))
-    elif isinstance(value, list):
-        for child in value:
-            refs.update(_walk_block_refs(child))
-    return refs
-
-
-def _rewrite_block_refs(value: Any, id_map: dict[str, str]) -> None:
-    if isinstance(value, dict):
-        if value.get("source") == "block-output":
-            block_id = str(value.get("blockID") or "")
-            if block_id in id_map:
-                value["blockID"] = id_map[block_id]
-        for child in value.values():
-            _rewrite_block_refs(child, id_map)
-    elif isinstance(value, list):
-        for child in value:
-            _rewrite_block_refs(child, id_map)
-
-
-def _same_node(left: dict[str, Any], right: dict[str, Any]) -> bool:
-    return json.dumps(left, ensure_ascii=False, sort_keys=True) == json.dumps(
-        right,
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-
-
-def _required_helper_ids(
-    original_nodes: dict[str, dict[str, Any]],
-    converted_nodes: dict[str, dict[str, Any]],
-    aggregate: dict[str, Any],
-) -> set[str]:
-    """Find converted-only or rewritten nodes needed by the aggregate node."""
-
-    required: set[str] = set()
-    queue = list(_walk_block_refs(aggregate))
-    visited: set[str] = set()
-    while queue:
-        node_id = queue.pop()
-        if node_id in visited:
-            continue
-        visited.add(node_id)
-        converted = converted_nodes.get(node_id)
-        if converted is None:
-            continue
-        original = original_nodes.get(node_id)
-        if original is not None and _same_node(original, converted):
-            continue
-        required.add(node_id)
-        queue.extend(_walk_block_refs(converted))
-    return required
-
-
-def _helper_order(helper_ids: set[str], converted_nodes: dict[str, dict[str, Any]]) -> list[str]:
-    """Topologically order recorder helpers by their block-output references."""
-
-    dependencies = {
-        node_id: _walk_block_refs(converted_nodes[node_id]) & helper_ids
-        for node_id in helper_ids
-    }
-    reverse: dict[str, set[str]] = defaultdict(set)
-    indegree = {node_id: len(deps) for node_id, deps in dependencies.items()}
-    for node_id, deps in dependencies.items():
-        for dependency in deps:
-            reverse[dependency].add(node_id)
-
-    ready = sorted(node_id for node_id, degree in indegree.items() if degree == 0)
-    ordered: list[str] = []
-    while ready:
-        node_id = ready.pop(0)
-        ordered.append(node_id)
-        for dependent in sorted(reverse[node_id]):
-            indegree[dependent] -= 1
-            if indegree[dependent] == 0:
-                ready.append(dependent)
-                ready.sort()
-    if len(ordered) != len(helper_ids):
-        unresolved = sorted(helper_ids - set(ordered))
-        raise ValueError(f"draft_key 记录辅助节点存在循环依赖: {unresolved}")
-    return ordered
+_NODE_SPACING = 420.0
 
 
 def _unique_numeric_id(nodes: dict[str, dict[str, Any]], preferred: int) -> str:
@@ -123,16 +32,356 @@ def _unique_numeric_id(nodes: dict[str, dict[str, Any]], preferred: int) -> str:
     return str(candidate)
 
 
-def _end_input_parameters(end_node: dict[str, Any]) -> list[dict[str, Any]]:
-    return ((end_node.get("data") or {}).get("inputs") or {}).setdefault("inputParameters", [])
+def _input_params(node: dict[str, Any]) -> list[dict[str, Any]]:
+    return ((node.get("data") or {}).get("inputs") or {}).get("inputParameters") or []
+
+
+def _batch_inputs(node: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    batch = ((node.get("data") or {}).get("inputs") or {}).get("batch") or {}
+    result: dict[str, dict[str, Any]] = {}
+    for item in batch.get("inputLists") or []:
+        value = ((item.get("input") or {}).get("value") or {})
+        content = value.get("content") or {}
+        if value.get("type") == "ref" and isinstance(content, dict):
+            result[str(item.get("name") or "")] = content
+    return result
+
+
+def _batch_descriptor(node: dict[str, Any], list_param: str) -> dict[str, Any] | None:
+    inputs = (node.get("data") or {}).get("inputs") or {}
+    batch = inputs.get("batch") or {}
+    if not batch.get("batchEnable"):
+        return None
+
+    refs = _batch_inputs(node)
+    source_name = ""
+    source_path = ""
+    dynamic_fields: dict[str, dict[str, str]] = {}
+    for param in _input_params(node):
+        name = str(param.get("name") or "")
+        if name == "draft_id":
+            continue
+        value = ((param.get("input") or {}).get("value") or {})
+        content = value.get("content") or {}
+        if value.get("type") != "ref" or not isinstance(content, dict):
+            continue
+        if str(content.get("blockID") or "") != str(node.get("id")):
+            continue
+        batch_ref = str(content.get("name") or "")
+        batch_name, _, nested_path = batch_ref.partition(".")
+        if name == list_param:
+            source_name = batch_name
+            source_path = nested_path
+        else:
+            dynamic_fields[name] = {"batch": batch_name, "path": nested_path}
+
+    if not source_name or source_name not in refs:
+        raise ValueError(f"批处理节点 {node.get('id')} 缺少 {list_param} 的输入列表")
+    return {
+        "refs": refs,
+        "source_name": source_name,
+        "source_path": source_path,
+        "dynamic_fields": dynamic_fields,
+    }
+
+
+def _ref_parameter(name: str, content: dict[str, Any], *, input_type: str = "string") -> dict[str, Any]:
+    return {
+        "name": name,
+        "input": {
+            "type": input_type,
+            "value": {
+                "type": "ref",
+                "content": {
+                    "source": "block-output",
+                    "blockID": str(content.get("blockID")),
+                    "name": str(content.get("name")),
+                },
+                "rawMeta": {"type": 99 if input_type == "list" else 1},
+            },
+        },
+    }
+
+
+def _recorder_specs(workflow: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    nodes = {str(node["id"]): node for node in workflow["json"]["nodes"]}
+    call_specs, draft_cfg = _collect_call_specs(nodes, workflow["json"]["edges"])
+    recorder_specs: list[dict[str, Any]] = []
+    for spec in call_specs:
+        node = nodes[spec["node_id"]]
+        list_param = _LIST_PARAM[spec["tool"]]
+        batch = _batch_descriptor(node, list_param)
+        recorder_specs.append(
+            {
+                **spec,
+                "list_param": list_param,
+                "batch": batch,
+                "segment_output": any(
+                    output.get("name") == "segment_infos"
+                    for output in ((node.get("data") or {}).get("outputs") or [])
+                ),
+            }
+        )
+    return recorder_specs, draft_cfg
+
+
+def _recorder_inputs(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    parameters: list[dict[str, Any]] = []
+    used_names: set[str] = set()
+
+    def append(parameter: dict[str, Any]) -> None:
+        name = str(parameter["name"])
+        if name not in used_names:
+            used_names.add(name)
+            parameters.append(parameter)
+
+    for spec in specs:
+        call_id = spec["call_id"]
+        batch = spec["batch"]
+        if batch:
+            for batch_name, content in batch["refs"].items():
+                append(_ref_parameter(f"batch_{call_id}_{batch_name}", content, input_type="list"))
+        else:
+            append(
+                _ref_parameter(
+                    f"in_{call_id}",
+                    {"blockID": spec["ref"][0], "name": spec["ref"][1]},
+                )
+            )
+        if spec["segment_output"]:
+            append(
+                _ref_parameter(
+                    f"segments_{call_id}",
+                    {"blockID": spec["node_id"], "name": "segment_infos"},
+                    input_type="list",
+                )
+            )
+    return parameters
+
+
+def _runtime_specs(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    runtime = []
+    for spec in specs:
+        batch = spec["batch"]
+        batch_runtime = None
+        if batch:
+            batch_runtime = {
+                "source_input": f"batch_{spec['call_id']}_{batch['source_name']}",
+                "source_path": batch["source_path"],
+                "dynamic_fields": {
+                    field: {
+                        "input": f"batch_{spec['call_id']}_{details['batch']}",
+                        "path": details["path"],
+                    }
+                    for field, details in batch["dynamic_fields"].items()
+                },
+            }
+        runtime.append(
+            {
+                "call_id": spec["call_id"],
+                "tool": spec["tool"],
+                "list_param": spec["list_param"],
+                "input": None if batch else f"in_{spec['call_id']}",
+                "batch": batch_runtime,
+                "segments_input": f"segments_{spec['call_id']}" if spec["segment_output"] else None,
+                "literals": spec["literals"],
+            }
+        )
+    return runtime
+
+
+def _recorder_code(
+    specs: list[dict[str, Any]],
+    draft_cfg: dict[str, int],
+    *,
+    workflow_name: str,
+    draft_name: str,
+    run_prefix: str,
+) -> str:
+    runtime_specs = _runtime_specs(specs)
+    return f'''import json
+import time
+
+
+SPECS = {runtime_specs!r}
+
+
+def decode(value):
+    while isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            break
+        if parsed == value:
+            break
+        value = parsed
+    return value
+
+
+def sequence(value):
+    value = decode(value)
+    if isinstance(value, list):
+        return value
+    if value in (None, ''):
+        return []
+    return [value]
+
+
+def items(value):
+    result = []
+    for item in sequence(value):
+        item = decode(item)
+        if isinstance(item, list):
+            result.extend(items(item))
+        elif isinstance(item, dict):
+            result.append(dict(item))
+    return result
+
+
+def at_path(value, path):
+    value = decode(value)
+    for part in str(path or '').split('.'):
+        if not part:
+            continue
+        if not isinstance(value, dict):
+            return None
+        value = decode(value.get(part))
+    return value
+
+
+def batch_items(params, spec):
+    batch = spec['batch']
+    rows = sequence(params.get(batch['source_input']))
+    dynamic_rows = {{
+        field: sequence(params.get(details['input']))
+        for field, details in batch['dynamic_fields'].items()
+    }}
+    result = []
+    for index, row in enumerate(rows):
+        source_value = at_path(row, batch['source_path'])
+        for item in items(source_value):
+            copied = dict(item)
+            for field, details in batch['dynamic_fields'].items():
+                values = dynamic_rows.get(field) or []
+                if values:
+                    raw = values[index] if index < len(values) else values[-1]
+                    copied[field] = at_path(raw, details['path'])
+            result.append(copied)
+    return result
+
+
+def segment_ids(value):
+    found = []
+    value = decode(value)
+    if isinstance(value, dict):
+        segment_id = value.get('id') or value.get('segment_id')
+        if segment_id:
+            found.append(str(segment_id))
+        else:
+            for child in value.values():
+                found.extend(segment_ids(child))
+    elif isinstance(value, list):
+        for child in value:
+            found.extend(segment_ids(child))
+    return found
+
+
+async def main(args: Args) -> Output:
+    params = getattr(args, 'params', None) or {{}}
+    calls = []
+    segment_refs = {{}}
+    unresolved_segment_ids = []
+
+    for spec in SPECS:
+        call_items = batch_items(params, spec) if spec['batch'] else items(params.get(spec['input']))
+        if spec['tool'] == 'add_keyframes':
+            normalized = []
+            for item in call_items:
+                copied = dict(item)
+                segment_id = str(copied.get('segment_id') or '')
+                if segment_id and segment_id in segment_refs:
+                    copied.pop('segment_id', None)
+                    copied['segment_ref'] = dict(segment_refs[segment_id])
+                elif segment_id:
+                    unresolved_segment_ids.append(segment_id)
+                normalized.append(copied)
+            call_items = normalized
+
+        call_params = {{spec['list_param']: call_items}}
+        call_params.update(spec['literals'])
+        calls.append({{
+            'call_id': spec['call_id'],
+            'tool': spec['tool'],
+            'params': call_params,
+        }})
+
+        if spec['segments_input']:
+            for index, segment_id in enumerate(segment_ids(params.get(spec['segments_input']))):
+                segment_refs[segment_id] = {{'call_id': spec['call_id'], 'index': index}}
+
+    key = {{
+        'schema_version': '1.0',
+        'kind': 'jianying_draft_key',
+        'meta': {{
+            'workflow': {workflow_name!r},
+            'run_id': {run_prefix!r} + str(int(time.time() * 1000)),
+            'source': 'mihe_plugin_call_record',
+            'unresolved_segment_ids': unresolved_segment_ids,
+        }},
+        'draft': {{
+            'width': {int(draft_cfg['width'])},
+            'height': {int(draft_cfg['height'])},
+            'name': {draft_name!r},
+        }},
+        'calls': calls,
+    }}
+    return {{'draft_key': json.dumps(key, ensure_ascii=False)}}
+'''
+
+
+def _recorder_node(
+    recorder_id: str,
+    specs: list[dict[str, Any]],
+    draft_cfg: dict[str, int],
+    *,
+    workflow_name: str,
+    draft_name: str,
+    run_prefix: str,
+) -> dict[str, Any]:
+    return {
+        "id": recorder_id,
+        "type": "5",
+        "meta": {"position": {"x": 0.0, "y": 0.0}},
+        "data": {
+            "title": "记录 draftjsonkey（米核插件保持不变）",
+            "inputs": {
+                "inputParameters": _recorder_inputs(specs),
+                "code": _recorder_code(
+                    specs,
+                    draft_cfg,
+                    workflow_name=workflow_name,
+                    draft_name=draft_name,
+                    run_prefix=run_prefix,
+                ),
+                "language": 3,
+                "settingOnError": {
+                    "switch": False,
+                    "processType": 1,
+                    "timeoutMs": 60000,
+                    "retryTimes": 0,
+                },
+            },
+            "outputs": [{"type": "string", "name": "draft_key", "required": False}],
+            "version": "v2",
+        },
+    }
 
 
 def _append_end_outputs(end_node: dict[str, Any], recorder_id: str) -> None:
-    parameters = _end_input_parameters(end_node)
+    parameters = ((end_node.get("data") or {}).get("inputs") or {}).setdefault("inputParameters", [])
     legacy = next((item for item in parameters if item.get("name") == "output"), None)
     if legacy is None:
         raise ValueError("原工作流 End 节点没有 output/draft_id 输出")
-
     parameters[:] = [item for item in parameters if item.get("name") not in {"draft_id", "draft_key"}]
     draft_id = copy.deepcopy(legacy)
     draft_id["name"] = "draft_id"
@@ -156,33 +405,6 @@ def _append_end_outputs(end_node: dict[str, Any], recorder_id: str) -> None:
     )
 
 
-def _place_recorder_nodes(
-    workflow: dict[str, Any],
-    helper_nodes: list[dict[str, Any]],
-    aggregate: dict[str, Any],
-    end_node: dict[str, Any],
-) -> None:
-    end_meta = end_node.setdefault("meta", {})
-    end_position = end_meta.setdefault("position", {"x": 0.0, "y": 0.0})
-    start_x = float(end_position.get("x") or 0.0)
-    y = float(end_position.get("y") or 0.0)
-
-    recorder_nodes = [*helper_nodes, aggregate]
-    for index, node in enumerate(recorder_nodes):
-        node.setdefault("meta", {})["position"] = {
-            "x": start_x + _NODE_SPACING * index,
-            "y": y,
-        }
-    end_position["x"] = start_x + _NODE_SPACING * len(recorder_nodes)
-
-    bounds = workflow.get("bounds")
-    if isinstance(bounds, dict):
-        left = float(bounds.get("x") or 0.0)
-        old_right = left + float(bounds.get("width") or 0.0)
-        new_right = max(old_right, float(end_position["x"]) + 320.0)
-        bounds["width"] = new_right - left
-
-
 def add_draft_key_recorder(
     workflow: dict[str, Any],
     *,
@@ -190,79 +412,66 @@ def add_draft_key_recorder(
     draft_name: str,
     run_prefix: str,
 ) -> dict[str, Any]:
-    """Mutate an original Mihe workflow by appending a sidecar recorder.
+    """Insert one recorder before End without changing any Mihe plugin node."""
 
-    All existing nodes except the End node remain byte-for-byte equivalent.  All
-    existing edges except edges entering End remain unchanged.
-    """
-
-    original_nodes = {str(node["id"]): node for node in workflow["json"]["nodes"]}
-    if END_NODE_ID not in original_nodes:
+    nodes = {str(node["id"]): node for node in workflow["json"]["nodes"]}
+    if END_NODE_ID not in nodes:
         raise ValueError(f"工作流缺少 End 节点 {END_NODE_ID}")
+    specs, draft_cfg = _recorder_specs(workflow)
+    if not specs:
+        raise ValueError("原工作流没有可记录的米核草稿调用")
 
-    converted = copy.deepcopy(workflow)
-    conversion = convert_workflow_to_local_key(
-        converted,
+    recorder_id = _unique_numeric_id(nodes, int(RECORDER_NODE_ID))
+    recorder = _recorder_node(
+        recorder_id,
+        specs,
+        draft_cfg,
         workflow_name=workflow_name,
         draft_name=draft_name,
         run_prefix=run_prefix,
     )
-    converted_nodes = {str(node["id"]): node for node in converted["json"]["nodes"]}
-    aggregate_recipe = converted_nodes[AGGREGATE_NODE_ID]
 
-    helper_ids = _required_helper_ids(original_nodes, converted_nodes, aggregate_recipe)
-    ordered_helper_ids = _helper_order(helper_ids, converted_nodes)
-
-    occupied = dict(original_nodes)
-    recorder_id = _unique_numeric_id(occupied, int(RECORDER_NODE_ID))
-    occupied[recorder_id] = {}
-    id_map: dict[str, str] = {}
-    next_helper_id = RECORDER_HELPER_ID_START
-    for old_id in ordered_helper_ids:
-        new_id = _unique_numeric_id(occupied, next_helper_id)
-        occupied[new_id] = {}
-        id_map[old_id] = new_id
-        next_helper_id = int(new_id) + 1
-
-    helper_nodes: list[dict[str, Any]] = []
-    for old_id in ordered_helper_ids:
-        cloned = copy.deepcopy(converted_nodes[old_id])
-        cloned["id"] = id_map[old_id]
-        _rewrite_block_refs(cloned, id_map)
-        cloned.setdefault("data", {})["title"] = f"draft_key记录辅助节点/{old_id}"
-        helper_nodes.append(cloned)
-
-    aggregate = copy.deepcopy(aggregate_recipe)
-    aggregate["id"] = recorder_id
-    _rewrite_block_refs(aggregate, id_map)
-    aggregate.setdefault("data", {})["title"] = "记录 draft_key（不影响米核草稿）"
-
-    end_node = original_nodes[END_NODE_ID]
+    end_node = nodes[END_NODE_ID]
+    end_position = end_node.setdefault("meta", {}).setdefault("position", {"x": 0.0, "y": 0.0})
+    old_end_x = float(end_position.get("x") or 0.0)
+    old_end_y = float(end_position.get("y") or 0.0)
+    recorder["meta"]["position"] = {"x": old_end_x, "y": old_end_y}
+    end_position["x"] = old_end_x + _NODE_SPACING
     _append_end_outputs(end_node, recorder_id)
-    _place_recorder_nodes(workflow, helper_nodes, aggregate, end_node)
 
     edges = workflow["json"]["edges"]
     end_edges = [edge for edge in edges if str(edge.get("targetNodeID")) == END_NODE_ID]
     if not end_edges:
         raise ValueError("原工作流 End 节点没有入边")
     edges[:] = [edge for edge in edges if str(edge.get("targetNodeID")) != END_NODE_ID]
-
-    chain_ids = [node["id"] for node in helper_nodes] + [recorder_id]
-    first_id = chain_ids[0]
     for edge in end_edges:
         bridged = copy.deepcopy(edge)
-        bridged["targetNodeID"] = first_id
+        bridged["targetNodeID"] = recorder_id
         edges.append(bridged)
-    for source_id, target_id in zip(chain_ids, chain_ids[1:]):
-        edges.append({"sourceNodeID": source_id, "targetNodeID": target_id})
     edges.append({"sourceNodeID": recorder_id, "targetNodeID": END_NODE_ID})
+    workflow["json"]["nodes"].append(recorder)
 
-    workflow["json"]["nodes"].extend(helper_nodes)
-    workflow["json"]["nodes"].append(aggregate)
+    bounds = workflow.get("bounds")
+    if isinstance(bounds, dict):
+        left = float(bounds.get("x") or 0.0)
+        old_right = left + float(bounds.get("width") or 0.0)
+        bounds["width"] = max(old_right, float(end_position["x"]) + 320.0) - left
+
     return {
-        **conversion,
+        "calls": [
+            {
+                "call_id": spec["call_id"],
+                "tool": spec["tool"],
+                "node_id": spec["node_id"],
+                "segment_input_name": (
+                    f"segments_{spec['call_id']}" if spec["segment_output"] else None
+                ),
+            }
+            for spec in specs
+        ],
+        "draft": draft_cfg,
         "recorder_node_id": recorder_id,
-        "helper_node_ids": id_map,
+        "recorder_node_count": 1,
         "preserved_plugin_workflow": True,
     }
 
@@ -275,8 +484,6 @@ def generate_recorded_workflow(
     draft_name: str,
     run_prefix: str,
 ) -> dict[str, Any]:
-    """Load a workflow file, append the recorder, and write a new version."""
-
     source = Path(source_path)
     output = Path(output_path)
     workflow = json.loads(source.read_text(encoding="utf-8"))

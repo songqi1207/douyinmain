@@ -58,7 +58,7 @@ def build_all() -> list[dict]:
                 "source": str(profile["source"]),
                 "output": str(profile["output"]),
                 "calls": len(report["calls"]),
-                "helpers": report["helper_node_ids"],
+                "recorder_nodes": report["recorder_node_count"],
             }
         )
     return reports
