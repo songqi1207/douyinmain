@@ -24,6 +24,48 @@ from workflows.god.local_key import (
 RECORDER_NODE_ID = "390001"
 _NODE_SPACING = 420.0
 
+# Mihe applies these presets inside the add_captions plugin, so they are not
+# present in the workflow input parameters or segment_infos output.  Record
+# them explicitly in the portable key to reproduce the verified god draft.
+_GOD_IMPLICIT_CALL_PARAMS: dict[str, dict[str, Any]] = {
+    "slide_b": {
+        "in_animation": "滚入",
+        "in_animation_duration": 112_800,
+    },
+    "slide_c": {
+        "in_animation": "放大",
+        "in_animation_duration": 800_000,
+    },
+    "slide_a": {
+        "in_animation": "滚入",
+        "in_animation_duration": 112_800,
+    },
+    "title_lock": {
+        "in_animation": "放大",
+        "in_animation_duration": 800_000,
+    },
+    "main_captions": {
+        "text_color": "#FFDE00",
+    },
+}
+
+
+def _apply_template_implicit_params(
+    specs: list[dict[str, Any]], workflow_name: str
+) -> None:
+    """Fill values applied by Mihe internally but absent from plugin inputs."""
+    if not str(workflow_name or "").startswith("神工作流"):
+        return
+    for spec in specs:
+        defaults = _GOD_IMPLICIT_CALL_PARAMS.get(str(spec.get("call_id") or ""), {})
+        applied: dict[str, Any] = {}
+        for name, value in defaults.items():
+            if name not in spec["literals"] or spec["literals"][name] in (None, ""):
+                spec["literals"][name] = copy.deepcopy(value)
+                applied[name] = copy.deepcopy(value)
+        if applied:
+            spec["implicit_defaults"] = applied
+
 
 def _unique_numeric_id(nodes: dict[str, dict[str, Any]], preferred: int) -> str:
     candidate = preferred
@@ -267,6 +309,7 @@ def _runtime_specs(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 },
                 "segments_input": f"segments_{spec['call_id']}" if spec["segment_output_name"] else None,
                 "literals": spec["literals"],
+                "implicit_defaults": spec.get("implicit_defaults") or {},
             }
         )
     return runtime
@@ -444,6 +487,11 @@ async def main(args: Args) -> Output:
             'recorded_operation_count': len(calls),
             'skipped_empty_calls': skipped_empty_calls,
             'recorded_field_manifest': field_manifest,
+            'template_defaults_applied': [
+                {{'call_id': spec['call_id'], 'params': spec['implicit_defaults']}}
+                for spec in SPECS
+                if spec.get('implicit_defaults')
+            ],
         }},
         'draft': {{
             'width': {int(draft_cfg['width'])},
@@ -551,6 +599,7 @@ def add_draft_key_recorder(
     specs, draft_cfg = _recorder_specs(workflow)
     if not specs:
         raise ValueError("原工作流没有可记录的米核草稿调用")
+    _apply_template_implicit_params(specs, workflow_name)
 
     recorder_id = _unique_numeric_id(nodes, int(RECORDER_NODE_ID))
     prototype = next(

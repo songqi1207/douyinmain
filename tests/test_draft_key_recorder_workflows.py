@@ -367,6 +367,75 @@ class DraftKeyRecorderWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(import_draft_key(key, dry_run=True)["message"], "ok")
 
+    def test_god_recorder_restores_implicit_text_styles_and_image_pan_keyframes(self):
+        profile = next(item for item in PROFILES if item["run_prefix"] == "god_recorded_")
+        workflow = json.loads(profile["source"].read_text(encoding="utf-8"))
+        report = add_draft_key_recorder(
+            workflow,
+            workflow_name=profile["workflow_name"],
+            draft_name=profile["draft_name"],
+            run_prefix=profile["run_prefix"],
+        )
+        nodes = {str(node["id"]): node for node in workflow["json"]["nodes"]}
+        recorder = nodes[report["recorder_node_id"]]
+        calls = {call["call_id"]: call for call in report["calls"]}
+
+        params = {}
+        caption_payload = json.dumps(
+            [{"text": "财神", "start": 0, "end": 1_500_000}],
+            ensure_ascii=False,
+        )
+        for call_id in ("slide_b", "slide_c", "slide_a", "title_lock", "main_captions"):
+            params[calls[call_id]["item_input_name"]] = caption_payload
+
+        image_segment_id = "main-image-segment"
+        params[calls["main_images"]["item_input_name"]] = json.dumps(
+            [{"image_url": "frame.png", "start": 0, "end": 2_000_000}],
+            ensure_ascii=False,
+        )
+        params[calls["main_images"]["segment_input_name"]] = [{"id": image_segment_id}]
+        pan_keyframes = []
+        for property_name, start_value, end_value in (
+            ("KFTypePositionX", -0.2, 0),
+            ("KFTypePositionY", -0.07, 0),
+            ("UNIFORM_SCALE", 1.7, 1.2),
+        ):
+            pan_keyframes.extend(
+                [
+                    {"segment_id": image_segment_id, "property": property_name, "offset": 0, "value": start_value},
+                    {"segment_id": image_segment_id, "property": property_name, "offset": 2_000_000, "value": end_value},
+                ]
+            )
+        params[calls["camera_kf"]["item_input_name"]] = json.dumps(
+            pan_keyframes,
+            ensure_ascii=False,
+        )
+
+        key = _run_aggregate(recorder, params)
+        recorded = {call["call_id"]: call for call in key["calls"]}
+        self.assertEqual(recorded["main_captions"]["params"]["text_color"], "#FFDE00")
+        self.assertEqual(recorded["slide_b"]["params"]["in_animation"], "滚入")
+        self.assertEqual(recorded["slide_a"]["params"]["in_animation_duration"], 112_800)
+        self.assertEqual(recorded["slide_c"]["params"]["in_animation"], "放大")
+        self.assertEqual(recorded["title_lock"]["params"]["in_animation_duration"], 800_000)
+
+        recorded_keyframes = recorded["camera_kf"]["params"]["keyframes"]
+        self.assertEqual(len(recorded_keyframes), 6)
+        self.assertEqual(
+            {item["property"] for item in recorded_keyframes},
+            {"KFTypePositionX", "KFTypePositionY", "UNIFORM_SCALE"},
+        )
+        self.assertTrue(
+            all(item.get("segment_ref") == {"call_id": "main_images", "index": 0} for item in recorded_keyframes)
+        )
+        self.assertEqual(key["meta"]["unresolved_segment_ids"], [])
+        defaults = {
+            item["call_id"]: item["params"]
+            for item in key["meta"]["template_defaults_applied"]
+        }
+        self.assertEqual(defaults["main_captions"]["text_color"], "#FFDE00")
+        self.assertEqual(import_draft_key(key, dry_run=True)["message"], "ok")
+
     def test_dynamic_cigarette_keeps_the_5fbf_generator_graph_and_adds_one_node(self):
         original, _warning = generate_cigarette_workflow("红塔山")
         recorded = copy.deepcopy(original)
