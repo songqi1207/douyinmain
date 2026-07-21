@@ -1247,6 +1247,13 @@
                 <button
                   class="btn secondary-btn"
                   type="button"
+                  onclick="downloadNormalizedDraftKey()"
+                >
+                  下载标准 JSON
+                </button>
+                <button
+                  class="btn secondary-btn"
+                  type="button"
                   onclick="clearDraftKeyInput()"
                 >
                   清空输入
@@ -1785,10 +1792,16 @@
         if (!file) return;
         const reader = new FileReader();
         reader.onload = function () {
-          document.getElementById("draftKeyInput").value = String(
-            reader.result || "",
-          );
-          showToast(`已载入 ${file.name}`, "success");
+          const raw = String(reader.result || "");
+          const input = document.getElementById("draftKeyInput");
+          try {
+            const key = normalizeDraftKeyPayload(raw);
+            input.value = JSON.stringify(key, null, 2);
+            showToast(`已载入并标准化 ${file.name}`, "success");
+          } catch (err) {
+            input.value = raw;
+            showToast(err.message || "文件不是有效的 draft_key JSON", "error");
+          }
         };
         reader.onerror = function () {
           showToast("读取文件失败", "error");
@@ -2142,27 +2155,116 @@
         showToast("已填入示例 key", "success");
       }
 
-      function normalizeDraftKeyPayload(text) {
-        let parsed;
+      function parseDraftKeyJsonText(text) {
+        const raw = String(text || "").replace(/^\uFEFF/, "").trim();
+        if (!raw) {
+          throw new Error("输入内容为空");
+        }
         try {
-          parsed = JSON.parse(text);
-        } catch (err) {
-          throw new Error("输入内容不是合法 JSON");
+          return JSON.parse(raw);
+        } catch (_firstError) {
+          // Coze 的字符串输出被直接另存时，常见形态是：
+          // \"schema_version\": ... }\"。去掉这一层转义并补回对象括号。
+          let repaired = raw.replace(/\\"/g, '"');
+          const startsAtFirstProperty = /^"schema_version"\s*:/.test(repaired);
+          if (startsAtFirstProperty && repaired.endsWith('"')) {
+            repaired = repaired.slice(0, -1).trimEnd();
+          }
+          if (!repaired.startsWith("{") && startsAtFirstProperty) {
+            repaired = `{${repaired}`;
+          }
+          try {
+            return JSON.parse(repaired);
+          } catch (_secondError) {
+            throw new Error("输入内容不是合法的 draft_key JSON");
+          }
         }
+      }
 
-        if (parsed && typeof parsed === "object" && typeof parsed.draft_key === "string") {
-          parsed = JSON.parse(parsed.draft_key);
-        }
-        if (parsed && typeof parsed === "object" && parsed.key_json && typeof parsed.key_json === "string") {
-          parsed = JSON.parse(parsed.key_json);
-        }
-        if (parsed && typeof parsed === "object" && parsed.key && typeof parsed.key === "object") {
-          parsed = parsed.key;
+      function normalizeDraftKeyPayload(text) {
+        let parsed = parseDraftKeyJsonText(text);
+        for (let depth = 0; depth < 8; depth += 1) {
+          if (typeof parsed === "string") {
+            parsed = parseDraftKeyJsonText(parsed);
+            continue;
+          }
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            break;
+          }
+          if (Array.isArray(parsed.calls)) {
+            break;
+          }
+          const wrapped = parsed.draft_key ?? parsed.key_json ?? parsed.key;
+          if (wrapped !== undefined) {
+            parsed = typeof wrapped === "string" ? parseDraftKeyJsonText(wrapped) : wrapped;
+            continue;
+          }
+          if (parsed.output && typeof parsed.output === "object") {
+            parsed = parsed.output;
+            continue;
+          }
+          if (parsed.data && typeof parsed.data === "object") {
+            parsed = parsed.data;
+            continue;
+          }
+          break;
         }
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
           throw new Error("key 顶层必须是对象");
         }
+        if (!Array.isArray(parsed.calls)) {
+          throw new Error("draft_key 缺少 calls 数组");
+        }
+        const listFields = {
+          add_audios: ["audio_infos", "infos", "audios"],
+          add_images: ["image_infos", "infos", "imgs", "images"],
+          add_captions: ["captions", "infos", "texts"],
+          add_keyframes: ["keyframes", "infos"],
+          add_effects: ["effect_infos", "infos", "effects"],
+        };
+        parsed.calls = parsed.calls.filter((call) => {
+          const params = call?.params || {};
+          const field = (listFields[call?.tool] || []).find((name) => name in params);
+          if (!field) return true;
+          let value = params[field];
+          if (typeof value === "string") {
+            try {
+              value = JSON.parse(value);
+            } catch (_error) {
+              return true;
+            }
+          }
+          return !Array.isArray(value) || value.length > 0;
+        });
+        if (!parsed.calls.length) {
+          throw new Error("draft_key 没有可执行调用");
+        }
         return parsed;
+      }
+
+      function downloadNormalizedDraftKey() {
+        const raw = document.getElementById("draftKeyInput").value.trim();
+        if (!raw) {
+          showToast("请先粘贴或选择 draft_key JSON", "error");
+          return;
+        }
+        try {
+          const key = normalizeDraftKeyPayload(raw);
+          const content = `${JSON.stringify(key, null, 2)}\n`;
+          const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+          const link = document.createElement("a");
+          const runId = String(key.meta?.run_id || Date.now()).replace(/[^a-zA-Z0-9_-]/g, "_");
+          link.href = URL.createObjectURL(blob);
+          link.download = `draft_key_${runId}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(link.href);
+          document.getElementById("draftKeyInput").value = JSON.stringify(key, null, 2);
+          showToast("已下载标准 draft_key.json", "success");
+        } catch (err) {
+          showToast(err.message || "draft_key 标准化失败", "error");
+        }
       }
 
       function renderDraftKeyResult(payload) {

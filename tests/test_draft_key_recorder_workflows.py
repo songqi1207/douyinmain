@@ -178,6 +178,33 @@ class DraftKeyRecorderWorkflowTests(unittest.TestCase):
                 self.assertTrue(keyframe_items)
                 self.assertTrue(all("segment_ref" in item for item in keyframe_items))
 
+    def test_recorder_omits_empty_optional_calls(self):
+        profile = PROFILES[0]
+        workflow = json.loads(profile["source"].read_text(encoding="utf-8"))
+        report = add_draft_key_recorder(
+            workflow,
+            workflow_name=profile["workflow_name"],
+            draft_name=profile["draft_name"],
+            run_prefix=profile["run_prefix"],
+        )
+        nodes = {str(node["id"]): node for node in workflow["json"]["nodes"]}
+        aggregate = nodes[report["recorder_node_id"]]
+        first_call = report["calls"][0]
+        params = {
+            f"in_{first_call['call_id']}": json.dumps(
+                [{"audio_url": "voice.wav", "start": 0, "end": 1_000_000}],
+                ensure_ascii=False,
+            )
+        }
+
+        key = _run_aggregate(aggregate, params)
+
+        self.assertEqual(len(key["calls"]), 1)
+        self.assertEqual(key["calls"][0]["call_id"], first_call["call_id"])
+        self.assertNotIn("call_191365", {call["call_id"] for call in key["calls"]})
+        self.assertNotIn("call_300101", {call["call_id"] for call in key["calls"]})
+        self.assertEqual(import_draft_key(key, dry_run=True)["message"], "ok")
+
     def test_dynamic_cigarette_keeps_the_5fbf_generator_graph_and_adds_one_node(self):
         original, _warning = generate_cigarette_workflow("红塔山")
         recorded = copy.deepcopy(original)

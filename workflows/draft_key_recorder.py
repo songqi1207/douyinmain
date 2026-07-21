@@ -338,6 +338,11 @@ async def main(args: Args) -> Output:
 
     for spec in SPECS:
         call_items = batch_items(params, spec) if spec['batch'] else items(params.get(spec['input']))
+        # Optional branches in the source workflow can legitimately produce an
+        # empty list.  They are no-ops for Mihe and must not become invalid
+        # draft_key calls (the local importer requires every call to have items).
+        if not call_items:
+            continue
         if spec['tool'] == 'add_keyframes':
             normalized = []
             for item in call_items:
