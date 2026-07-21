@@ -4,7 +4,7 @@
 
 import os
 
-from config import MIHE_KEY, MIHE_KEY_OUTPUT_DESC, is_hotlink_protected_url
+from config import get_mihe_key, MIHE_KEY_OUTPUT_DESC, is_hotlink_protected_url
 from utils.template_loader import load_template
 from utils.cover import cover_url_for_coze_workflow
 from utils.sanitize import sanitize_template_media_urls
@@ -79,8 +79,8 @@ def generate_book_workflow(book_info, public_base_url="", shuliang="10", audio_u
                 output['value'] = ''
                 output['defaultValue'] = ''
             elif output['name'] == 'mihe_key':
-                output['value'] = MIHE_KEY
-                output['defaultValue'] = MIHE_KEY
+                output['value'] = get_mihe_key()
+                output['defaultValue'] = get_mihe_key()
                 output['description'] = MIHE_KEY_OUTPUT_DESC
 
     # ── 171617（大模型：书籍文案生成）──

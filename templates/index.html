@@ -467,6 +467,27 @@
         color: #274472;
       }
 
+      .config-state {
+        display: inline-flex;
+        margin-left: 8px;
+        padding: 2px 9px;
+        border-radius: 999px;
+        background: #eef2f7;
+        color: #6d7a90;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .config-state.configured {
+        background: #e8f8ef;
+        color: #16854b;
+      }
+
+      .config-state.missing {
+        background: #fff0f0;
+        color: #c93d3d;
+      }
+
       .upload-row {
         display: flex;
         flex-wrap: wrap;
@@ -821,6 +842,16 @@
               <div class="biz-item-title">🧩 本地草稿导入</div>
               <div class="biz-item-desc">
                 粘贴工作流输出的 key，直接转换为本地剪映草稿。
+              </div>
+            </button>
+            <button
+              class="biz-item"
+              data-type="settings"
+              onclick="selectBiz('settings')"
+            >
+              <div class="biz-item-title">⚙️ 接口配置</div>
+              <div class="biz-item-desc">
+                前台替换米核 Key、扣子 Token 和神工作流 ID。
               </div>
             </button>
           </div>
@@ -1316,6 +1347,63 @@
                 <pre class="code-output" id="draftKeyResultJson"></pre>
               </div>
             </div>
+
+            <div class="form-section" id="settingsForm">
+              <div class="helper-block" style="margin-bottom: 18px">
+                <strong>安全说明：</strong>
+                已有密钥不会返回前端。输入框留空表示保留原值；保存入口只允许从本机
+                <code>localhost</code> 或 <code>127.0.0.1</code> 访问。
+              </div>
+
+              <div class="form-group">
+                <label>
+                  米核 API Key
+                  <span class="config-state" id="miheConfigState">读取中</span>
+                </label>
+                <input
+                  id="settingsMiheKey"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="填写新 Key；留空不修改"
+                />
+              </div>
+
+              <div class="form-group">
+                <label>
+                  扣子 Personal Access Token
+                  <span class="config-state" id="cozeTokenConfigState">读取中</span>
+                </label>
+                <input
+                  id="settingsCozeToken"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="例如 pat_...；留空不修改"
+                />
+              </div>
+
+              <div class="form-group">
+                <label>
+                  扣子神工作流 ID
+                  <span class="config-state" id="cozeWorkflowConfigState">读取中</span>
+                </label>
+                <input
+                  id="settingsCozeWorkflow"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  placeholder="例如 7664662207942869032；留空不修改"
+                />
+              </div>
+
+              <button
+                class="btn primary-btn full-width"
+                id="saveRuntimeSettingsBtn"
+                type="button"
+                onclick="saveRuntimeSettings()"
+              >
+                保存并立即生效
+              </button>
+            </div>
           </section>
 
           <section class="result-card" id="resultSection">
@@ -1436,13 +1524,33 @@
           previewTitle: "",
           previewUrl: "",
         },
+        settings: {
+          title: "接口配置",
+          desc: "替换米核 Key、扣子 Token 和神工作流 ID，保存后下一次生成立即使用。",
+          previewTitle: "",
+          previewUrl: "",
+        },
       };
+
+      function setConfigState(elementId, configured) {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+        element.textContent = configured ? "已配置" : "未配置";
+        element.className = `config-state ${configured ? "configured" : "missing"}`;
+      }
+
+      function renderRuntimeConfigState(data) {
+        setConfigState("miheConfigState", Boolean(data.mihe_key_configured));
+        setConfigState("cozeTokenConfigState", Boolean(data.coze_api_token_configured));
+        setConfigState("cozeWorkflowConfigState", Boolean(data.coze_workflow_own03_configured));
+      }
 
       async function loadRuntimeConfig() {
         const banner = document.getElementById("miheKeyBanner");
         try {
           const resp = await fetch("/api/config");
           const data = await resp.json();
+          renderRuntimeConfigState(data);
           const urls = data.preview_video_urls || {};
           if (urls.book) bizMeta.book.previewUrl = urls.book;
           if (urls.cigarette) bizMeta.cigarette.previewUrl = urls.cigarette;
@@ -1490,6 +1598,9 @@
         document
           .getElementById("draftKeyForm")
           .classList.toggle("active", type === "draft_key");
+        document
+          .getElementById("settingsForm")
+          .classList.toggle("active", type === "settings");
 
         const meta = bizMeta[type] || bizMeta.book;
         document.getElementById("currentBizTitle").textContent = meta.title;
@@ -1509,8 +1620,49 @@
           document.getElementById("cigaretteName").focus();
         } else if (type === "god") {
           document.getElementById("godName").focus();
-        } else {
+        } else if (type === "draft_key") {
           document.getElementById("draftLookupId").focus();
+        } else {
+          document.getElementById("settingsMiheKey").focus();
+        }
+      }
+
+      async function saveRuntimeSettings() {
+        const payload = {
+          mihe_key: document.getElementById("settingsMiheKey").value.trim(),
+          coze_api_token: document.getElementById("settingsCozeToken").value.trim(),
+          coze_workflow_own03: document.getElementById("settingsCozeWorkflow").value.trim(),
+        };
+        if (!payload.mihe_key && !payload.coze_api_token && !payload.coze_workflow_own03) {
+          showToast("请至少填写一项需要替换的配置", "error");
+          return;
+        }
+
+        const button = document.getElementById("saveRuntimeSettingsBtn");
+        button.disabled = true;
+        button.innerHTML = '<span class="loading"></span> 正在保存...';
+        try {
+          const response = await fetch("/api/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            showToast(data.error || "配置保存失败", "error");
+            return;
+          }
+          document.getElementById("settingsMiheKey").value = "";
+          document.getElementById("settingsCozeToken").value = "";
+          document.getElementById("settingsCozeWorkflow").value = "";
+          renderRuntimeConfigState(data);
+          await loadRuntimeConfig();
+          showToast(data.message || "配置已保存并立即生效", "success");
+        } catch (error) {
+          showToast("无法连接配置接口", "error");
+        } finally {
+          button.disabled = false;
+          button.textContent = "保存并立即生效";
         }
       }
 

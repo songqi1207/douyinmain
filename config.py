@@ -39,8 +39,14 @@ CDN_REMOVE_EXIF = os.getenv("CDN_REMOVE_EXIF", "true").strip().lower() not in ("
 # 米核 Key
 # ------------------------------------------------------------------
 _MIHE_DEFAULT = "10de5318-af20-472f-a3a1-bd334bea8ccc"
-_MIHE_ENV = (os.getenv("MIHE_KEY") or "").strip()
-MIHE_KEY = _MIHE_ENV or _MIHE_DEFAULT
+
+
+def get_mihe_key() -> str:
+    """Return the latest runtime value so the settings page takes effect immediately."""
+    return (os.getenv("MIHE_KEY") or "").strip() or _MIHE_DEFAULT
+
+
+MIHE_KEY = get_mihe_key()
 # 写入各工作流「开始」节点里 mihe_key 字段的说明（Coze 里可见）
 MIHE_KEY_OUTPUT_DESC = (
     "米核 API Key。注册/充值：https://www.miheai.com/?share_id=14304\n"
@@ -215,8 +221,9 @@ def print_startup_info():
         f"[dy] 书籍/百科爬虫：终端可见 logger crawlers.*；更细设 CRAWLER_LOG_LEVEL=DEBUG。"
         f" 网页「搜索书籍」会在结果里带 _fetch_trace（或设 CRAWLER_API_TRACE=1）。"
     )
-    if MIHE_KEY:
-        print(f"[mihe] MIHE_KEY 已配置（长度 {len(MIHE_KEY)}）。若你刚改过 Key 仍像旧的，请先重建/重启容器；旧版下载的工作流文件里也会嵌旧 Key。")
+    mihe_key = get_mihe_key()
+    if mihe_key:
+        print(f"[mihe] MIHE_KEY 已配置（长度 {len(mihe_key)}）。旧版下载的工作流文件里仍可能嵌有旧 Key。")
     else:
         print("[mihe] MIHE_KEY 未配置，请设置环境变量或 .env。")
     if CDN_TOKEN:

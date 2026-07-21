@@ -6,7 +6,7 @@ import json
 import os
 
 from config import (
-    MIHE_KEY,
+    get_mihe_key,
     MIHE_KEY_OUTPUT_DESC,
     GOD_BGM_DEFAULT,
 )
@@ -384,7 +384,7 @@ def generate_god_workflow(
         "zhuti": god_name,
         "audio": audio_url,
         "shuliang": shuliang,
-        "mihe_key": MIHE_KEY,
+        "mihe_key": get_mihe_key(),
         "wenan": god_script,
         "fengge": visual_style,
         "yinse": yinse,

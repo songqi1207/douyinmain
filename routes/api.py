@@ -6,8 +6,10 @@ import json
 import os
 import re
 import subprocess
+import threading
 import traceback
 from datetime import datetime
+from ipaddress import ip_address
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 from unicodedata import normalize
@@ -16,7 +18,7 @@ import requests
 from flask import Blueprint, request, jsonify, Response, send_file
 
 from config import (
-    MIHE_KEY, MIHE_KEY_HINT_UI,
+    get_mihe_key, MIHE_KEY_HINT_UI,
     BGM_DEFAULT, COVER_DIR,
 )
 from crawlers.book_info import get_book_info
@@ -62,6 +64,7 @@ from utils.local_media_generation import (
     generated_file_path,
     synthesize_speech,
 )
+from utils.runtime_settings import update_dotenv_file
 from utils.template_loader import find_preview_video, get_preview_video_url
 from workflows.book.builder import generate_book_workflow
 from workflows.cigarette import generate_cigarette_workflow
@@ -76,6 +79,8 @@ GOD_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-god-template.js"
 BOOK_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-book-template.js"
 CIG_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-cigarette-template.js"
 _FLASK_DRAFT_KEY_DIR = _REPO_ROOT / "temp" / "flask_draft_keys"
+_SETTINGS_ENV_PATH = _REPO_ROOT / ".env"
+_SETTINGS_WRITE_LOCK = threading.Lock()
 
 
 def _decode_nested_json(value):
@@ -127,6 +132,76 @@ def _post_coze_workflow(url, *, headers, payload):
             direct_session.close()
 
 
+def _runtime_config_payload():
+    return {
+        "mihe_key_configured": bool(get_mihe_key()),
+        "coze_api_token_configured": bool((os.getenv("COZE_API_TOKEN") or "").strip()),
+        "coze_workflow_own03_configured": bool(published_workflow_id("OWN03")),
+        "settings_write_local_only": True,
+    }
+
+
+def _is_local_settings_request() -> bool:
+    """Only let a browser opened through localhost mutate server secrets."""
+    local_hosts = {"localhost", "127.0.0.1", "::1"}
+    try:
+        host = (urlsplit("//" + request.host).hostname or "").lower()
+    except ValueError:
+        return False
+    if host not in local_hosts:
+        return False
+
+    origin = str(request.headers.get("Origin") or "").strip()
+    if origin:
+        try:
+            origin_host = (urlsplit(origin).hostname or "").lower()
+        except ValueError:
+            return False
+        if origin_host not in local_hosts:
+            return False
+
+    proxy_original = request.environ.get("werkzeug.proxy_fix.orig") or {}
+    remote = str(proxy_original.get("REMOTE_ADDR") or request.remote_addr or "").strip()
+    try:
+        return ip_address(remote).is_loopback
+    except ValueError:
+        return False
+
+
+def _settings_updates(data):
+    field_map = {
+        "mihe_key": "MIHE_KEY",
+        "coze_api_token": "COZE_API_TOKEN",
+        "coze_workflow_own03": "COZE_WORKFLOW_OWN03",
+    }
+    updates = {}
+    for field, env_name in field_map.items():
+        raw = data.get(field)
+        if raw is None or raw == "":
+            continue
+        if not isinstance(raw, str):
+            raise ValueError(f"{field} 必须是字符串")
+        value = raw.strip()
+        if not value:
+            continue
+        if len(value) > 4096:
+            raise ValueError(f"{field} 内容过长")
+        updates[env_name] = value
+
+    mihe_key = updates.get("MIHE_KEY")
+    if mihe_key is not None and len(mihe_key) < 8:
+        raise ValueError("米核 Key 格式不正确")
+    coze_token = updates.get("COZE_API_TOKEN")
+    if coze_token is not None and len(coze_token) < 10:
+        raise ValueError("扣子 Token 格式不正确")
+    workflow_id = updates.get("COZE_WORKFLOW_OWN03")
+    if workflow_id is not None and not workflow_id.isdigit():
+        raise ValueError("扣子神工作流 ID 必须是纯数字")
+    if not updates:
+        raise ValueError("请至少填写一项需要替换的配置")
+    return updates
+
+
 def _run_node_generator(cmd):
     """跑 node 模板生成器,返回 (ok, stderr+stdout 摘要)。"""
     proc = subprocess.run(
@@ -140,6 +215,18 @@ def _run_node_generator(cmd):
     )
     detail = ((proc.stderr or "") + "\n" + (proc.stdout or "")).strip()
     return proc.returncode == 0, detail
+
+
+def _set_workflow_start_value(workflow, name, value):
+    nodes = ((workflow or {}).get("json") or {}).get("nodes") or []
+    start = next((node for node in nodes if str(node.get("id")) == "100001"), None)
+    outputs = (((start or {}).get("data") or {}).get("outputs") or [])
+    target = next((item for item in outputs if item.get("name") == name), None)
+    if target is None:
+        return False
+    target["value"] = value
+    target["defaultValue"] = value
+    return True
 
 
 def _external_base_url():
@@ -2001,7 +2088,7 @@ def api_generate_god_draft():
         "voice_id": str(data.get("voice_id") or "").strip(),
     }
     parameters = build_god_provider_parameters(inputs)
-    parameters["mihe_key"] = (os.getenv("MIHE_KEY") or "").strip()
+    parameters["mihe_key"] = get_mihe_key()
     try:
         response = _post_coze_workflow(
             (os.getenv("COZE_API_BASE_URL") or "https://api.coze.cn").rstrip("/") + "/v1/workflow/run",
@@ -2114,6 +2201,13 @@ def api_generate_god_workflow():
             detail = (proc.stderr or proc.stdout or "").strip()[-500:]
             source_path.unlink(missing_ok=True)
             return jsonify({"error": f"生成失败: {detail or 'node 生成器执行失败'}"}), 500
+
+        generated_source = json.loads(source_path.read_text(encoding="utf-8"))
+        _set_workflow_start_value(generated_source, "mihe_key", get_mihe_key())
+        source_path.write_text(
+            json.dumps(generated_source, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
 
         try:
             conversion = generate_recorded_workflow(
@@ -2250,11 +2344,31 @@ def upload_cover():
         return jsonify({"error": f"上传失败: {str(e)}"}), 500
 
 
-@api_bp.route("/config")
+@api_bp.route("/config", methods=["GET", "POST"])
 def get_config():
+    if request.method == "POST":
+        if not _is_local_settings_request():
+            return jsonify({"success": False, "error": "接口配置只允许通过本机 localhost 或 127.0.0.1 修改"}), 403
+        try:
+            updates = _settings_updates(request.get_json(silent=True) or {})
+            with _SETTINGS_WRITE_LOCK:
+                update_dotenv_file(_SETTINGS_ENV_PATH, updates)
+                for name, value in updates.items():
+                    os.environ[name] = value
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
+        except OSError as exc:
+            return jsonify({"success": False, "error": f"写入 .env 失败：{exc}"}), 500
+
+        return jsonify({
+            "success": True,
+            "message": "配置已保存并立即生效",
+            "updated": sorted(updates),
+            **_runtime_config_payload(),
+        })
+
     return jsonify({
-        "mihe_key": MIHE_KEY,
-        "mihe_key_configured": bool(MIHE_KEY),
+        **_runtime_config_payload(),
         "mihe_key_hint": MIHE_KEY_HINT_UI,
         "mihe_quota_note": "本生成器不扣米核额度；额度是否在 Coze 执行即梦时才会体现，本页无法检测。",
         "bgm_default": BGM_DEFAULT,
