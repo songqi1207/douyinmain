@@ -85,21 +85,54 @@ def _batch_descriptor(node: dict[str, Any], list_param: str) -> dict[str, Any] |
     }
 
 
-def _ref_parameter(name: str, content: dict[str, Any], *, input_type: str = "string") -> dict[str, Any]:
+def _output_definition(
+    nodes: dict[str, dict[str, Any]], content: dict[str, Any]
+) -> dict[str, Any] | None:
+    node = nodes.get(str(content.get("blockID")))
+    if node is None:
+        return None
+    output_name = str(content.get("name"))
+    return next(
+        (
+            output
+            for output in ((node.get("data") or {}).get("outputs") or [])
+            if str(output.get("name")) == output_name
+        ),
+        None,
+    )
+
+
+def _ref_parameter(
+    name: str,
+    content: dict[str, Any],
+    nodes: dict[str, dict[str, Any]],
+    *,
+    input_type: str = "string",
+) -> dict[str, Any]:
+    input_definition: dict[str, Any] = {"type": input_type}
+    raw_meta_type = 1
+    if input_type == "list":
+        source_output = _output_definition(nodes, content) or {}
+        schema = copy.deepcopy(source_output.get("schema"))
+        if not isinstance(schema, dict):
+            # Mihe segment_infos is a list of objects, but its output declaration
+            # omits the schema.  Coze code-node inputs require it explicitly.
+            schema = {"type": "object", "schema": []}
+        input_definition["schema"] = schema
+        raw_meta_type = 99 if schema.get("type") == "string" else 103
+
+    input_definition["value"] = {
+        "type": "ref",
+        "content": {
+            "source": "block-output",
+            "blockID": str(content.get("blockID")),
+            "name": str(content.get("name")),
+        },
+        "rawMeta": {"type": raw_meta_type},
+    }
     return {
         "name": name,
-        "input": {
-            "type": input_type,
-            "value": {
-                "type": "ref",
-                "content": {
-                    "source": "block-output",
-                    "blockID": str(content.get("blockID")),
-                    "name": str(content.get("name")),
-                },
-                "rawMeta": {"type": 99 if input_type == "list" else 1},
-            },
-        },
+        "input": input_definition,
     }
 
 
@@ -125,7 +158,9 @@ def _recorder_specs(workflow: dict[str, Any]) -> tuple[list[dict[str, Any]], dic
     return recorder_specs, draft_cfg
 
 
-def _recorder_inputs(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _recorder_inputs(
+    specs: list[dict[str, Any]], nodes: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
     parameters: list[dict[str, Any]] = []
     used_names: set[str] = set()
 
@@ -140,12 +175,20 @@ def _recorder_inputs(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         batch = spec["batch"]
         if batch:
             for batch_name, content in batch["refs"].items():
-                append(_ref_parameter(f"batch_{call_id}_{batch_name}", content, input_type="list"))
+                append(
+                    _ref_parameter(
+                        f"batch_{call_id}_{batch_name}",
+                        content,
+                        nodes,
+                        input_type="list",
+                    )
+                )
         else:
             append(
                 _ref_parameter(
                     f"in_{call_id}",
                     {"blockID": spec["ref"][0], "name": spec["ref"][1]},
+                    nodes,
                 )
             )
         if spec["segment_output"]:
@@ -153,6 +196,7 @@ def _recorder_inputs(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 _ref_parameter(
                     f"segments_{call_id}",
                     {"blockID": spec["node_id"], "name": "segment_infos"},
+                    nodes,
                     input_type="list",
                 )
             )
@@ -343,38 +387,52 @@ def _recorder_node(
     recorder_id: str,
     specs: list[dict[str, Any]],
     draft_cfg: dict[str, int],
+    nodes: dict[str, dict[str, Any]],
+    prototype: dict[str, Any],
     *,
     workflow_name: str,
     draft_name: str,
     run_prefix: str,
 ) -> dict[str, Any]:
-    return {
-        "id": recorder_id,
-        "type": "5",
-        "meta": {"position": {"x": 0.0, "y": 0.0}},
-        "data": {
+    # Start from a native code node so the clipboard JSON keeps Coze's required
+    # nodeMeta/_temp/externalData fields.  Hand-building only id/type/data makes
+    # Coze accept the JSON text but fail to render the graph and its edges.
+    recorder = copy.deepcopy(prototype)
+    recorder["id"] = recorder_id
+    recorder["type"] = "5"
+    recorder["meta"] = {"position": {"x": 0.0, "y": 0.0}}
+    node_meta = recorder.setdefault("data", {}).setdefault("nodeMeta", {})
+    node_meta.update(
+        {
+            "description": "记录米核插件调用，输出可携带的 draft_key JSON",
+            "subTitle": "代码",
             "title": "记录 draftjsonkey（米核插件保持不变）",
-            "inputs": {
-                "inputParameters": _recorder_inputs(specs),
-                "code": _recorder_code(
-                    specs,
-                    draft_cfg,
-                    workflow_name=workflow_name,
-                    draft_name=draft_name,
-                    run_prefix=run_prefix,
-                ),
-                "language": 3,
-                "settingOnError": {
-                    "switch": False,
-                    "processType": 1,
-                    "timeoutMs": 60000,
-                    "retryTimes": 0,
-                },
-            },
-            "outputs": [{"type": "string", "name": "draft_key", "required": False}],
-            "version": "v2",
+        }
+    )
+    recorder["data"]["inputs"] = {
+        "inputParameters": _recorder_inputs(specs, nodes),
+        "code": _recorder_code(
+            specs,
+            draft_cfg,
+            workflow_name=workflow_name,
+            draft_name=draft_name,
+            run_prefix=run_prefix,
+        ),
+        "language": 3,
+        "settingOnError": {
+            "switch": False,
+            "processType": 1,
+            "timeoutMs": 60000,
+            "retryTimes": 0,
         },
     }
+    recorder["data"]["outputs"] = [
+        {"type": "string", "name": "draft_key", "required": False}
+    ]
+    recorder["data"]["version"] = "v2"
+    temp = recorder.setdefault("_temp", {})
+    temp["bounds"] = {"x": -180.0, "y": 0.0, "width": 360, "height": 112}
+    return recorder
 
 
 def _append_end_outputs(end_node: dict[str, Any], recorder_id: str) -> None:
@@ -422,10 +480,24 @@ def add_draft_key_recorder(
         raise ValueError("原工作流没有可记录的米核草稿调用")
 
     recorder_id = _unique_numeric_id(nodes, int(RECORDER_NODE_ID))
+    prototype = next(
+        (
+            node
+            for node in workflow["json"]["nodes"]
+            if str(node.get("type")) == "5"
+            and isinstance((node.get("data") or {}).get("nodeMeta"), dict)
+            and isinstance(node.get("_temp"), dict)
+        ),
+        None,
+    )
+    if prototype is None:
+        raise ValueError("原工作流没有可复用的原生代码节点结构")
     recorder = _recorder_node(
         recorder_id,
         specs,
         draft_cfg,
+        nodes,
+        prototype,
         workflow_name=workflow_name,
         draft_name=draft_name,
         run_prefix=run_prefix,
@@ -436,7 +508,12 @@ def add_draft_key_recorder(
     old_end_x = float(end_position.get("x") or 0.0)
     old_end_y = float(end_position.get("y") or 0.0)
     recorder["meta"]["position"] = {"x": old_end_x, "y": old_end_y}
+    recorder["_temp"]["bounds"].update({"x": old_end_x - 180.0, "y": old_end_y})
     end_position["x"] = old_end_x + _NODE_SPACING
+    end_bounds = end_node.setdefault("_temp", {}).setdefault(
+        "bounds", {"width": 360, "height": 112}
+    )
+    end_bounds.update({"x": float(end_position["x"]) - 180.0, "y": old_end_y})
     _append_end_outputs(end_node, recorder_id)
 
     edges = workflow["json"]["edges"]

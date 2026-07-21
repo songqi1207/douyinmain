@@ -71,6 +71,32 @@ class DraftKeyRecorderWorkflowTests(unittest.TestCase):
                 self.assertEqual(len(recorded_nodes), len(original_nodes) + 1)
                 self.assertEqual(len(recorded["json"]["edges"]), len(original["json"]["edges"]) + 1)
 
+                recorder = recorded_nodes[report["recorder_node_id"]]
+                self.assertIn("nodeMeta", recorder["data"])
+                self.assertIn("_temp", recorder)
+                self.assertIn("externalData", recorder["_temp"])
+                recorder_position = recorder["meta"]["position"]
+                recorder_bounds = recorder["_temp"]["bounds"]
+                self.assertEqual(recorder_bounds["x"], recorder_position["x"] - 180)
+                self.assertEqual(recorder_bounds["y"], recorder_position["y"])
+
+                end = recorded_nodes["900001"]
+                end_position = end["meta"]["position"]
+                end_bounds = end["_temp"]["bounds"]
+                self.assertEqual(end_bounds["x"], end_position["x"] - 180)
+                self.assertEqual(end_bounds["y"], end_position["y"])
+
+                list_inputs = [
+                    item["input"]
+                    for item in recorder["data"]["inputs"]["inputParameters"]
+                    if item["input"]["type"] == "list"
+                ]
+                self.assertTrue(list_inputs)
+                self.assertTrue(all(isinstance(item.get("schema"), dict) for item in list_inputs))
+                self.assertTrue(
+                    all(item["value"]["rawMeta"]["type"] in {99, 103} for item in list_inputs)
+                )
+
     def test_end_returns_legacy_output_draft_id_and_draft_key(self):
         for profile in PROFILES:
             with self.subTest(source=profile["source"].name):
