@@ -22,7 +22,6 @@ import requests
 
 from utils.jianying_drafts import (
     _draft_root,
-    _is_fallback_draft_root,
     append_audios,
     append_captions,
     append_effects,
@@ -448,23 +447,7 @@ def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool 
         }
 
     registry = _load_registry()
-    current_draft_root = _draft_root().resolve()
     existing = registry.get(fingerprint)
-    if existing and not force:
-        draft_dir = Path(str(existing.get("draft_dir") or ""))
-        existing_id = str(existing.get("draft_id") or "").strip()
-        same_root = draft_dir.parent.resolve() == current_draft_root if draft_dir.parent else False
-        uses_id_directory = bool(existing_id) and draft_dir.name.casefold() == existing_id.casefold()
-        if draft_dir.exists() and same_root and uses_id_directory:
-            render_key_path = _save_render_key(str(existing.get("draft_id") or ""), key)
-            existing["render_key_path"] = str(render_key_path)
-            existing["draft_root"] = str(current_draft_root)
-            existing["draft_root_is_fallback"] = _is_fallback_draft_root(current_draft_root)
-            existing["message"] = f"草稿已存在：{draft_dir}"
-            registry[fingerprint] = existing
-            _save_registry(registry)
-            return {**existing, "already_imported": True}
-        registry.pop(fingerprint, None)
 
     if existing and force:
         old_dir = Path(str(existing.get("draft_dir") or ""))

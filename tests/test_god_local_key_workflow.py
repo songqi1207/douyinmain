@@ -178,6 +178,46 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
                 self.assertEqual(get_draft_info(first["draft_id"])["draft_dir"], first["draft_dir"])
                 self.assertEqual(get_draft_info(second["draft_id"])["draft_dir"], second["draft_dir"])
 
+    def test_same_draft_key_can_be_imported_multiple_times(self):
+        key = {
+            "kind": "jianying_draft_key",
+            "meta": {"run_id": "repeatable-key"},
+            "draft": {"width": 1080, "height": 1920, "name": "重复导入测试"},
+            "calls": [
+                {
+                    "call_id": "captions",
+                    "tool": "add_captions",
+                    "params": {
+                        "captions": [
+                            {"text": "同一份 key", "start": 0, "end": 1_000_000}
+                        ]
+                    },
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory(prefix="repeat-draft-key-") as temporary:
+            root = Path(temporary)
+            with (
+                patch.dict("os.environ", {"JIANYING_DRAFT_ROOT": str(root / "drafts")}),
+                patch.object(draft_importer, "_REGISTRY_PATH", root / "imports.json"),
+                patch.object(draft_importer, "_RENDER_KEYS_DIR", root / "render-keys"),
+            ):
+                first = draft_importer.import_draft_key(key)
+                second = draft_importer.import_draft_key(key)
+
+                self.assertNotEqual(first["draft_id"], second["draft_id"])
+                self.assertTrue(Path(first["draft_dir"]).is_dir())
+                self.assertTrue(Path(second["draft_dir"]).is_dir())
+                self.assertFalse(first["already_imported"])
+                self.assertFalse(second["already_imported"])
+
+                third = draft_importer.import_draft_key(key, force=True)
+                self.assertTrue(Path(first["draft_dir"]).is_dir())
+                self.assertFalse(Path(second["draft_dir"]).exists())
+                self.assertTrue(Path(third["draft_dir"]).is_dir())
+                self.assertNotEqual(second["draft_id"], third["draft_id"])
+
     def test_dynamic_cigarette_batch_images_and_keyframes_produce_importable_key(self):
         workflow, _warning = generate_cigarette_workflow("红塔山")
         report = convert_workflow_to_local_key(

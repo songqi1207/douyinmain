@@ -4,7 +4,7 @@
 
 用法:
     python scripts/import_draft_key.py key.json
-    python scripts/import_draft_key.py key.json --force      # 删除同 key 旧草稿后重导
+    python scripts/import_draft_key.py key.json --force      # 删除同 key 最近一次草稿后重导
     python scripts/import_draft_key.py key.json --dry-run    # 只校验并列出计划，不落盘
     python scripts/import_draft_key.py --stdin < key.json    # 从标准输入读 key
 
@@ -31,7 +31,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="key 数据包 → 本地剪映草稿")
     parser.add_argument("key_file", nargs="?", help="key JSON 文件路径")
     parser.add_argument("--stdin", action="store_true", help="从标准输入读取 key JSON")
-    parser.add_argument("--force", action="store_true", help="同 key 已导入过时删除旧草稿重导")
+    parser.add_argument("--force", action="store_true", help="删除同 key 最近一次草稿后重导")
     parser.add_argument("--dry-run", action="store_true", help="只校验 key 并输出执行计划")
     args = parser.parse_args()
 
