@@ -2,6 +2,7 @@ import asyncio
 import json
 import tempfile
 import unittest
+import uuid
 import wave
 from pathlib import Path
 from types import SimpleNamespace
@@ -140,6 +141,34 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
                     draft_dir = Path(imported["draft_dir"])
                     self.assertTrue((draft_dir / "draft_content.json").is_file())
                     self.assertTrue((draft_dir / "draft_meta_info.json").is_file())
+                    self.assertEqual(draft_dir.name, imported["draft_name"])
+                    self.assertNotEqual(draft_dir.name, imported["draft_id"])
+                    self.assertEqual(str(uuid.UUID(imported["draft_id"])).upper(), imported["draft_id"])
+
+                    draft_content = json.loads((draft_dir / "draft_content.json").read_text(encoding="utf-8"))
+                    draft_meta = json.loads((draft_dir / "draft_meta_info.json").read_text(encoding="utf-8"))
+                    self.assertEqual(draft_meta["draft_id"], imported["draft_id"])
+                    self.assertEqual(draft_meta["draft_name"], draft_dir.name)
+                    for material_type in ("audios", "videos"):
+                        for material in draft_content["materials"][material_type]:
+                            material_path = Path(material["path"])
+                            self.assertTrue(material_path.is_file())
+                            self.assertIn(draft_dir.resolve(), material_path.resolve().parents)
+
+    def test_duplicate_draft_names_use_jianying_suffix_but_keep_unique_uuid_ids(self):
+        with tempfile.TemporaryDirectory(prefix="workflow-draft-names-") as temporary:
+            from utils.jianying_drafts import create_draft, get_draft_info
+
+            draft_name = "\u4e66\u5355_\u672c\u5730\u8349\u7a3f"
+            with patch.dict("os.environ", {"JIANYING_DRAFT_ROOT": temporary}):
+                first = create_draft(1080, 1920, draft_name)
+                second = create_draft(1080, 1920, draft_name)
+
+                self.assertEqual(Path(first["draft_dir"]).name, draft_name)
+                self.assertEqual(Path(second["draft_dir"]).name, f"{draft_name} (1)")
+                self.assertNotEqual(first["draft_id"], second["draft_id"])
+                self.assertEqual(get_draft_info(first["draft_id"])["draft_dir"], first["draft_dir"])
+                self.assertEqual(get_draft_info(second["draft_id"])["draft_dir"], second["draft_dir"])
 
     def test_dynamic_cigarette_batch_images_and_keyframes_produce_importable_key(self):
         workflow, _warning = generate_cigarette_workflow("红塔山")

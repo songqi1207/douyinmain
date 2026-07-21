@@ -42,6 +42,7 @@ _TRACK_RANK = {
 _REMOTE_TIMEOUT = 60
 
 _jianying_meta_cache: dict[str, Any] | None = None
+_draft_directory_cache: dict[tuple[str, str], Path] = {}
 
 
 def _jianying_meta() -> dict[str, Any]:
@@ -108,10 +109,32 @@ def _timestamp_us() -> int:
     return int(time.time() * 1_000_000)
 
 
+def _draft_cache_key(draft_root: Path, draft_id: str) -> tuple[str, str]:
+    return os.path.normcase(str(draft_root.resolve())), str(draft_id).strip().lower()
+
+
 def _safe_name(value: str, fallback: str = "coze_draft") -> str:
     raw = "".join(ch for ch in str(value or "").strip() if ch.isalnum() or ch in "-_ ")
     raw = raw.strip().replace(" ", "_")
     return raw[:80] or fallback
+
+
+def _create_unique_draft_directory(draft_root: Path, draft_name: str) -> tuple[str, Path]:
+    """Create a JianYing draft folder without changing its internal UUID.
+
+    JianYing uses the folder name as the user-facing draft name.  Reusing a
+    name therefore follows JianYing's ``name (1)``, ``name (2)`` convention,
+    while ``draft_id`` remains an independent UUID in the draft metadata.
+    """
+    index = 0
+    while True:
+        resolved_name = draft_name if index == 0 else f"{draft_name} ({index})"
+        draft_dir = draft_root / resolved_name
+        try:
+            draft_dir.mkdir(parents=False, exist_ok=False)
+            return resolved_name, draft_dir
+        except FileExistsError:
+            index += 1
 
 
 def _ensure_track(draft: dict[str, Any], track_type: str, track_name: str) -> dict[str, Any]:
@@ -433,19 +456,37 @@ def _load_bundle(draft_id: str) -> dict[str, Any]:
         raise ValueError("missing draft_id")
 
     draft_root = _draft_root()
-    draft_dir = draft_root / target_id
+    cache_key = _draft_cache_key(draft_root, target_id)
+    draft_dir = _draft_directory_cache.get(cache_key, draft_root / target_id)
     content_path = draft_dir / "draft_content.json"
     meta_path = draft_dir / "draft_meta_info.json"
     if not content_path.exists() or not meta_path.exists():
         lowered = target_id.lower()
         for candidate in draft_root.iterdir():
-            if candidate.is_dir() and candidate.name.lower() == lowered:
+            if not candidate.is_dir():
+                continue
+            candidate_content = candidate / "draft_content.json"
+            candidate_meta = candidate / "draft_meta_info.json"
+            if not candidate_content.exists() or not candidate_meta.exists():
+                continue
+
+            matches_id = candidate.name.lower() == lowered
+            if not matches_id:
+                try:
+                    metadata = json.loads(candidate_meta.read_text(encoding="utf-8"))
+                    matches_id = str(metadata.get("draft_id") or "").strip().lower() == lowered
+                except (OSError, json.JSONDecodeError):
+                    matches_id = False
+            if matches_id:
                 draft_dir = candidate
-                content_path = draft_dir / "draft_content.json"
-                meta_path = draft_dir / "draft_meta_info.json"
+                content_path = candidate_content
+                meta_path = candidate_meta
                 break
     if not content_path.exists() or not meta_path.exists():
+        _draft_directory_cache.pop(cache_key, None)
         raise FileNotFoundError(f"draft not found: {target_id}")
+
+    _draft_directory_cache[cache_key] = draft_dir
 
     return {
         "draft_dir": draft_dir,
@@ -464,9 +505,8 @@ def create_draft(width: Any = 1920, height: Any = 1080, name: str = "", user_id:
     draft_root = _draft_root()
     draft_id = _generate_id()
     suffix = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-    draft_name = _safe_name(name, fallback=f"coze_draft_{suffix}")
-    draft_dir = draft_root / draft_id
-    draft_dir.mkdir(parents=True, exist_ok=False)
+    requested_name = _safe_name(name, fallback=f"coze_draft_{suffix}")
+    draft_name, draft_dir = _create_unique_draft_directory(draft_root, requested_name)
     (draft_dir / "assets" / "audio").mkdir(parents=True, exist_ok=True)
     (draft_dir / "assets" / "video").mkdir(parents=True, exist_ok=True)
 
@@ -482,6 +522,7 @@ def create_draft(width: Any = 1920, height: Any = 1080, name: str = "", user_id:
             bundle["meta"]["user_id"] = str(user_id)
 
     _write_bundle(bundle)
+    _draft_directory_cache[_draft_cache_key(draft_root, draft_id)] = draft_dir
     return {
         "draft_id": draft_id,
         "draft_name": draft_name,
@@ -590,7 +631,7 @@ def export_draft_archive(draft_id: str) -> dict[str, Any]:
                 zf.write(item, item.relative_to(draft_dir))
 
     return {
-        "draft_id": draft_dir.name,
+        "draft_id": str(bundle["meta"].get("draft_id") or draft_id),
         "draft_dir": str(draft_dir),
         "archive_path": str(archive_path),
         "message": "ok",
