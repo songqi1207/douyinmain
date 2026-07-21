@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import mimetypes
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -37,6 +38,31 @@ _RENDER_KEYS_DIR = _PROJECT_ROOT / "temp" / "draft_render_keys"
 _DOWNLOAD_ATTEMPTS = 3
 _DOWNLOAD_TIMEOUT = (10, 30)
 _DOWNLOAD_WORKERS = 8
+
+_MEDIA_SUFFIXES = {
+    ".aac",
+    ".flac",
+    ".gif",
+    ".jpeg",
+    ".jpg",
+    ".m4a",
+    ".mov",
+    ".mp3",
+    ".mp4",
+    ".ogg",
+    ".png",
+    ".wav",
+    ".webm",
+    ".webp",
+}
+_MAGIC_SUFFIXES = (
+    (b"\x89PNG\r\n\x1a\n", ".png"),
+    (b"\xff\xd8\xff", ".jpg"),
+    (b"GIF87a", ".gif"),
+    (b"GIF89a", ".gif"),
+    (b"RIFF", ".webp"),
+    (b"ID3", ".mp3"),
+)
 
 _SEGMENT_TOOLS = {"add_audios", "add_images", "add_captions", "add_effects"}
 _KNOWN_TOOLS = _SEGMENT_TOOLS | {"add_keyframes"}
@@ -239,16 +265,60 @@ def _collect_asset_urls(key: dict[str, Any]) -> list[str]:
     return urls
 
 
-def _cache_path(url: str) -> Path:
-    suffix = Path(urlparse(url).path).suffix[:8]
+def _media_suffix(url: str, content_type: str = "", content: bytes = b"") -> str:
+    """Return a real media suffix instead of CDN pseudo suffixes such as .image."""
+    url_suffix = Path(urlparse(url).path).suffix.lower()[:8]
+    if url_suffix in _MEDIA_SUFFIXES:
+        return ".jpg" if url_suffix == ".jpeg" else url_suffix
+
+    mime = str(content_type or "").split(";", 1)[0].strip().lower()
+    mime_suffix = mimetypes.guess_extension(mime) or ""
+    if mime_suffix == ".jpe":
+        mime_suffix = ".jpg"
+    if mime_suffix in _MEDIA_SUFFIXES:
+        return ".jpg" if mime_suffix == ".jpeg" else mime_suffix
+
+    for signature, suffix in _MAGIC_SUFFIXES:
+        if content.startswith(signature):
+            if signature == b"RIFF" and content[8:12] != b"WEBP":
+                continue
+            return suffix
+    if len(content) >= 12 and content[4:8] == b"ftyp":
+        return ".mp4"
+    return ""
+
+
+def _cache_path(
+    url: str, *, content_type: str = "", content: bytes = b""
+) -> Path:
+    suffix = _media_suffix(url, content_type, content)
     digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
     return _CACHE_DIR / f"{digest}{suffix}"
 
 
+def _existing_cache_path(url: str) -> Path | None:
+    digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
+    if not _CACHE_DIR.exists():
+        return None
+    for candidate in _CACHE_DIR.glob(f"{digest}*"):
+        if not candidate.is_file() or candidate.stat().st_size <= 0:
+            continue
+        content = candidate.read_bytes()
+        correct = _cache_path(url, content=content)
+        if correct.suffix and correct != candidate:
+            if correct.exists():
+                candidate.unlink(missing_ok=True)
+            else:
+                candidate.replace(correct)
+            return correct
+        return candidate
+    return None
+
+
 def _download_asset(url: str) -> tuple[str | None, str | None]:
-    target = _cache_path(url)
-    if target.exists() and target.stat().st_size > 0:
-        return str(target), None
+    cached = _existing_cache_path(url)
+    if cached is not None:
+        return str(cached), None
 
     last_error = ""
     for attempt in range(_DOWNLOAD_ATTEMPTS):
@@ -263,6 +333,11 @@ def _download_asset(url: str) -> tuple[str | None, str | None]:
                 direct_session.trust_env = False
                 response = direct_session.get(url, timeout=_DOWNLOAD_TIMEOUT)
             response.raise_for_status()
+            target = _cache_path(
+                url,
+                content_type=str(getattr(response, "headers", {}).get("Content-Type", "")),
+                content=response.content,
+            )
             target.write_bytes(response.content)
             return str(target), None
         except Exception as exc:  # noqa: BLE001

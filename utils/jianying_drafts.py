@@ -41,6 +41,13 @@ _TRACK_RANK = {
 }
 _REMOTE_TIMEOUT = 60
 
+# Mihe's add_captions accepts the workflow-facing name "华文行楷" but writes
+# JianYing's actual resource "毛笔行楷" into the resulting draft.
+_FONT_ALIASES = {"华文行楷": "毛笔行楷"}
+_FONT_META_OVERRIDES = {
+    "毛笔行楷": {"resource_id": "6912033793700270606"},
+}
+
 _jianying_meta_cache: dict[str, Any] | None = None
 _draft_directory_cache: dict[tuple[str, str], Path] = {}
 
@@ -59,6 +66,12 @@ def _jianying_meta() -> dict[str, Any]:
 def _lookup_meta(table: str, name: str) -> dict[str, Any] | None:
     entry = _jianying_meta().get(table, {}).get(str(name or "").strip())
     return entry if isinstance(entry, dict) else None
+
+
+def _resolve_font(font_name: str) -> tuple[str, dict[str, Any] | None]:
+    canonical = _FONT_ALIASES.get(str(font_name or "").strip(), str(font_name or "").strip())
+    meta = _lookup_meta("fonts", canonical) or _FONT_META_OVERRIDES.get(canonical)
+    return canonical, meta
 
 
 def _hex_to_rgb_floats(value: str, fallback: tuple[float, float, float] = (1.0, 1.0, 1.0)) -> list[float]:
@@ -889,6 +902,7 @@ def _build_text_material(
     alignment: int,
     font_name: str,
     letter_spacing: float = 0,
+    style_text: Any = None,
 ) -> dict[str, Any]:
     # 结构对齐 pyJianYingDraft（真机验证过的最小字段集）：
     # range 为字符数而非字节数，颜色为 0-1 RGB 数组，描边放 styles[].strokes。
@@ -922,13 +936,29 @@ def _build_text_material(
             }
         ]
 
-    font_meta = _lookup_meta("fonts", font_name)
+    canonical_font_name, font_meta = _resolve_font(font_name)
     if font_meta:
-        # path 只需非空占位，剪映按 id 自行解析字体资源
-        style["font"] = {"id": font_meta.get("resource_id", ""), "path": "D:"}
+        # 剪映按 resource id 拉取字体；保留真实字体名可以避免回退到系统默认字体。
+        style["font"] = {
+            "id": font_meta.get("resource_id", ""),
+            "path": f"{canonical_font_name}.ttf",
+        }
+
+    parsed_style = style_text
+    if isinstance(parsed_style, str) and parsed_style.strip():
+        try:
+            parsed_style = json.loads(parsed_style)
+        except json.JSONDecodeError:
+            parsed_style = None
+    if isinstance(parsed_style, dict):
+        parsed_style = parsed_style.get("style", parsed_style)
+        if isinstance(parsed_style, dict):
+            for key in ("bold", "italic", "underline", "fill", "strokes", "shadows"):
+                if key in parsed_style:
+                    style[key] = parsed_style[key]
 
     style_payload = {"styles": [style], "text": text}
-    return {
+    material = {
         "id": _generate_id(),
         "type": "text",
         "content": json.dumps(style_payload, ensure_ascii=False, separators=(",", ":")),
@@ -941,8 +971,28 @@ def _build_text_material(
         "force_apply_line_max_width": False,
         "check_flag": check_flag,
         "global_alpha": 1.0,
-        "font_name": font_name,
+        "font_name": canonical_font_name,
     }
+    if font_meta:
+        resource_id = str(font_meta.get("resource_id") or "")
+        material.update(
+            {
+                "font_id": resource_id,
+                "font_resource_id": "",
+                "font_path": "",
+                "font_title": "none",
+                "fonts": [
+                    {
+                        "effect_id": resource_id,
+                        "id": resource_id,
+                        "path": f"{canonical_font_name}.ttf",
+                        "resource_id": resource_id,
+                        "title": canonical_font_name,
+                    }
+                ],
+            }
+        )
+    return material
 
 
 def _new_speed_material() -> dict[str, Any]:
@@ -1286,8 +1336,6 @@ def append_captions(
     track_name: str | None = None,
     render_index: int | None = None,
 ) -> dict[str, Any]:
-    del style_text
-
     bundle = _load_bundle(draft_id)
     draft = bundle["content"]
     track = _ensure_track(draft, "text", track_name or "text")
@@ -1326,6 +1374,7 @@ def append_captions(
             alignment=int(float(info.get("alignment", material_alignment) or material_alignment)),
             font_name=str(info.get("font") or font or ""),
             letter_spacing=float(info.get("letter_spacing", material_letter_spacing) or material_letter_spacing),
+            style_text=info.get("style_text", style_text),
         )
         draft["materials"]["texts"].append(material)
 
