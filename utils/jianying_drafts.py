@@ -841,7 +841,15 @@ def _build_audio_material(path: Path, duration_us: int) -> dict[str, Any]:
     }
 
 
-def _build_video_material(path: Path, duration_us: int, width: int, height: int) -> dict[str, Any]:
+def _build_video_material(
+    path: Path,
+    duration_us: int,
+    width: int,
+    height: int,
+    *,
+    media_type: str = "photo",
+    has_audio: bool = False,
+) -> dict[str, Any]:
     material_id = _generate_id()
     return {
         "id": material_id,
@@ -865,7 +873,7 @@ def _build_video_material(path: Path, duration_us: int, width: int, height: int)
         "extra_type_option": 0,
         "formula_id": "",
         "freeze": None,
-        "has_audio": False,
+        "has_audio": has_audio,
         "height": height,
         "intensifies_audio_path": "",
         "intensifies_path": "",
@@ -883,7 +891,7 @@ def _build_video_material(path: Path, duration_us: int, width: int, height: int)
         "reverse_path": "",
         "source_platform": 0,
         "team_id": "",
-        "type": "photo",
+        "type": media_type,
         "video_algorithm": {
             "algorithms": [],
             "deflicker": None,
@@ -1069,6 +1077,8 @@ def _base_segment(
                     clip["scale"].update(value or {})
                 elif key == "transform":
                     clip["transform"].update(value or {})
+                elif key == "flip":
+                    clip["flip"].update(value or {})
         segment["clip"] = clip
         segment["uniform_scale"] = {"on": True, "value": 1.0}
 
@@ -1297,7 +1307,8 @@ def append_images(
     for info in image_infos or []:
         if not isinstance(info, dict):
             continue
-        target = info.get("image_url") or info.get("img") or info.get("url") or info.get("path") or info.get("file_path")
+        video_target = info.get("video_url")
+        target = video_target or info.get("image_url") or info.get("img") or info.get("url") or info.get("path") or info.get("file_path")
         if not target:
             continue
         start_us = _duration_to_us(info.get("start"))
@@ -1306,13 +1317,37 @@ def append_images(
             duration_us = _duration_to_us(info.get("duration")) or 3_000_000
             end_us = start_us + duration_us
         duration_us = max(0, end_us - start_us)
-        asset_path = _materialize_asset(str(target), bundle["draft_dir"], "video", ".png")
-        width, height = _infer_image_size(asset_path)
-        material = _build_video_material(asset_path, duration_us, width, height)
+        video_suffixes = {".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"}
+        is_video = bool(video_target) or Path(urlparse(str(target)).path).suffix.lower() in video_suffixes
+        asset_path = _materialize_asset(
+            str(target),
+            bundle["draft_dir"],
+            "video",
+            ".mp4" if is_video else ".png",
+        )
+        if is_video:
+            canvas = draft.get("canvas_config") or {}
+            width = int(float(info.get("width") or canvas.get("width") or 1920))
+            height = int(float(info.get("height") or canvas.get("height") or 1080))
+        else:
+            width, height = _infer_image_size(asset_path)
+        material = _build_video_material(
+            asset_path,
+            duration_us,
+            width,
+            height,
+            media_type="video" if is_video else "photo",
+            has_audio=bool(info.get("has_audio", False)) if is_video else False,
+        )
         draft["materials"]["videos"].append(material)
 
         clip_override = {
             "alpha": float(info.get("alpha", alpha if alpha is not None else 1) or 1),
+            "rotation": float(info.get("rotation", 0) or 0),
+            "flip": {
+                "horizontal": bool(info.get("flip_horizontal", False)),
+                "vertical": bool(info.get("flip_vertical", False)),
+            },
             "scale": {
                 "x": float(info.get("scale_x", 1) or 1),
                 "y": float(info.get("scale_y", 1) or 1),
@@ -1340,6 +1375,14 @@ def append_images(
             else:
                 animation["start"] = max(0, duration_us - animation["duration"])
                 animations.append(animation)
+        group_name = str(info.get("group_animation") or "").strip()
+        if group_name:
+            animation = _resolve_video_animation(group_name, "group", 0, info.get("group_animation_duration"))
+            if animation is None:
+                warnings.append(f"未知组合动画已忽略: {group_name}")
+            else:
+                animation["duration"] = min(duration_us, animation["duration"])
+                animations.append(animation)
         if animations:
             animation_material = _build_animation_material(animations)
             draft["materials"]["material_animations"].append(animation_material)
@@ -1359,6 +1402,31 @@ def append_images(
     }
 
 
+def append_videos(
+    draft_id: str,
+    video_infos: list[dict[str, Any]],
+    alpha: Any = None,
+    *,
+    track_name: str | None = None,
+    render_index: int | None = None,
+) -> dict[str, Any]:
+    normalized = []
+    for info in video_infos or []:
+        if not isinstance(info, dict):
+            continue
+        copied = dict(info)
+        if not copied.get("video_url"):
+            copied["video_url"] = copied.get("url") or copied.get("path") or copied.get("file_path")
+        normalized.append(copied)
+    return append_images(
+        draft_id,
+        normalized,
+        alpha,
+        track_name=track_name,
+        render_index=render_index,
+    )
+
+
 def append_captions(
     draft_id: str,
     captions: list[dict[str, Any]],
@@ -1376,6 +1444,9 @@ def append_captions(
     text_color: str = "#FFFFFF",
     transform_x: Any = None,
     transform_y: Any = None,
+    rotation: Any = None,
+    flip_horizontal: Any = None,
+    flip_vertical: Any = None,
     in_animation: str | None = None,
     in_animation_duration: Any = None,
     out_animation: str | None = None,
@@ -1430,6 +1501,11 @@ def append_captions(
 
         clip_override = {
             "alpha": float(info.get("alpha", clip_alpha) or clip_alpha),
+            "rotation": float(info.get("rotation", rotation or 0) or 0),
+            "flip": {
+                "horizontal": bool(info.get("flip_horizontal", flip_horizontal or False)),
+                "vertical": bool(info.get("flip_vertical", flip_vertical or False)),
+            },
             "scale": {
                 "x": float(info.get("scale_x", clip_scale_x) or clip_scale_x),
                 "y": float(info.get("scale_y", clip_scale_y) or clip_scale_y),

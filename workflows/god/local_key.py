@@ -26,7 +26,15 @@ DEFAULT_OUTPUT = _REPO_ROOT / "神工作流模板_本地草稿-v1.json"
 AGGREGATE_NODE_ID = "300201"
 END_NODE_ID = "900001"
 
-_DRAFT_TOOLS = {"create_draft", "add_audios", "add_images", "add_captions", "add_keyframes", "add_effects"}
+_DRAFT_TOOLS = {
+    "create_draft",
+    "add_audios",
+    "add_images",
+    "add_videos",
+    "add_captions",
+    "add_keyframes",
+    "add_effects",
+}
 
 # 节点 id → key 里稳定可读的 call_id（换神变体节点 id 不变，可直接复用）
 _CALL_IDS = {
@@ -55,6 +63,7 @@ _CALL_IDS = {
 _LIST_PARAM = {
     "add_audios": "audio_infos",
     "add_images": "image_infos",
+    "add_videos": "video_infos",
     "add_captions": "captions",
     "add_keyframes": "keyframes",
     "add_effects": "effect_infos",
@@ -115,7 +124,9 @@ def _collect_call_specs(nodes: dict[str, dict], edges: list[dict]) -> tuple[list
         if node_id not in connected:
             continue  # v7 里 201368/201371 无接线，不产生调用
 
+        list_param = _LIST_PARAM[tool]
         list_ref = None
+        dynamic_refs = {}
         literals = {}
         for param in _input_params(node):
             name = param["name"]
@@ -124,7 +135,11 @@ def _collect_call_specs(nodes: dict[str, dict], edges: list[dict]) -> tuple[list
                 continue
             if value.get("type") == "ref":
                 content = value.get("content", {})
-                list_ref = (str(content.get("blockID")), str(content.get("name")))
+                ref = (str(content.get("blockID")), str(content.get("name")))
+                if name == list_param:
+                    list_ref = ref
+                else:
+                    dynamic_refs[name] = ref
             elif value.get("type") == "literal":
                 literals[name] = value.get("content")
         if list_ref is None:
@@ -136,6 +151,7 @@ def _collect_call_specs(nodes: dict[str, dict], edges: list[dict]) -> tuple[list
                 "tool": tool,
                 "ref": list_ref,
                 "literals": literals,
+                "dynamic_refs": dynamic_refs,
                 "order": order.get(node_id, 10**9),
             }
         )
@@ -415,6 +431,10 @@ def _rewrite_batch_image_spec(node: dict, spec: dict) -> None:
     node["type"] = "5"
     node["data"]["outputs"] = [{"type": "string", "name": "image_infos", "required": False}]
     spec["ref"] = (str(node["id"]), "image_infos")
+    # The rewritten code node has already folded every batch-driven transform
+    # into each image item. Keeping the original self-references would point
+    # the aggregate node back to the removed Mihe plugin.
+    spec["dynamic_refs"] = {}
 
 
 def _rewrite_batch_image_specs(nodes: dict[str, dict], specs: list[dict]) -> None:
@@ -639,6 +659,18 @@ def _build_aggregate_code(
         "    return value",
         "",
         "",
+        "def decode(value):",
+        "    while isinstance(value, str):",
+        "        try:",
+        "            parsed = json.loads(value)",
+        "        except Exception:",
+        "            break",
+        "        if parsed == value:",
+        "            break",
+        "        value = parsed",
+        "    return value",
+        "",
+        "",
         "async def main(args: Args) -> Output:",
         "    params = getattr(args, 'params', None) or {}",
         "    calls = []",
@@ -652,6 +684,10 @@ def _build_aggregate_code(
         lines.append("    if items:")
         params_literal = json.dumps(literals, ensure_ascii=False) if literals else "{}"
         lines.append(f"        call_params = {params_literal}")
+        for field in spec.get("dynamic_refs") or {}:
+            lines.append(
+                f"        call_params[{field!r}] = decode(params.get('arg_{call_id}_{field}'))"
+            )
         lines.append(f"        call_params['{list_param}'] = items")
         lines.append(f"        calls.append({{'call_id': '{call_id}', 'tool': '{tool}', 'params': call_params}})")
     lines.extend(
@@ -693,6 +729,24 @@ def _build_aggregate_node(
                 },
             }
         )
+        for field, ref in (spec.get("dynamic_refs") or {}).items():
+            input_parameters.append(
+                {
+                    "name": f"arg_{spec['call_id']}_{field}",
+                    "input": {
+                        "type": "string",
+                        "value": {
+                            "type": "ref",
+                            "content": {
+                                "source": "block-output",
+                                "blockID": ref[0],
+                                "name": ref[1],
+                            },
+                            "rawMeta": {"type": 1},
+                        },
+                    },
+                }
+            )
     return {
         "id": AGGREGATE_NODE_ID,
         "type": "5",

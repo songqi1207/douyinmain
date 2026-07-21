@@ -19,7 +19,7 @@ from workflows.god.local_key import convert_workflow_to_local_key, generate_loca
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_PROFILES = [
     (ROOT / "书单工作流模板_荐书-v1.json", "书单工作流_本地草稿", "书单_测试", "book_local_", 16),
-    (ROOT / "烟工作流模板_香烟鉴赏-v1.json", "香烟工作流_本地草稿", "香烟_测试", "cigarette_local_", 17),
+    (ROOT / "每天认识一款香烟_中华_20260708_121403.txt", "香烟工作流_本地草稿", "香烟_测试", "cigarette_local_", 29),
     (ROOT / "神工作流模板_修改版-开场静态修正-v7.json", "神工作流模板_本地草稿", "神话解说_测试", "god_local_", 17),
 ]
 
@@ -117,7 +117,11 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
                             source_id = call["ref"].split(".", 1)[0]
                             value = _run_code_node(
                                 nodes[source_id],
-                                {"image_infos": json.dumps([samples["add_images"]], ensure_ascii=False)},
+                                {
+                                    "image_infos": json.dumps([samples["add_images"]], ensure_ascii=False),
+                                    "value_rows": ["-100|100"],
+                                    "offset_rows": "0|100",
+                                },
                             )["keyframes"]
                         else:
                             value = json.dumps([samples[call["tool"]]], ensure_ascii=False)

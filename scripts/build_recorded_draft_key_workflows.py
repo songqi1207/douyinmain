@@ -23,7 +23,9 @@ PROFILES = (
         "run_prefix": "book_recorded_",
     },
     {
-        "source": ROOT / "烟工作流模板_香烟鉴赏-v1.json",
+        # 香烟必须使用最初可正常连线的中华母版；旧的静态
+        # 烟工作流模板_香烟鉴赏-v1.json 是误用神模板派生出的版本。
+        "source": ROOT / "每天认识一款香烟_中华_20260708_121403.txt",
         "output": ROOT / "烟工作流模板_香烟鉴赏-draft_key-v1.json",
         "workflow_name": "香烟工作流_米核插件+draft_key记录",
         "draft_name": "香烟_本地草稿",

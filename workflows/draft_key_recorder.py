@@ -110,7 +110,13 @@ def _ref_parameter(
     input_type: str = "string",
 ) -> dict[str, Any]:
     input_definition: dict[str, Any] = {"type": input_type}
-    raw_meta_type = 1
+    raw_meta_type = {
+        "string": 1,
+        "integer": 2,
+        "boolean": 3,
+        "float": 4,
+        "number": 4,
+    }.get(input_type, 1)
     if input_type == "list":
         source_output = _output_definition(nodes, content) or {}
         schema = copy.deepcopy(source_output.get("schema"))
@@ -144,6 +150,20 @@ def _recorder_specs(workflow: dict[str, Any]) -> tuple[list[dict[str, Any]], dic
         node = nodes[spec["node_id"]]
         list_param = _LIST_PARAM[spec["tool"]]
         batch = _batch_descriptor(node, list_param)
+        segment_output_name = None
+        for output in ((node.get("data") or {}).get("outputs") or []):
+            if output.get("name") == "segment_infos":
+                segment_output_name = "segment_infos"
+                break
+            schema = output.get("schema") or {}
+            nested_names = {
+                str(item.get("name") or "")
+                for item in (schema.get("schema") or [])
+                if isinstance(item, dict)
+            }
+            if "segment_infos" in nested_names:
+                segment_output_name = str(output.get("name") or "")
+                break
         recorder_specs.append(
             {
                 **spec,
@@ -152,10 +172,7 @@ def _recorder_specs(workflow: dict[str, Any]) -> tuple[list[dict[str, Any]], dic
                 ),
                 "list_param": list_param,
                 "batch": batch,
-                "segment_output": any(
-                    output.get("name") == "segment_infos"
-                    for output in ((node.get("data") or {}).get("outputs") or [])
-                ),
+                "segment_output_name": segment_output_name,
             }
         )
     return recorder_specs, draft_cfg
@@ -194,11 +211,23 @@ def _recorder_inputs(
                     nodes,
                 )
             )
-        if spec["segment_output"]:
+            for field, ref in (spec.get("dynamic_refs") or {}).items():
+                content = {"blockID": ref[0], "name": ref[1]}
+                output = _output_definition(nodes, content) or {}
+                input_type = str(output.get("type") or "string")
+                append(
+                    _ref_parameter(
+                        f"arg_{call_id}_{field}",
+                        content,
+                        nodes,
+                        input_type=input_type,
+                    )
+                )
+        if spec["segment_output_name"]:
             append(
                 _ref_parameter(
                     f"segments_{call_id}",
-                    {"blockID": spec["node_id"], "name": "segment_infos"},
+                    {"blockID": spec["node_id"], "name": spec["segment_output_name"]},
                     nodes,
                     input_type="list",
                 )
@@ -232,7 +261,11 @@ def _runtime_specs(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "list_param": spec["list_param"],
                 "input": None if batch else f"in_{spec['call_id']}",
                 "batch": batch_runtime,
-                "segments_input": f"segments_{spec['call_id']}" if spec["segment_output"] else None,
+                "dynamic_inputs": {
+                    field: f"arg_{spec['call_id']}_{field}"
+                    for field in ((spec.get("dynamic_refs") or {}) if not batch else {})
+                },
+                "segments_input": f"segments_{spec['call_id']}" if spec["segment_output_name"] else None,
                 "literals": spec["literals"],
             }
         )
@@ -370,6 +403,8 @@ async def main(args: Args) -> Output:
 
         call_params = {{spec['list_param']: call_items}}
         call_params.update(spec['literals'])
+        for field, input_name in spec['dynamic_inputs'].items():
+            call_params[field] = decode(params.get(input_name))
         calls.append({{
             'call_id': spec['call_id'],
             'tool': spec['tool'],
@@ -382,6 +417,21 @@ async def main(args: Args) -> Output:
             for index, segment_id in enumerate(segment_ids(params.get(spec['segments_input']))):
                 segment_refs[segment_id] = {{'call_id': spec['call_id'], 'index': index}}
 
+    field_manifest = []
+    for call in calls:
+        item_fields = set()
+        for value in call['params'].values():
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        item_fields.update(item.keys())
+        field_manifest.append({{
+            'call_id': call['call_id'],
+            'tool': call['tool'],
+            'parameter_fields': sorted(call['params'].keys()),
+            'item_fields': sorted(item_fields),
+        }})
+
     key = {{
         'schema_version': '1.0',
         'kind': 'jianying_draft_key',
@@ -393,6 +443,7 @@ async def main(args: Args) -> Output:
             'template_operation_count': len(SPECS),
             'recorded_operation_count': len(calls),
             'skipped_empty_calls': skipped_empty_calls,
+            'recorded_field_manifest': field_manifest,
         }},
         'draft': {{
             'width': {int(draft_cfg['width'])},
@@ -562,8 +613,31 @@ def add_draft_key_recorder(
                 "call_id": spec["call_id"],
                 "tool": spec["tool"],
                 "node_id": spec["node_id"],
+                "item_input_name": (
+                    None if spec["batch"] else f"in_{spec['call_id']}"
+                ),
+                "batch_source_input_name": (
+                    f"batch_{spec['call_id']}_{spec['batch']['source_name']}"
+                    if spec["batch"]
+                    else None
+                ),
+                "batch_source_path": (
+                    spec["batch"]["source_path"] if spec["batch"] else ""
+                ),
+                "batch_input_names": (
+                    [
+                        f"batch_{spec['call_id']}_{batch_name}"
+                        for batch_name in spec["batch"]["refs"]
+                    ]
+                    if spec["batch"]
+                    else []
+                ),
+                "dynamic_input_names": {
+                    field: f"arg_{spec['call_id']}_{field}"
+                    for field in ((spec.get("dynamic_refs") or {}) if not spec["batch"] else {})
+                },
                 "segment_input_name": (
-                    f"segments_{spec['call_id']}" if spec["segment_output"] else None
+                    f"segments_{spec['call_id']}" if spec["segment_output_name"] else None
                 ),
             }
             for spec in specs

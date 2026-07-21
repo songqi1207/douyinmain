@@ -133,13 +133,15 @@ class DraftKeyRecorderWorkflowTests(unittest.TestCase):
                 nodes = {str(node["id"]): node for node in workflow["json"]["nodes"]}
                 end = nodes["900001"]
                 parameters = end["data"]["inputs"]["inputParameters"]
-                self.assertEqual([item["name"] for item in parameters], ["output", "draft_id", "draft_key"])
+                names = [item["name"] for item in parameters]
+                self.assertEqual(names[-2:], ["draft_id", "draft_key"])
+                self.assertIn("output", names)
                 self.assertEqual(
                     parameters[0]["input"]["value"]["content"],
-                    parameters[1]["input"]["value"]["content"],
+                    parameters[-2]["input"]["value"]["content"],
                 )
                 self.assertEqual(
-                    parameters[2]["input"]["value"]["content"]["blockID"],
+                    parameters[-1]["input"]["value"]["content"]["blockID"],
                     report["recorder_node_id"],
                 )
 
@@ -161,14 +163,48 @@ class DraftKeyRecorderWorkflowTests(unittest.TestCase):
                 for call in report["calls"]:
                     tool = call["tool"]
                     if tool == "add_audios":
-                        value = [{"audio_url": "voice.wav", "start": 0, "end": 1_000_000}]
+                        value = [{
+                            "audio_url": "voice.wav",
+                            "start": 0,
+                            "end": 1_000_000,
+                            "volume": 0.35,
+                            "audio_effect": "人声增强3",
+                        }]
                     elif tool == "add_images":
-                        value = [{"image_url": "frame.png", "start": 0, "end": 1_000_000}]
+                        value = [{
+                            "image_url": "frame.png",
+                            "start": 0,
+                            "end": 1_000_000,
+                            "alpha": 0.8,
+                            "scale_x": 1.2,
+                            "scale_y": 1.1,
+                            "transform_x": -42,
+                            "transform_y": 96,
+                            "rotation": 12,
+                            "in_animation": "渐显",
+                            "in_animation_duration": 300_000,
+                        }]
                         last_image_segment_id = f"segment-{call['call_id']}"
                     elif tool == "add_captions":
-                        value = [{"text": "draft_key", "start": 0, "end": 1_000_000}]
+                        value = [{
+                            "text": "draft_key",
+                            "start": 0,
+                            "end": 1_000_000,
+                            "font": "出云龙",
+                            "font_size": 15,
+                            "transform_x": -58,
+                            "transform_y": 100,
+                            "in_animation": "滚入",
+                            "in_animation_duration": 112_800,
+                        }]
                     elif tool == "add_effects":
-                        value = [{"effect": "柔光", "start": 0, "end": 1_000_000}]
+                        value = [{
+                            "effect": "柔光",
+                            "start": 0,
+                            "end": 1_000_000,
+                            "intensity": 0.8,
+                            "adjust_params": {"effects_adjust_filter": 0.7},
+                        }]
                     else:
                         value = [
                             {
@@ -178,7 +214,17 @@ class DraftKeyRecorderWorkflowTests(unittest.TestCase):
                                 "value": 0,
                             }
                         ]
-                    params[f"in_{call['call_id']}"] = json.dumps(value, ensure_ascii=False)
+                    if call["item_input_name"]:
+                        params[call["item_input_name"]] = json.dumps(value, ensure_ascii=False)
+                    elif call["batch_source_input_name"]:
+                        source_value = value
+                        for part in reversed(
+                            [part for part in call["batch_source_path"].split(".") if part]
+                        ):
+                            source_value = {part: source_value}
+                        params[call["batch_source_input_name"]] = [source_value]
+                        for input_name in call["batch_input_names"]:
+                            params.setdefault(input_name, [0])
                     if call["segment_input_name"]:
                         segment_id = (
                             last_image_segment_id
@@ -194,6 +240,25 @@ class DraftKeyRecorderWorkflowTests(unittest.TestCase):
                 self.assertEqual(key["meta"]["unresolved_segment_ids"], [])
                 self.assertEqual(key["meta"]["recorded_operation_count"], len(key["calls"]))
                 self.assertEqual(key["meta"]["template_operation_count"], len(report["calls"]))
+                self.assertEqual(len(key["meta"]["recorded_field_manifest"]), len(key["calls"]))
+                expected_fields = {
+                    "add_audios": {"audio_url", "start", "end", "volume", "audio_effect"},
+                    "add_images": {
+                        "image_url", "start", "end", "alpha", "scale_x", "scale_y",
+                        "transform_x", "transform_y", "rotation", "in_animation",
+                        "in_animation_duration",
+                    },
+                    "add_captions": {
+                        "text", "start", "end", "font", "font_size", "transform_x",
+                        "transform_y", "in_animation", "in_animation_duration",
+                    },
+                    "add_effects": {"effect", "start", "end", "intensity", "adjust_params"},
+                }
+                for manifest in key["meta"]["recorded_field_manifest"]:
+                    if manifest["tool"] in expected_fields:
+                        self.assertTrue(
+                            expected_fields[manifest["tool"]].issubset(manifest["item_fields"])
+                        )
                 self.assertTrue(
                     all(call.get("source_node_id") for call in key["calls"])
                 )
@@ -216,6 +281,58 @@ class DraftKeyRecorderWorkflowTests(unittest.TestCase):
                 ]
                 self.assertTrue(keyframe_items)
                 self.assertTrue(all("segment_ref" in item for item in keyframe_items))
+
+    def test_recorder_captures_non_batch_dynamic_plugin_parameters(self):
+        profile = PROFILES[0]
+        workflow = json.loads(profile["source"].read_text(encoding="utf-8"))
+        nodes = {str(node["id"]): node for node in workflow["json"]["nodes"]}
+        start = nodes["100001"]
+        start["data"]["outputs"].append(
+            {"type": "float", "name": "dynamic_scale", "required": False}
+        )
+        image_node = nodes["198946"]
+        scale_x = next(
+            item
+            for item in image_node["data"]["inputs"]["inputParameters"]
+            if item["name"] == "scale_x"
+        )
+        scale_x["input"]["value"] = {
+            "type": "ref",
+            "content": {
+                "source": "block-output",
+                "blockID": "100001",
+                "name": "dynamic_scale",
+            },
+            "rawMeta": {"type": 4},
+        }
+
+        report = add_draft_key_recorder(
+            workflow,
+            workflow_name="动态参数记录测试",
+            draft_name="动态参数记录测试",
+            run_prefix="dynamic_fields_",
+        )
+        recorder = next(
+            node for node in workflow["json"]["nodes"] if str(node["id"]) == report["recorder_node_id"]
+        )
+        call = next(item for item in report["calls"] if item["node_id"] == "198946")
+        params = {
+            call["item_input_name"]: json.dumps(
+                [{"image_url": "frame.png", "start": 0, "end": 1_000_000}],
+                ensure_ascii=False,
+            ),
+            call["dynamic_input_names"]["scale_x"]: 1.75,
+        }
+        key = _run_aggregate(recorder, params)
+
+        self.assertEqual(len(key["calls"]), 1)
+        self.assertEqual(key["calls"][0]["params"]["scale_x"], 1.75)
+        manifest = key["meta"]["recorded_field_manifest"][0]
+        self.assertIn("scale_x", manifest["parameter_fields"])
+        self.assertEqual(
+            set(manifest["item_fields"]),
+            {"image_url", "start", "end"},
+        )
 
     def test_recorder_omits_empty_optional_calls(self):
         profile = PROFILES[0]

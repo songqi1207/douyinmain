@@ -27,6 +27,7 @@ from utils.jianying_drafts import (
     append_effects,
     append_images,
     append_keyframes,
+    append_videos,
     create_draft,
 )
 
@@ -64,7 +65,7 @@ _MAGIC_SUFFIXES = (
     (b"ID3", ".mp3"),
 )
 
-_SEGMENT_TOOLS = {"add_audios", "add_images", "add_captions", "add_effects"}
+_SEGMENT_TOOLS = {"add_audios", "add_images", "add_videos", "add_captions", "add_effects"}
 _KNOWN_TOOLS = _SEGMENT_TOOLS | {"add_keyframes"}
 
 _KEYFRAME_PROPERTIES = {
@@ -86,11 +87,12 @@ _KEYFRAME_PROPERTIES = {
 _LIST_FIELDS = {
     "add_audios": ("audio_infos", "infos", "audios"),
     "add_images": ("image_infos", "infos", "imgs", "images"),
+    "add_videos": ("video_infos", "infos", "videos"),
     "add_captions": ("captions", "infos", "texts"),
     "add_keyframes": ("keyframes", "infos"),
     "add_effects": ("effect_infos", "infos", "effects"),
 }
-_ASSET_FIELDS = ("audio_url", "image_url", "img", "url", "path", "file_path")
+_ASSET_FIELDS = ("audio_url", "video_url", "image_url", "img", "url", "path", "file_path")
 _IMAGE_STYLE_FIELDS = (
     "alpha",
     "scale_x",
@@ -101,6 +103,11 @@ _IMAGE_STYLE_FIELDS = (
     "in_animation_duration",
     "out_animation",
     "out_animation_duration",
+    "group_animation",
+    "group_animation_duration",
+    "rotation",
+    "flip_horizontal",
+    "flip_vertical",
 )
 
 # 剪映 clip.transform / 位置关键帧是归一化坐标；剪映小助手传的是剪映 UI 显示的像素值。
@@ -253,7 +260,7 @@ def _validate_key(key: Any) -> list[str]:
 def _collect_asset_urls(key: dict[str, Any]) -> list[str]:
     urls: list[str] = []
     for call in key.get("calls", []):
-        if not isinstance(call, dict) or call.get("tool") not in ("add_audios", "add_images"):
+        if not isinstance(call, dict) or call.get("tool") not in ("add_audios", "add_images", "add_videos"):
             continue
         for item in _call_items(call):
             for field in _ASSET_FIELDS:
@@ -476,9 +483,9 @@ def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool 
     call_results: dict[str, dict[str, Any]] = {}
     report_calls: list[dict[str, Any]] = []
     warnings: list[str] = []
-    type_counters = {"add_audios": 0, "add_images": 0, "add_captions": 0, "add_effects": 0}
-    render_base = {"add_audios": 11000, "add_images": 14000, "add_captions": 15000, "add_effects": 16000}
-    track_prefix = {"add_audios": "audio", "add_images": "video", "add_captions": "text", "add_effects": "effect"}
+    type_counters = {"add_audios": 0, "add_images": 0, "add_videos": 0, "add_captions": 0, "add_effects": 0}
+    render_base = {"add_audios": 11000, "add_images": 14000, "add_videos": 14000, "add_captions": 15000, "add_effects": 16000}
+    track_prefix = {"add_audios": "audio", "add_images": "video", "add_videos": "video", "add_captions": "text", "add_effects": "effect"}
 
     for index, call in enumerate(key["calls"]):
         tool = call["tool"]
@@ -511,13 +518,14 @@ def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool 
 
             if tool == "add_audios":
                 result = append_audios(draft_id, items, track_name=track_name, render_index=render_index)
-            elif tool == "add_images":
+            elif tool in {"add_images", "add_videos"}:
                 # Mihe permits clip styling either on every image item or as
                 # top-level add_images parameters.  The recorder preserves the
                 # latter, so merge them before writing JianYing segments.
                 items = _merge_global_image_style(items, params)
                 _normalize_item_transforms(items, width, height)
-                result = append_images(draft_id, items, params.get("alpha"), track_name=track_name, render_index=render_index)
+                append_media = append_videos if tool == "add_videos" else append_images
+                result = append_media(draft_id, items, params.get("alpha"), track_name=track_name, render_index=render_index)
             elif tool == "add_captions":
                 style_keys = (
                     "alpha",
@@ -533,6 +541,9 @@ def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool 
                     "text_color",
                     "transform_x",
                     "transform_y",
+                    "rotation",
+                    "flip_horizontal",
+                    "flip_vertical",
                     "in_animation",
                     "in_animation_duration",
                     "out_animation",
