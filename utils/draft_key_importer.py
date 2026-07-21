@@ -533,6 +533,12 @@ def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool 
                     "text_color",
                     "transform_x",
                     "transform_y",
+                    "in_animation",
+                    "in_animation_duration",
+                    "out_animation",
+                    "out_animation_duration",
+                    "loop_animation",
+                    "loop_animation_duration",
                 )
                 style = {k: params[k] for k in style_keys if params.get(k) not in (None, "")}
                 if "transform_x" in style:

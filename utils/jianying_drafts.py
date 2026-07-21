@@ -46,6 +46,9 @@ _REMOTE_TIMEOUT = 60
 _FONT_ALIASES = {"华文行楷": "毛笔行楷"}
 _FONT_META_OVERRIDES = {
     "毛笔行楷": {"resource_id": "6912033793700270606"},
+    # 该字体不在 pyJianYingDraft 0.3.0 的资源表中，ID 来自可正常
+    # 打开的“神”模板草稿。
+    "出云龙": {"resource_id": "7618137748045696292"},
 }
 
 _jianying_meta_cache: dict[str, Any] | None = None
@@ -1186,6 +1189,46 @@ def _resolve_video_animation(name: str, animation_type: str, start_us: int, dura
     }
 
 
+def _resolve_text_animation(name: str, animation_type: str, start_us: int, duration_us: Any) -> dict[str, Any] | None:
+    table = {
+        "in": "text_intros",
+        "out": "text_outros",
+        "loop": "text_loops",
+    }[animation_type]
+    meta = _lookup_meta(table, name)
+    if meta is None:
+        return None
+
+    duration = _duration_to_us(duration_us)
+    if duration <= 0:
+        # pyJianYingDraft 的元数据以纳秒保存默认时长，而草稿时间轴使用
+        # 微秒；例如 500000000000 表示 0.5 秒。
+        meta_duration = int(meta.get("duration_us") or 500_000_000_000)
+        duration = meta_duration // 1_000_000 if meta_duration > 60_000_000 else meta_duration
+
+    category = {
+        "in": ("ruchang", "入场"),
+        "out": ("chuchang", "出场"),
+        "loop": ("xunhuan", "循环"),
+    }[animation_type]
+    return {
+        "anim_adjust_params": None,
+        "platform": "all",
+        "panel": "",
+        "material_type": "sticker",
+        "name": str(name).strip(),
+        "id": str(meta.get("effect_id", "")),
+        "type": animation_type,
+        "resource_id": str(meta.get("resource_id", "")),
+        "start": start_us,
+        "duration": duration,
+        "path": "",
+        "request_id": "",
+        "category_id": category[0],
+        "category_name": category[1],
+    }
+
+
 def append_audios(
     draft_id: str,
     audio_infos: list[dict[str, Any]],
@@ -1333,6 +1376,12 @@ def append_captions(
     text_color: str = "#FFFFFF",
     transform_x: Any = None,
     transform_y: Any = None,
+    in_animation: str | None = None,
+    in_animation_duration: Any = None,
+    out_animation: str | None = None,
+    out_animation_duration: Any = None,
+    loop_animation: str | None = None,
+    loop_animation_duration: Any = None,
     track_name: str | None = None,
     render_index: int | None = None,
 ) -> dict[str, Any]:
@@ -1341,6 +1390,7 @@ def append_captions(
     track = _ensure_track(draft, "text", track_name or "text")
     segment_render_index = int(render_index) if render_index is not None else 15000
     items = []
+    warnings: list[str] = []
 
     clip_alpha = float(alpha if alpha not in (None, "") else 1)
     clip_scale_x = float(scale_x if scale_x not in (None, "") else 1)
@@ -1390,6 +1440,31 @@ def append_captions(
             },
         }
         segment = _base_segment(material["id"], start_us, duration_us, segment_render_index, clip_override=clip_override, kind="text", draft=draft)
+
+        animations = []
+        animation_specs = (
+            ("in", info.get("in_animation") or in_animation, info.get("in_animation_duration") or in_animation_duration),
+            ("out", info.get("out_animation") or out_animation, info.get("out_animation_duration") or out_animation_duration),
+            ("loop", info.get("loop_animation") or loop_animation, info.get("loop_animation_duration") or loop_animation_duration),
+        )
+        animation_labels = {"in": "入场", "out": "出场", "loop": "循环"}
+        for animation_type, animation_name, animation_duration in animation_specs:
+            resolved_name = str(animation_name or "").strip()
+            if not resolved_name:
+                continue
+            animation = _resolve_text_animation(resolved_name, animation_type, 0, animation_duration)
+            if animation is None:
+                warnings.append(f"未知文字{animation_labels[animation_type]}动画已忽略: {resolved_name}")
+                continue
+            animation["duration"] = min(duration_us, animation["duration"])
+            if animation_type == "out":
+                animation["start"] = max(0, duration_us - animation["duration"])
+            animations.append(animation)
+        if animations:
+            animation_material = _build_animation_material(animations)
+            draft["materials"]["material_animations"].append(animation_material)
+            segment["extra_material_refs"].append(animation_material["id"])
+
         track["segments"].append(segment)
         items.append({"id": segment["id"], "start": start_us, "end": end_us})
 
@@ -1400,6 +1475,7 @@ def append_captions(
         "segment_ids": [item["id"] for item in items],
         "segment_infos": items,
         "track_id": track["id"],
+        "warnings": warnings,
     }
 
 
