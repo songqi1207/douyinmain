@@ -16,7 +16,7 @@ from typing import Any
 import requests
 
 from business_workflows import find_workflow_downloads
-from workflow_registry import LOCAL_CODES, REFERENCE_TEMPLATE_CODES, get_workflow
+from workflow_registry import LOCAL_CODES, REFERENCE_TEMPLATE_CODES, get_workflow, published_workflow_id
 
 
 ROOT = Path(__file__).resolve().parent
@@ -266,7 +266,14 @@ def execute_job(job_id: str):
         _update_job(job_id, status="running", stage="preparing", progress=10)
         mode = (os.getenv("WORKFLOW_PROVIDER_MODE") or "demo").strip().lower()
         build_mode = (os.getenv("WORKFLOW_BUILD_MODE") or "template").strip().lower()
-        if job["workflow_code"] in LOCAL_CODES:
+        published_local = (
+            job["workflow_code"] in LOCAL_CODES
+            and bool((os.getenv("COZE_API_TOKEN") or "").strip())
+            and bool(published_workflow_id(job["workflow_code"]))
+        )
+        if published_local:
+            results = _run_coze(job)
+        elif job["workflow_code"] in LOCAL_CODES:
             results = _run_local_workflow(job)
         elif job["workflow_code"] in REFERENCE_TEMPLATE_CODES and build_mode == "template":
             results = _run_reference_template(job)
@@ -316,7 +323,11 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
 
     code = str(workflow_code or "").upper()
     result.pop("voice_notice", None)
-    if code == "G259":
+    if code == "OWN03":
+        from workflows.god.provider import build_god_provider_parameters
+
+        result = build_god_provider_parameters(result)
+    elif code == "G259":
         title = str(result.pop("theme", "") or result.pop("title", "") or "").strip()
         mode = result.pop("content_mode", "human_insight")
         if mode == "life_story" and title and "一生" not in title:
@@ -358,7 +369,7 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
 
 def _run_coze(job: dict) -> list[dict]:
     token = (os.getenv("COZE_API_TOKEN") or "").strip()
-    workflow_id = (os.getenv(f"COZE_WORKFLOW_{job['workflow_code']}") or "").strip()
+    workflow_id = published_workflow_id(job["workflow_code"])
     if not token or not workflow_id:
         raise ProviderError("provider_not_configured", "扣子工作流尚未发布或后台 Token 未配置")
     _update_job(job["id"], stage="generating", progress=35)
@@ -375,17 +386,77 @@ def _run_coze(job: dict) -> list[dict]:
     payload = response.json()
     if payload.get("code") not in (None, 0):
         raise ProviderError("provider_error", str(payload.get("msg") or payload.get("message") or "扣子执行失败"))
-    data = payload.get("data")
-    if isinstance(data, str):
-        try:
-            data = json.loads(data)
-        except ValueError:
-            data = {"output": data}
+    data = _decode_nested_json(payload.get("data"))
+    if job["workflow_code"] in LOCAL_CODES:
+        return _save_draft_key_result(job, data)
     workflow = get_workflow(job["workflow_code"], job["category"]) or {}
     results = _extract_results(data, workflow.get("output_type", "draft"))
     if not results:
         raise ProviderError("empty_result", "工作流执行完成但没有可展示结果")
     return results
+
+
+def _decode_nested_json(value: Any) -> Any:
+    """Decode JSON strings recursively without changing ordinary caption text."""
+    if isinstance(value, dict):
+        return {key: _decode_nested_json(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_decode_nested_json(child) for child in value]
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith(("{", "[")):
+            try:
+                return _decode_nested_json(json.loads(stripped))
+            except (TypeError, ValueError):
+                pass
+    return value
+
+
+def _find_nested_field(value: Any, field: str) -> Any:
+    if isinstance(value, dict):
+        if field in value:
+            return value[field]
+        for child in value.values():
+            found = _find_nested_field(child, field)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _find_nested_field(child, field)
+            if found is not None:
+                return found
+    return None
+
+
+def _save_draft_key_result(job: dict, data: Any) -> list[dict]:
+    draft_key = _decode_nested_json(_find_nested_field(data, "draft_key"))
+    if draft_key is None and isinstance(data, dict) and isinstance(data.get("calls"), list):
+        draft_key = data
+    if not isinstance(draft_key, dict):
+        raise ProviderError("draft_key_missing", "扣子工作流已完成，但返回结果中没有 draft_key")
+
+    from utils.draft_key_importer import KeyValidationError, import_draft_key
+
+    try:
+        import_draft_key(draft_key, dry_run=True)
+    except KeyValidationError as exc:
+        raise ProviderError("invalid_draft_key", "扣子返回的 draft_key 校验失败：" + "；".join(exc.errors)) from exc
+
+    RESULT_DIR.mkdir(parents=True, exist_ok=True)
+    destination = RESULT_DIR / f"{job['workflow_code'].lower()}-{job['id']}-draft-key.json"
+    destination.write_text(json.dumps(draft_key, ensure_ascii=False, indent=2), encoding="utf-8")
+    remote_draft_id = _find_nested_field(data, "draft_id")
+    _update_job(job["id"], stage="draft_key_ready", progress=75)
+    return [
+        {
+            "type": "draft",
+            "format": "draft_key",
+            "url": f"/api/v1/job-results/{destination.name}",
+            "poster_url": None,
+            "downloadable": True,
+            "remote_draft_id": str(remote_draft_id or ""),
+        }
+    ]
 
 
 def _extract_results(value: Any, expected_type: str = "draft") -> list[dict]:

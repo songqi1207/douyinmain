@@ -26,7 +26,7 @@ export type Workflow = {
   status: "online" | "coming_soon";
   input_schema: InputField[];
   output_type: "image" | "video" | "draft";
-  generation_mode: "workflow_template" | "video";
+  generation_mode: "workflow_template" | "draft" | "video";
   stats: { views: number; favorites: number; downloads: number; runs: number };
   created_at?: string | null;
   updated_at?: string | null;
@@ -34,9 +34,11 @@ export type Workflow = {
 
 export type JobResult = {
   type: "image" | "video" | "draft";
+  format?: "draft_key" | "workflow_template";
   url: string;
   poster_url?: string | null;
   downloadable: boolean;
+  remote_draft_id?: string;
 };
 
 export type Job = {

@@ -1,8 +1,9 @@
 import os
+import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 os.environ["WORKFLOW_DATA_DIR"] = tempfile.mkdtemp(prefix="workflow-api-tests-")
 os.environ["WORKFLOW_PROVIDER_MODE"] = "demo"
@@ -11,11 +12,17 @@ os.environ["SITE_ADMIN_EMAIL"] = "admin@example.test"
 os.environ["SITE_ADMIN_PASSWORD"] = "admin-test-password-123"
 os.environ["SMTP_HOST"] = "smtp.example.test"
 os.environ["SMTP_FROM"] = "noreply@example.test"
+os.environ["COZE_API_TOKEN"] = ""
+os.environ["COZE_WORKFLOW_GOD"] = ""
+os.environ["COZE_WORKFLOW_OWN03"] = ""
+os.environ["MIHE_KEY"] = ""
 
 from fastapi.testclient import TestClient
 
 from fastapi_app import app
-from workflow_jobs import _provider_inputs
+import workflow_jobs
+from workflow_jobs import _provider_inputs, _run_coze
+from workflow_registry import get_workflow
 
 
 class WorkflowApiTests(unittest.TestCase):
@@ -233,6 +240,143 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(g45["author"], "成长栏目")
         self.assertEqual(g45["content"], "正文")
         self.assertEqual(g45["left_text"], "女性成长")
+
+    def test_published_god_workflow_maps_frontend_inputs_to_coze_parameters(self):
+        with patch.dict(os.environ, {"MIHE_KEY": "server-side-mihe-key"}):
+            params = _provider_inputs(
+                {
+                    "god_name": "西王母",
+                    "description": "昆仑女仙之首，凤冠霞帔",
+                    "scene_count": 1,
+                    "script": "西王母的故事",
+                    "audio_url": "https://example.test/bgm.mp3",
+                    "voice_id": "voice-1",
+                },
+                "OWN03",
+            )
+
+        self.assertEqual(params["zhuti"], "西王母")
+        self.assertEqual(params["shuliang"], "1")
+        self.assertEqual(params["wenan"], "西王母的故事")
+        self.assertEqual(params["audio"], "https://example.test/bgm.mp3")
+        self.assertEqual(params["yinse"], "voice-1")
+        self.assertIn("西王母为昆仑女仙之首", params["fengge"])
+        self.assertEqual(params["mihe_key"], "server-side-mihe-key")
+        for browser_name in ("god_name", "description", "scene_count", "script", "audio_url", "voice_id"):
+            self.assertNotIn(browser_name, params)
+
+    def test_published_god_workflow_saves_nested_draft_key_result(self):
+        key = {
+            "kind": "jianying_draft_key",
+            "meta": {"run_id": "coze-result-test"},
+            "draft": {"width": 1080, "height": 1920, "name": "测试草稿"},
+            "calls": [
+                {
+                    "call_id": "caption",
+                    "tool": "add_captions",
+                    "params": {"captions": [{"text": "测试", "start": 0, "end": 1_000_000}]},
+                }
+            ],
+        }
+        nested = json.dumps(
+            {"output": json.dumps({"draft_id": "remote-draft-id", "draft_key": json.dumps(key, ensure_ascii=False)}, ensure_ascii=False)},
+            ensure_ascii=False,
+        )
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"code": 0, "data": nested}
+
+        with tempfile.TemporaryDirectory(prefix="coze-draft-key-") as temporary:
+            result_dir = Path(temporary)
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "COZE_API_TOKEN": "test-token",
+                        "COZE_WORKFLOW_OWN03": "published-workflow-id",
+                        "MIHE_KEY": "test-mihe-key",
+                    },
+                ),
+                patch.object(workflow_jobs, "RESULT_DIR", result_dir),
+                patch.object(workflow_jobs.requests, "post", return_value=response) as post,
+            ):
+                results = _run_coze(
+                    {
+                        "id": "job-id",
+                        "workflow_code": "OWN03",
+                        "category": "自有工作流",
+                        "inputs": {"god_name": "西王母", "scene_count": 1},
+                    }
+                )
+
+            self.assertEqual(results[0]["format"], "draft_key")
+            self.assertEqual(results[0]["remote_draft_id"], "remote-draft-id")
+            saved = result_dir / Path(results[0]["url"]).name
+            self.assertEqual(json.loads(saved.read_text(encoding="utf-8")), key)
+            request_body = post.call_args.kwargs["json"]
+            self.assertEqual(request_body["workflow_id"], "published-workflow-id")
+            self.assertEqual(request_body["parameters"]["mihe_key"], "test-mihe-key")
+
+    def test_configured_owned_god_workflow_switches_to_one_click_draft_mode(self):
+        with patch.dict(
+            os.environ,
+            {"COZE_API_TOKEN": "test-token", "COZE_WORKFLOW_OWN03": "published-workflow-id"},
+        ):
+            workflow = get_workflow("OWN03")
+
+        self.assertEqual(workflow["generation_mode"], "draft")
+        self.assertEqual(workflow["status"], "online")
+        self.assertIn("god_name", {field["name"] for field in workflow["input_schema"]})
+
+    def test_published_god_job_returns_downloadable_draft_key_for_local_bridge(self):
+        key = {
+            "kind": "jianying_draft_key",
+            "meta": {"run_id": "published-job-test"},
+            "draft": {"width": 1080, "height": 1920, "name": "西王母"},
+            "calls": [
+                {
+                    "call_id": "caption",
+                    "tool": "add_captions",
+                    "params": {"captions": [{"text": "西王母", "start": 0, "end": 1_000_000}]},
+                }
+            ],
+        }
+        response = MagicMock(status_code=200)
+        response.json.return_value = {
+            "code": 0,
+            "data": json.dumps(
+                {"output": json.dumps({"draft_id": "remote-id", "draft_key": key}, ensure_ascii=False)},
+                ensure_ascii=False,
+            ),
+        }
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "COZE_API_TOKEN": "test-token",
+                    "COZE_WORKFLOW_OWN03": "published-workflow-id",
+                    "MIHE_KEY": "test-mihe-key",
+                },
+            ),
+            patch.object(workflow_jobs.requests, "post", return_value=response),
+        ):
+            created = self.client.post(
+                "/api/v1/jobs",
+                json={
+                    "workflow_code": "OWN03",
+                    "category": "自有工作流",
+                    "inputs": {"god_name": "西王母", "scene_count": 1},
+                },
+            )
+
+            self.assertEqual(created.status_code, 202, created.text)
+            job_id = created.json()["job"]["id"]
+            job = self.client.get(f"/api/v1/jobs/{job_id}").json()["job"]
+            self.assertEqual(job["status"], "succeeded", job)
+            self.assertEqual(job["results"][0]["format"], "draft_key")
+            downloaded = self.client.get(job["results"][0]["url"])
+            self.assertEqual(downloaded.status_code, 200)
+            self.assertEqual(downloaded.json(), key)
 
     def test_reference_workflow_json_is_public_and_packages_are_member_only(self):
         selected = [

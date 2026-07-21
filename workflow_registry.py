@@ -17,6 +17,14 @@ DEMO_CODES = {"G247", "G218", "G159"}
 REFERENCE_TEMPLATE_CODES = {"G259", "G258", "G168", "G45", "G263", "G129", "G159", "G222"}
 PROVIDER_CODES = DEMO_CODES | REFERENCE_TEMPLATE_CODES
 LOCAL_CODES = {"OWN01", "OWN02", "OWN03"}
+PUBLISHED_WORKFLOW_ENV_ALIASES = {"OWN03": "COZE_WORKFLOW_GOD"}
+
+
+def published_workflow_id(code: str) -> str:
+    normalized = str(code or "").upper()
+    primary = (os.getenv(f"COZE_WORKFLOW_{normalized}") or "").strip()
+    alias = PUBLISHED_WORKFLOW_ENV_ALIASES.get(normalized, "")
+    return primary or ((os.getenv(alias) or "").strip() if alias else "")
 
 TEMPLATE_INPUT_SCHEMAS = {
     "OWN01": [{"name": "theme", "label": "书籍主题 / 书名", "type": "text", "required": True, "placeholder": "例如：活着"}],
@@ -284,13 +292,15 @@ def _normalize_item(category: str, item: dict) -> dict:
     if name.upper().startswith(code):
         name = name[len(code):].strip(" ·-—") or code
     preview = bool(item.get("preview"))
-    provider_configured = bool(os.getenv(f"COZE_WORKFLOW_{code}")) and bool(os.getenv("COZE_API_TOKEN"))
-    template_builder = code in LOCAL_CODES or (
+    provider_configured = bool(published_workflow_id(code)) and bool(os.getenv("COZE_API_TOKEN"))
+    published_local = code in LOCAL_CODES and provider_configured
+    template_builder = (code in LOCAL_CODES and not published_local) or (
         code in REFERENCE_TEMPLATE_CODES
         and (os.getenv("WORKFLOW_BUILD_MODE") or "template").strip().lower() == "template"
     )
     enabled = (
         template_builder
+        or published_local
         or
         (code in DEMO_CODES and _provider_mode() == "demo")
         or (code in PROVIDER_CODES and provider_configured)
@@ -315,7 +325,7 @@ def _normalize_item(category: str, item: dict) -> dict:
             TEMPLATE_INPUT_SCHEMAS.get(code, []) if template_builder else INPUT_SCHEMAS.get(code, [])
         ),
         "output_type": OUTPUT_TYPES.get(code, "draft"),
-        "generation_mode": "workflow_template" if template_builder else "video",
+        "generation_mode": "workflow_template" if template_builder else "draft" if published_local else "video",
     }
 
 

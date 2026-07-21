@@ -22,7 +22,7 @@ def create_app():
     application = Flask(__name__, template_folder="templates", static_folder="static")
     application.wsgi_app = ProxyFix(application.wsgi_app, x_for=1, x_proto=1, x_host=1)
     application.config["JSON_AS_ASCII"] = False
-    CORS(application)
+    CORS(application, allow_private_network=True)
     application.register_blueprint(views_bp)
     application.register_blueprint(api_bp)
     return application
