@@ -63,6 +63,17 @@ _LIST_FIELDS = {
     "add_effects": ("effect_infos", "infos", "effects"),
 }
 _ASSET_FIELDS = ("audio_url", "image_url", "img", "url", "path", "file_path")
+_IMAGE_STYLE_FIELDS = (
+    "alpha",
+    "scale_x",
+    "scale_y",
+    "transform_x",
+    "transform_y",
+    "in_animation",
+    "in_animation_duration",
+    "out_animation",
+    "out_animation_duration",
+)
 
 # 剪映 clip.transform / 位置关键帧是归一化坐标；剪映小助手传的是剪映 UI 显示的像素值。
 # 换算规则与 pyJianYingDraft 一致：归一化值 = 显示值 / 整边长（x 除以宽、y 除以高）。
@@ -272,6 +283,20 @@ def _localize_items(items: list[dict[str, Any]], asset_map: dict[str, str]) -> l
     return localized
 
 
+def _merge_global_image_style(
+    items: list[dict[str, Any]], params: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Apply add_images node-level styling while preserving item overrides."""
+    global_style = {
+        key: params[key]
+        for key in _IMAGE_STYLE_FIELDS
+        if params.get(key) not in (None, "")
+    }
+    if not global_style:
+        return items
+    return [{**global_style, **item} for item in items]
+
+
 def _normalize_transform(value: Any, canvas_dim: int) -> Any:
     """像素坐标 → 剪映归一化坐标（1.0 = 半边长）；已归一化的值原样通过。"""
     try:
@@ -384,6 +409,10 @@ def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool 
             if tool == "add_audios":
                 result = append_audios(draft_id, items, track_name=track_name, render_index=render_index)
             elif tool == "add_images":
+                # Mihe permits clip styling either on every image item or as
+                # top-level add_images parameters.  The recorder preserves the
+                # latter, so merge them before writing JianYing segments.
+                items = _merge_global_image_style(items, params)
                 _normalize_item_transforms(items, width, height)
                 result = append_images(draft_id, items, params.get("alpha"), track_name=track_name, render_index=render_index)
             elif tool == "add_captions":

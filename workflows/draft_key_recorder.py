@@ -147,6 +147,9 @@ def _recorder_specs(workflow: dict[str, Any]) -> tuple[list[dict[str, Any]], dic
         recorder_specs.append(
             {
                 **spec,
+                "source_node_title": str(
+                    ((node.get("data") or {}).get("nodeMeta") or {}).get("title") or ""
+                ),
                 "list_param": list_param,
                 "batch": batch,
                 "segment_output": any(
@@ -224,6 +227,8 @@ def _runtime_specs(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "call_id": spec["call_id"],
                 "tool": spec["tool"],
+                "source_node_id": spec["node_id"],
+                "source_node_title": spec["source_node_title"],
                 "list_param": spec["list_param"],
                 "input": None if batch else f"in_{spec['call_id']}",
                 "batch": batch_runtime,
@@ -335,6 +340,7 @@ async def main(args: Args) -> Output:
     calls = []
     segment_refs = {{}}
     unresolved_segment_ids = []
+    skipped_empty_calls = []
 
     for spec in SPECS:
         call_items = batch_items(params, spec) if spec['batch'] else items(params.get(spec['input']))
@@ -342,6 +348,12 @@ async def main(args: Args) -> Output:
         # empty list.  They are no-ops for Mihe and must not become invalid
         # draft_key calls (the local importer requires every call to have items).
         if not call_items:
+            skipped_empty_calls.append({{
+                'call_id': spec['call_id'],
+                'tool': spec['tool'],
+                'source_node_id': spec['source_node_id'],
+                'source_node_title': spec['source_node_title'],
+            }})
             continue
         if spec['tool'] == 'add_keyframes':
             normalized = []
@@ -361,6 +373,8 @@ async def main(args: Args) -> Output:
         calls.append({{
             'call_id': spec['call_id'],
             'tool': spec['tool'],
+            'source_node_id': spec['source_node_id'],
+            'source_node_title': spec['source_node_title'],
             'params': call_params,
         }})
 
@@ -376,6 +390,9 @@ async def main(args: Args) -> Output:
             'run_id': {run_prefix!r} + str(int(time.time() * 1000)),
             'source': 'mihe_plugin_call_record',
             'unresolved_segment_ids': unresolved_segment_ids,
+            'template_operation_count': len(SPECS),
+            'recorded_operation_count': len(calls),
+            'skipped_empty_calls': skipped_empty_calls,
         }},
         'draft': {{
             'width': {int(draft_cfg['width'])},

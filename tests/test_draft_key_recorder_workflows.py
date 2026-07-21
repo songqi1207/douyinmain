@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from scripts.build_recorded_draft_key_workflows import PROFILES, build_all
+from utils.draft_key_importer import _merge_global_image_style
 from utils.draft_key_importer import import_draft_key
 from workflows.draft_key_recorder import add_draft_key_recorder
 from workflows.cigarette import generate_cigarette_workflow
@@ -29,6 +30,28 @@ def _run_aggregate(node: dict, params: dict) -> dict:
 
 
 class DraftKeyRecorderWorkflowTests(unittest.TestCase):
+    def test_importer_applies_all_node_level_image_style_fields(self):
+        params = {
+            "alpha": 0.8,
+            "scale_x": 1.12,
+            "scale_y": 1.13,
+            "transform_x": -42,
+            "transform_y": 96,
+            "in_animation": "渐显",
+            "in_animation_duration": 300_000,
+            "out_animation": "渐隐",
+            "out_animation_duration": 400_000,
+        }
+        merged = _merge_global_image_style(
+            [{"image_url": "frame.png", "scale_x": 2}],
+            params,
+        )
+
+        self.assertEqual(merged[0]["scale_x"], 2)
+        for name, value in params.items():
+            if name != "scale_x":
+                self.assertEqual(merged[0][name], value)
+
     def test_original_plugins_and_edges_are_preserved(self):
         for profile in PROFILES:
             with self.subTest(source=profile["source"].name):
@@ -169,6 +192,22 @@ class DraftKeyRecorderWorkflowTests(unittest.TestCase):
                 self.assertEqual(validation["message"], "ok")
                 self.assertEqual(len(validation["calls"]), len(report["calls"]))
                 self.assertEqual(key["meta"]["unresolved_segment_ids"], [])
+                self.assertEqual(key["meta"]["recorded_operation_count"], len(key["calls"]))
+                self.assertEqual(key["meta"]["template_operation_count"], len(report["calls"]))
+                self.assertTrue(
+                    all(call.get("source_node_id") for call in key["calls"])
+                )
+                for call in key["calls"]:
+                    source = nodes[call["source_node_id"]]
+                    for parameter in source["data"]["inputs"]["inputParameters"]:
+                        name = parameter["name"]
+                        value = parameter["input"].get("value") or {}
+                        if name != "draft_id" and value.get("type") == "literal":
+                            self.assertEqual(
+                                call["params"].get(name),
+                                value.get("content"),
+                                f"{call['call_id']} lost literal parameter {name}",
+                            )
                 keyframe_items = [
                     item
                     for call in key["calls"]
@@ -203,6 +242,12 @@ class DraftKeyRecorderWorkflowTests(unittest.TestCase):
         self.assertEqual(key["calls"][0]["call_id"], first_call["call_id"])
         self.assertNotIn("call_191365", {call["call_id"] for call in key["calls"]})
         self.assertNotIn("call_300101", {call["call_id"] for call in key["calls"]})
+        self.assertEqual(key["meta"]["template_operation_count"], len(report["calls"]))
+        self.assertEqual(key["meta"]["recorded_operation_count"], 1)
+        self.assertEqual(
+            len(key["meta"]["skipped_empty_calls"]),
+            len(report["calls"]) - 1,
+        )
         self.assertEqual(import_draft_key(key, dry_run=True)["message"], "ok")
 
     def test_dynamic_cigarette_keeps_the_5fbf_generator_graph_and_adds_one_node(self):
