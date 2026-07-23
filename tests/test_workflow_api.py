@@ -319,7 +319,11 @@ class WorkflowApiTests(unittest.TestCase):
     def test_configured_owned_god_workflow_switches_to_one_click_draft_mode(self):
         with patch.dict(
             os.environ,
-            {"COZE_API_TOKEN": "test-token", "COZE_WORKFLOW_OWN03": "published-workflow-id"},
+            {
+                "COZE_API_TOKEN": "test-token",
+                "COZE_WORKFLOW_OWN03": "published-workflow-id",
+                "WORKFLOW_RENDER_API_URL": "http://render-worker.test/render",
+            },
         ):
             workflow = get_workflow("OWN03")
 
@@ -327,7 +331,7 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(workflow["status"], "online")
         self.assertIn("god_name", {field["name"] for field in workflow["input_schema"]})
 
-    def test_published_god_job_returns_downloadable_draft_key_for_local_bridge(self):
+    def test_published_god_job_renders_draft_key_on_windows_worker(self):
         key = {
             "kind": "jianying_draft_key",
             "meta": {"run_id": "published-job-test"},
@@ -340,14 +344,22 @@ class WorkflowApiTests(unittest.TestCase):
                 }
             ],
         }
-        response = MagicMock(status_code=200)
-        response.json.return_value = {
+        coze_response = MagicMock(status_code=200)
+        coze_response.json.return_value = {
             "code": 0,
             "data": json.dumps(
                 {"output": json.dumps({"draft_id": "remote-id", "draft_key": key}, ensure_ascii=False)},
                 ensure_ascii=False,
             ),
         }
+        render_response = MagicMock(status_code=200)
+        render_response.json.return_value = {
+            "status": "success",
+            "videos": ["http://render-worker.test/videos/job.mp4?signature=test"],
+        }
+        video_response = MagicMock(status_code=200)
+        video_response.headers = {"Content-Length": "3"}
+        video_response.iter_content.return_value = [b"mp4"]
 
         with (
             patch.dict(
@@ -356,9 +368,12 @@ class WorkflowApiTests(unittest.TestCase):
                     "COZE_API_TOKEN": "test-token",
                     "COZE_WORKFLOW_OWN03": "published-workflow-id",
                     "MIHE_KEY": "test-mihe-key",
+                    "WORKFLOW_RENDER_API_URL": "http://render-worker.test/render",
+                    "WORKFLOW_RENDER_API_TOKEN": "render-token",
                 },
             ),
-            patch.object(workflow_jobs.requests, "post", return_value=response),
+            patch.object(workflow_jobs.requests, "post", side_effect=[coze_response, render_response]) as post,
+            patch.object(workflow_jobs.requests, "get", return_value=video_response) as get,
         ):
             created = self.client.post(
                 "/api/v1/jobs",
@@ -373,10 +388,20 @@ class WorkflowApiTests(unittest.TestCase):
             job_id = created.json()["job"]["id"]
             job = self.client.get(f"/api/v1/jobs/{job_id}").json()["job"]
             self.assertEqual(job["status"], "succeeded", job)
-            self.assertEqual(job["results"][0]["format"], "draft_key")
+            self.assertEqual(job["results"][0]["type"], "video")
+            self.assertTrue(job["results"][0]["url"].endswith(".mp4"))
             downloaded = self.client.get(job["results"][0]["url"])
             self.assertEqual(downloaded.status_code, 200)
-            self.assertEqual(downloaded.json(), key)
+            self.assertEqual(downloaded.headers["content-type"], "video/mp4")
+            self.assertEqual(downloaded.content, b"mp4")
+            render_call = post.call_args_list[1]
+            self.assertEqual(render_call.kwargs["json"]["draft_key"], key)
+            self.assertEqual(render_call.kwargs["headers"]["Authorization"], "Bearer render-token")
+            get.assert_called_once_with(
+                "http://render-worker.test/videos/job.mp4?signature=test",
+                stream=True,
+                timeout=(20, 1800),
+            )
 
     def test_reference_workflow_json_is_public_and_packages_are_member_only(self):
         selected = [

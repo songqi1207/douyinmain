@@ -294,13 +294,14 @@ def _normalize_item(category: str, item: dict) -> dict:
     preview = bool(item.get("preview"))
     provider_configured = bool(published_workflow_id(code)) and bool(os.getenv("COZE_API_TOKEN"))
     published_local = code in LOCAL_CODES and provider_configured
+    render_configured = bool((os.getenv("WORKFLOW_RENDER_API_URL") or "").strip())
     template_builder = (code in LOCAL_CODES and not published_local) or (
         code in REFERENCE_TEMPLATE_CODES
         and (os.getenv("WORKFLOW_BUILD_MODE") or "template").strip().lower() == "template"
     )
     enabled = (
         template_builder
-        or published_local
+        or (published_local and render_configured)
         or
         (code in DEMO_CODES and _provider_mode() == "demo")
         or (code in PROVIDER_CODES and provider_configured)

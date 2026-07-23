@@ -279,10 +279,14 @@ def execute_job(job_id: str):
             results = _run_reference_template(job)
         elif mode == "coze":
             results = _run_coze(job)
-            if any(result["type"] == "draft" for result in results):
-                results = _render_drafts(job, results)
         else:
             results = _run_demo(job)
+        workflow = get_workflow(job["workflow_code"], job["category"]) or {}
+        if (
+            workflow.get("generation_mode") != "workflow_template"
+            and any(result["type"] == "draft" for result in results)
+        ):
+            results = _render_drafts(job, results)
         cost_cents = int(os.getenv(f"WORKFLOW_COST_CENTS_{job['workflow_code']}") or 0)
         price_cents = int(os.getenv(f"WORKFLOW_PRICE_CENTS_{job['workflow_code']}") or 0)
         _update_job(
@@ -513,15 +517,33 @@ def _render_drafts(job: dict, results: list[dict]) -> list[dict]:
     headers = {"Content-Type": "application/json"}
     if render_token:
         headers["Authorization"] = f"Bearer {render_token}"
+    draft_key = None
+    for result in results:
+        if result.get("type") != "draft" or result.get("format") != "draft_key":
+            continue
+        result_name = Path(str(result.get("url") or "")).name
+        candidate = (RESULT_DIR / result_name).resolve()
+        if RESULT_DIR.resolve() not in candidate.parents or not candidate.is_file():
+            raise ProviderError("draft_key_missing", "后台生成的 draft_key 文件不存在")
+        try:
+            draft_key = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ProviderError("invalid_draft_key", "后台生成的 draft_key 文件无法读取") from exc
+        break
+
+    request_body = {
+        "job_id": job["id"],
+        "workflow_code": job["workflow_code"],
+        "drafts": [result["url"] for result in results if result["type"] == "draft"],
+    }
+    if draft_key is not None:
+        request_body["draft_key"] = draft_key
+
     try:
         response = requests.post(
             render_url,
             headers=headers,
-            json={
-                "job_id": job["id"],
-                "workflow_code": job["workflow_code"],
-                "drafts": [result["url"] for result in results if result["type"] == "draft"],
-            },
+            json=request_body,
             timeout=(20, max(120, int(os.getenv("WORKFLOW_RENDER_TIMEOUT_SECONDS") or 2400))),
         )
     except requests.RequestException as exc:
@@ -535,7 +557,54 @@ def _render_drafts(job: dict, results: list[dict]) -> list[dict]:
     videos = [result for result in rendered if result["type"] == "video"]
     if not videos:
         raise ProviderError("render_failed", "视频渲染完成但没有返回 MP4 地址")
-    return [result for result in results if result["type"] != "draft"] + videos
+    hosted_videos = []
+    max_bytes = max(1, int(os.getenv("WORKFLOW_RENDER_MAX_VIDEO_BYTES") or 4 * 1024 * 1024 * 1024))
+    for index, video in enumerate(videos, start=1):
+        destination = RESULT_DIR / f"{job['workflow_code'].lower()}-{job['id']}-{index}.mp4"
+        temporary = destination.with_suffix(".mp4.download")
+        temporary.unlink(missing_ok=True)
+        download = None
+        try:
+            download = requests.get(
+                video["url"],
+                stream=True,
+                timeout=(20, max(120, int(os.getenv("WORKFLOW_RENDER_DOWNLOAD_TIMEOUT_SECONDS") or 1800))),
+            )
+            if download.status_code >= 400:
+                raise ProviderError("render_download_failed", f"剪映视频回传失败（HTTP {download.status_code}）")
+            content_length = int(download.headers.get("Content-Length") or 0)
+            if content_length > max_bytes:
+                raise ProviderError("render_download_failed", "剪映视频超过主站允许的最大文件大小")
+            written = 0
+            RESULT_DIR.mkdir(parents=True, exist_ok=True)
+            with temporary.open("wb") as stream:
+                for block in download.iter_content(chunk_size=1024 * 1024):
+                    if not block:
+                        continue
+                    written += len(block)
+                    if written > max_bytes:
+                        raise ProviderError("render_download_failed", "剪映视频超过主站允许的最大文件大小")
+                    stream.write(block)
+            if written <= 0:
+                raise ProviderError("render_download_failed", "渲染机返回了空的视频文件")
+            temporary.replace(destination)
+        except ProviderError:
+            raise
+        except (OSError, ValueError, requests.RequestException) as exc:
+            raise ProviderError("render_download_failed", "剪映视频无法回传到主站") from exc
+        finally:
+            temporary.unlink(missing_ok=True)
+            if download is not None:
+                download.close()
+        hosted_videos.append(
+            {
+                "type": "video",
+                "url": f"/api/v1/job-results/{destination.name}",
+                "poster_url": video.get("poster_url"),
+                "downloadable": True,
+            }
+        )
+    return [result for result in results if result["type"] != "draft"] + hosted_videos
 
 
 def _run_demo(job: dict) -> list[dict]:

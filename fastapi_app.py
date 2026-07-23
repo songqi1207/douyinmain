@@ -545,6 +545,8 @@ def api_job_result(filename: str):
     path = get_result_path(filename)
     if not path:
         raise HTTPException(status_code=404, detail={"code": "result_not_found", "message": "结果文件不存在"})
+    if path.suffix.lower() == ".mp4":
+        return FileResponse(path, media_type="video/mp4")
     return FileResponse(path, media_type="application/json", filename=path.name)
 
 

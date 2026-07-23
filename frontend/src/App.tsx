@@ -2,8 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, BookOpen, Clock3, Download, Eye, FileText, Headphones, Heart, ImageIcon, LoaderCircle, LogOut, Mic2, Pause, Play, RotateCcw, Search, Sparkles, UploadCloud, Workflow as WorkflowIcon } from "lucide-react";
 import { Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { approveRegistration, createJob, fetchCategories, fetchDraftKeyResult, fetchJob, fetchJobs, fetchMe, fetchRegistrationApplications, fetchSiteSummary, fetchVoices, fetchWorkflow, fetchWorkflows, generateSpeech, importDraftKeyLocally, login, logout, register, rejectRegistration, retryJob, toggleFavorite as saveFavorite, uploadAsset } from "./api";
-import type { LocalDraftReport } from "./api";
+import { approveRegistration, createJob, fetchCategories, fetchJob, fetchJobs, fetchMe, fetchRegistrationApplications, fetchSiteSummary, fetchVoices, fetchWorkflow, fetchWorkflows, generateSpeech, login, logout, register, rejectRegistration, retryJob, toggleFavorite as saveFavorite, uploadAsset } from "./api";
 import type { AuthUser, InputField, Job, RegistrationApplication, SiteSummary, Voice, Workflow } from "./types";
 import "./styles.css";
 
@@ -367,12 +366,7 @@ function DetailPage() {
   const [busy, setBusy] = useState(false);
   const [assetBusy, setAssetBusy] = useState(false);
   const [error, setError] = useState("");
-  const [bridgeUrl, setBridgeUrl] = useState(() => localStorage.getItem("jianying-bridge-url") || "http://127.0.0.1:5001");
-  const [localDraft, setLocalDraft] = useState<LocalDraftReport | null>(null);
-  const [localDraftBusy, setLocalDraftBusy] = useState(false);
-  const [localDraftError, setLocalDraftError] = useState("");
   const pollRef = useRef<number | null>(null);
-  const localImportAttempts = useRef(new Set<string>());
 
   useEffect(() => {
     fetchWorkflow(code, category)
@@ -402,52 +396,11 @@ function DetailPage() {
   }, [job?.id, code, category]);
 
   useEffect(() => {
-    localStorage.setItem("jianying-bridge-url", bridgeUrl);
-  }, [bridgeUrl]);
-
-  useEffect(() => {
     if (!job || ["succeeded", "failed"].includes(job.status)) return;
     pollRef.current = window.setInterval(() => {
       fetchJob(job.id).then(({ job: next }) => setJob(next)).catch((err: Error) => setError(err.message));
     }, 2000);
     return () => { if (pollRef.current) window.clearInterval(pollRef.current); };
-  }, [job?.id, job?.status]);
-
-  async function importCompletedDraft(targetJob: Job, retryImport = false) {
-    const result = targetJob.results.find((item) => item.type === "draft" && item.format === "draft_key");
-    if (!result) return;
-    const storageKey = `local-draft-import:${targetJob.id}`;
-    if (!retryImport) {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        try {
-          setLocalDraft(JSON.parse(saved) as LocalDraftReport);
-          return;
-        } catch {
-          localStorage.removeItem(storageKey);
-        }
-      }
-    }
-    setLocalDraftBusy(true);
-    setLocalDraftError("");
-    try {
-      const key = await fetchDraftKeyResult(result.url);
-      const report = await importDraftKeyLocally(bridgeUrl, key);
-      setLocalDraft(report);
-      localStorage.setItem(storageKey, JSON.stringify(report));
-    } catch (err) {
-      setLocalDraftError((err as Error).message);
-    } finally {
-      setLocalDraftBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!job || job.status !== "succeeded") return;
-    if (!job.results.some((item) => item.type === "draft" && item.format === "draft_key")) return;
-    if (localImportAttempts.current.has(job.id)) return;
-    localImportAttempts.current.add(job.id);
-    void importCompletedDraft(job);
   }, [job?.id, job?.status]);
 
   const providerInputs = useMemo(() => {
@@ -465,8 +418,6 @@ function DetailPage() {
     if (!workflow || workflow.status !== "online") return;
     setBusy(true);
     setError("");
-    setLocalDraft(null);
-    setLocalDraftError("");
     try {
       const response = await createJob(workflow.code, workflow.category, providerInputs);
       setJob(response.job);
@@ -485,8 +436,6 @@ function DetailPage() {
   async function retry() {
     if (!job) return;
     setBusy(true);
-    setLocalDraft(null);
-    setLocalDraftError("");
     try {
       const response = await retryJob(job.id);
       setJob(response.job);
@@ -530,7 +479,7 @@ function DetailPage() {
             ) : <div className="media-fallback"><ImageIcon size={48} /><span>{workflow.code}</span></div>}
           </div>
           <div className="detail-copy">
-            <div className="detail-kicker"><span>{workflow.category}</span><span>{workflow.generation_mode === "workflow_template" ? "视频工作流" : workflow.generation_mode === "draft" ? "剪映草稿" : workflow.output_type === "video" ? "视频生成" : "图片生成"}</span></div>
+            <div className="detail-kicker"><span>{workflow.category}</span><span>{workflow.generation_mode === "workflow_template" ? "视频工作流" : workflow.generation_mode === "draft" ? "剪映原生视频" : workflow.output_type === "video" ? "视频生成" : "图片生成"}</span></div>
             <h1>{workflow.code} · {workflow.name}</h1>
             <p>{workflow.description}</p>
             <div className="detail-tags">{workflow.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
@@ -556,8 +505,8 @@ function DetailPage() {
         <div className="detail-layout">
           <section className="generator-panel">
             <div className="section-title">
-              <span>{workflow.generation_mode === "workflow_template" ? "第一阶段：生成工作流" : workflow.generation_mode === "draft" ? "一键生成剪映草稿" : "一键生成视频"}</span>
-              <small>{workflow.generation_mode === "workflow_template" ? "输入主题，生成可导入扣子的 JSON" : workflow.generation_mode === "draft" ? "后台运行扣子，完成后自动写入 Windows 剪映" : "第三方密钥已由后台配置，无需填写"}</small>
+              <span>{workflow.generation_mode === "workflow_template" ? "第一阶段：生成工作流" : "一键生成视频"}</span>
+              <small>{workflow.generation_mode === "workflow_template" ? "输入主题，生成可导入扣子的 JSON" : workflow.generation_mode === "draft" ? "后台自动生成草稿并通过 Windows 剪映原生导出" : "第三方密钥已由后台配置，无需填写"}</small>
             </div>
             <form onSubmit={(event) => void submit(event)}>
               {workflow.input_schema.map((field) => (
@@ -571,51 +520,25 @@ function DetailPage() {
                   />
                 </label>
               ))}
-              {workflow.generation_mode === "draft" && (
-                <label className="form-field">
-                  <span>Windows 草稿桥接地址</span>
-                  <input value={bridgeUrl} onChange={(event) => setBridgeUrl(event.target.value)} placeholder="http://127.0.0.1:5001" />
-                  <small className="field-help">网页和剪映在同一台电脑时使用 127.0.0.1；桥接程序在另一台电脑时填写那台电脑的局域网 IP，例如 http://192.168.1.20:5001。</small>
-                </label>
-              )}
               {workflow.status !== "online" && (
                 <div className="notice">输入项已经按工作流整理完成；后台发布并配置工作流 ID 后即可生成。</div>
               )}
               {error && <div className="notice error">{error}</div>}
               <button className="primary-button" disabled={busy || assetBusy || workflow.status !== "online"} type="submit">
                 {busy ? <LoaderCircle className="spin" size={18} /> : <Sparkles size={18} />}
-                {busy ? "正在生成" : workflow.status === "online" ? workflow.generation_mode === "workflow_template" ? "生成视频工作流" : workflow.generation_mode === "draft" ? "生成剪映草稿" : "立即生成视频" : "后台接入中"}
+                {busy ? "正在生成" : workflow.status === "online" ? workflow.generation_mode === "workflow_template" ? "生成视频工作流" : "立即生成视频" : "后台接入中"}
               </button>
             </form>
           </section>
           <aside className="execution-column">
             <div className="execution-placeholder">
               <strong>执行过程</strong>
-              <p>{workflow.generation_mode === "workflow_template" ? "当前先生成扣子工作流 JSON；你导入测试并发布后，后台再切换为自动调用和本地视频渲染。" : workflow.generation_mode === "draft" ? "提交后由后台运行扣子；拿到 draft_key 后，当前浏览器会调用 Windows 桥接服务写入剪映草稿。" : "提交后可在这里查看排队、生成、渲染和完成状态。刷新页面不会泄露任何后台密钥。"}</p>
+              <p>{workflow.generation_mode === "workflow_template" ? "当前先生成扣子工作流 JSON；你导入测试并发布后，后台再切换为自动调用和视频渲染。" : workflow.generation_mode === "draft" ? "提交后由后台运行扣子，渲染机自动生成剪映草稿并原生导出 MP4；浏览器无需安装桥接器。" : "提交后可在这里查看排队、生成、渲染和完成状态。刷新页面不会泄露任何后台密钥。"}</p>
             </div>
             {job && <JobProgress job={job} onRetry={() => void retry()} />}
           </aside>
         </div>
         {job && <Results job={job} />}
-        {workflow.generation_mode === "draft" && job?.status === "succeeded" && (
-          <section className="result-panel local-draft-panel">
-            <div className="section-title"><span>Windows 剪映草稿</span><small>桥接地址：{bridgeUrl}</small></div>
-            {localDraftBusy && <div className="notice"><LoaderCircle className="spin" size={16} /> 正在下载 draft_key 并写入本地剪映……</div>}
-            {localDraft && (
-              <div className="notice success local-draft-success">
-                <strong>草稿生成成功</strong>
-                <span>草稿 ID：{localDraft.draft_id}</span>
-                <span>目录：{localDraft.draft_dir}</span>
-              </div>
-            )}
-            {localDraftError && (
-              <div className="local-draft-error">
-                <div className="notice error">{localDraftError}</div>
-                <button className="secondary-button" type="button" onClick={() => job && void importCompletedDraft(job, true)}><RotateCcw size={15} />重新导入本机</button>
-              </div>
-            )}
-          </section>
-        )}
       </main>
     </Shell>
   );

@@ -57,40 +57,6 @@ export async function retryJob(jobId: string) {
   return request<{ job: Job }>(`/api/v1/jobs/${jobId}/retry`, { method: "POST" });
 }
 
-export async function fetchDraftKeyResult(url: string) {
-  return request<Record<string, unknown>>(url);
-}
-
-export type LocalDraftReport = {
-  draft_id: string;
-  draft_name?: string;
-  draft_dir: string;
-  message?: string;
-  already_imported?: boolean;
-};
-
-export async function importDraftKeyLocally(bridgeUrl: string, key: Record<string, unknown>) {
-  const base = bridgeUrl.trim().replace(/\/+$/, "");
-  const endpoint = base.endsWith("/api/tools/create_draft_from_key")
-    ? base
-    : `${base}/api/tools/create_draft_from_key`;
-  let response: Response;
-  try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, force: false }),
-    });
-  } catch {
-    throw new Error(`无法连接 Windows 草稿桥接服务：${endpoint}。请确认 app.py/EXE 已启动，并检查浏览器是否拦截了本地网络请求。`);
-  }
-  const payload = (await response.json().catch(() => ({}))) as Partial<LocalDraftReport> & { message?: string };
-  if (!response.ok) throw new Error(payload.message || `本地草稿生成失败（HTTP ${response.status}）`);
-  if (!payload.draft_id || !payload.draft_dir) throw new Error("本地桥接服务没有返回 draft_id 或 draft_dir");
-  return payload as LocalDraftReport;
-}
-
 export type AuthState = {
   user: AuthUser | null;
   workflow_favorites: string[];
