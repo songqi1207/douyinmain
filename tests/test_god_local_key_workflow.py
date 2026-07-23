@@ -97,8 +97,9 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
                 "add_audios": {"audio_url": str(audio_path), "start": 0, "end": 1_000_000},
                 "add_images": {"image_url": str(image_path), "start": 0, "end": 1_000_000},
                 "add_captions": {"text": "draft_key 可用性验证", "start": 0, "end": 1_000_000},
-                "add_effects": {"effect": "柔光", "start": 0, "end": 1_000_000},
+                "add_effects": {"effect_title": "柔光", "start": 0, "end": 1_000_000},
             }
+            effect_profiles_tested = 0
             for source, workflow_name, draft_name, run_prefix, expected_calls in TEMPLATE_PROFILES:
                 with self.subTest(source=source.name):
                     workflow_path = root / f"{run_prefix}.json"
@@ -153,11 +154,23 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
                     draft_meta = json.loads((draft_dir / "draft_meta_info.json").read_text(encoding="utf-8"))
                     self.assertEqual(draft_meta["draft_id"], imported["draft_id"])
                     self.assertEqual(draft_meta["draft_name"], draft_dir.name)
+                    if any(call["tool"] == "add_effects" for call in key["calls"]):
+                        effect_profiles_tested += 1
+                        self.assertGreater(len(draft_content["materials"]["video_effects"]), 0)
+                        self.assertGreater(
+                            sum(
+                                len(track["segments"])
+                                for track in draft_content["tracks"]
+                                if track["type"] == "effect"
+                            ),
+                            0,
+                        )
                     for material_type in ("audios", "videos"):
                         for material in draft_content["materials"][material_type]:
                             material_path = Path(material["path"])
                             self.assertTrue(material_path.is_file())
                             self.assertIn(draft_dir.resolve(), material_path.resolve().parents)
+            self.assertGreater(effect_profiles_tested, 0)
 
     def test_every_draft_uses_its_uuid_as_folder_and_display_name(self):
         with tempfile.TemporaryDirectory(prefix="workflow-draft-names-") as temporary:
@@ -178,7 +191,7 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
                 self.assertEqual(get_draft_info(first["draft_id"])["draft_dir"], first["draft_dir"])
                 self.assertEqual(get_draft_info(second["draft_id"])["draft_dir"], second["draft_dir"])
 
-    def test_same_draft_key_can_be_imported_multiple_times(self):
+    def test_same_draft_key_reuses_existing_draft_unless_forced(self):
         key = {
             "kind": "jianying_draft_key",
             "meta": {"run_id": "repeatable-key"},
@@ -206,17 +219,37 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
                 first = draft_importer.import_draft_key(key)
                 second = draft_importer.import_draft_key(key)
 
-                self.assertNotEqual(first["draft_id"], second["draft_id"])
+                self.assertEqual(first["draft_id"], second["draft_id"])
                 self.assertTrue(Path(first["draft_dir"]).is_dir())
                 self.assertTrue(Path(second["draft_dir"]).is_dir())
                 self.assertFalse(first["already_imported"])
-                self.assertFalse(second["already_imported"])
+                self.assertTrue(second["already_imported"])
 
                 third = draft_importer.import_draft_key(key, force=True)
-                self.assertTrue(Path(first["draft_dir"]).is_dir())
-                self.assertFalse(Path(second["draft_dir"]).exists())
+                self.assertFalse(Path(first["draft_dir"]).exists())
                 self.assertTrue(Path(third["draft_dir"]).is_dir())
-                self.assertNotEqual(second["draft_id"], third["draft_id"])
+                self.assertNotEqual(first["draft_id"], third["draft_id"])
+
+    def test_effect_without_a_supported_name_field_is_rejected_before_import(self):
+        key = {
+            "kind": "jianying_draft_key",
+            "calls": [
+                {
+                    "call_id": "effects",
+                    "tool": "add_effects",
+                    "params": {
+                        "effect_infos": [
+                            {"unknown_title": "柔光", "start": 0, "end": 1_000_000}
+                        ]
+                    },
+                }
+            ],
+        }
+
+        with self.assertRaises(draft_importer.KeyValidationError) as raised:
+            draft_importer.import_draft_key(key, dry_run=True)
+
+        self.assertIn("缺少 effect_title/effect/name/effect_id", str(raised.exception))
 
     def test_dynamic_cigarette_batch_images_and_keyframes_produce_importable_key(self):
         workflow, _warning = generate_cigarette_workflow("红塔山")

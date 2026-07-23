@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import mimetypes
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -39,6 +40,7 @@ _RENDER_KEYS_DIR = _PROJECT_ROOT / "temp" / "draft_render_keys"
 _DOWNLOAD_ATTEMPTS = 3
 _DOWNLOAD_TIMEOUT = (10, 30)
 _DOWNLOAD_WORKERS = 8
+_IMPORT_LOCK = threading.RLock()
 
 _MEDIA_SUFFIXES = {
     ".aac",
@@ -228,6 +230,22 @@ def _validate_key(key: Any) -> list[str]:
         items = _call_items(call)
         if not items:
             errors.append(f"{label} ({tool}) 没有可用条目（检查 params 列表字段/JSON 字符串格式）")
+
+        if tool == "add_effects":
+            for item_index, item in enumerate(items):
+                effect_name = str(
+                    item.get("effect")
+                    or item.get("effect_title")
+                    or item.get("title")
+                    or item.get("name")
+                    or item.get("effect_id")
+                    or ""
+                ).strip()
+                if not effect_name:
+                    errors.append(
+                        f"{label}.effect_infos[{item_index}] "
+                        "缺少 effect_title/effect/name/effect_id"
+                    )
 
         if tool == "add_keyframes":
             for item_index, item in enumerate(items):
@@ -426,7 +444,17 @@ def _normalize_item_transforms(items: list[dict[str, Any]], width: int, height: 
             item["transform_y"] = _normalize_transform(item["transform_y"], height)
 
 
-def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool = False) -> dict[str, Any]:
+def import_draft_key(
+    key: dict[str, Any], *, force: bool = False, dry_run: bool = False
+) -> dict[str, Any]:
+    """Import one portable key at most once unless ``force`` is requested."""
+    with _IMPORT_LOCK:
+        return _import_draft_key_unlocked(key, force=force, dry_run=dry_run)
+
+
+def _import_draft_key_unlocked(
+    key: dict[str, Any], *, force: bool = False, dry_run: bool = False
+) -> dict[str, Any]:
     errors = _validate_key(key)
     if errors:
         raise KeyValidationError(errors)
@@ -448,6 +476,19 @@ def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool 
 
     registry = _load_registry()
     existing = registry.get(fingerprint)
+
+    if existing and not force:
+        existing_dir_value = str(existing.get("draft_dir") or "").strip()
+        existing_dir = Path(existing_dir_value) if existing_dir_value else None
+        if existing_dir is not None and existing_dir.is_dir():
+            return {
+                **existing,
+                "already_imported": True,
+                "calls": existing.get("calls") or [],
+                "warnings": existing.get("warnings") or [],
+                "message": f"该任务已导入，复用现有草稿：{existing_dir}",
+            }
+        registry.pop(fingerprint, None)
 
     if existing and force:
         old_dir = Path(str(existing.get("draft_dir") or ""))
@@ -594,6 +635,8 @@ def import_draft_key(key: dict[str, Any], *, force: bool = False, dry_run: bool 
         "fingerprint": fingerprint,
         "imported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "render_key_path": str(render_key_path),
+        "calls": report_calls,
+        "warnings": warnings,
     }
     _save_registry(registry)
     return report

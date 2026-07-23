@@ -1636,11 +1636,20 @@ def append_effects(
     effect_ids = []
     warnings: list[str] = []
 
-    for info in effect_infos or []:
+    for index, info in enumerate(effect_infos or []):
         if not isinstance(info, dict):
+            warnings.append(f"特效条目 {index} 不是对象，已跳过")
             continue
-        effect_name = str(info.get("effect") or info.get("name") or info.get("effect_id") or "").strip()
+        effect_name = str(
+            info.get("effect")
+            or info.get("effect_title")
+            or info.get("title")
+            or info.get("name")
+            or info.get("effect_id")
+            or ""
+        ).strip()
         if not effect_name:
+            warnings.append(f"特效条目 {index} 缺少 effect_title/effect/name/effect_id，已跳过")
             continue
         start_us = _duration_to_us(info.get("start"))
         end_us = _target_end_us(info)
