@@ -57,6 +57,18 @@ export async function retryJob(jobId: string) {
   return request<{ job: Job }>(`/api/v1/jobs/${jobId}/retry`, { method: "POST" });
 }
 
+export async function createDraftKeyRender(draftKey: Record<string, unknown>) {
+  return request<{ job: Job }>("/api/v1/draft-key-renders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ draft_key: draftKey })
+  });
+}
+
+export async function fetchDraftKeyRenderStatus() {
+  return request<{ configured: boolean; message: string }>("/api/v1/draft-key-renders/status");
+}
+
 export type AuthState = {
   user: AuthUser | null;
   workflow_favorites: string[];

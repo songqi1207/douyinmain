@@ -403,6 +403,54 @@ class WorkflowApiTests(unittest.TestCase):
                 timeout=(20, 1800),
             )
 
+    def test_new_frontend_can_render_uploaded_draft_key_to_hosted_mp4(self):
+        key = {
+            "kind": "jianying_draft_key",
+            "meta": {"run_id": "frontend-direct-export"},
+            "draft": {"width": 1080, "height": 1920, "name": "直接导出"},
+            "calls": [
+                {
+                    "call_id": "caption",
+                    "tool": "add_captions",
+                    "params": {"captions": [{"text": "直接导出", "start": 0, "end": 1_000_000}]},
+                }
+            ],
+        }
+        render_response = MagicMock(status_code=200)
+        render_response.json.return_value = {
+            "status": "success",
+            "videos": ["http://render-worker.test/videos/direct.mp4?signature=test"],
+        }
+        video_response = MagicMock(status_code=200)
+        video_response.headers = {"Content-Length": "3"}
+        video_response.iter_content.return_value = [b"mp4"]
+
+        with tempfile.TemporaryDirectory(prefix="direct-draft-key-render-") as temporary:
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "WORKFLOW_RENDER_API_URL": "http://render-worker.test/render",
+                        "WORKFLOW_RENDER_API_TOKEN": "render-token",
+                    },
+                ),
+                patch.object(workflow_jobs, "RESULT_DIR", Path(temporary)),
+                patch.object(workflow_jobs.requests, "post", return_value=render_response) as post,
+                patch.object(workflow_jobs.requests, "get", return_value=video_response),
+            ):
+                created = self.client.post("/api/v1/draft-key-renders", json={"draft_key": key})
+                self.assertEqual(created.status_code, 202, created.text)
+                job_id = created.json()["job"]["id"]
+                job = self.client.get(f"/api/v1/jobs/{job_id}").json()["job"]
+                self.assertEqual(job["workflow_code"], "DRAFT_KEY_EXPORT")
+                self.assertEqual(job["status"], "succeeded", job)
+                self.assertEqual(job["results"][0]["type"], "video")
+                hosted = self.client.get(job["results"][0]["url"])
+                self.assertEqual(hosted.status_code, 200)
+                self.assertEqual(hosted.headers["content-type"], "video/mp4")
+                self.assertEqual(hosted.content, b"mp4")
+                self.assertEqual(post.call_args.kwargs["json"]["draft_key"], key)
+
     def test_reference_workflow_json_is_public_and_packages_are_member_only(self):
         selected = [
             ("起号", "G259"), ("起号", "G258"), ("起号", "G168"), ("起号", "G45"),

@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, BookOpen, Clock3, Download, Eye, FileText, Headphones, Heart, ImageIcon, LoaderCircle, LogOut, Mic2, Pause, Play, RotateCcw, Search, Sparkles, UploadCloud, Workflow as WorkflowIcon } from "lucide-react";
 import { Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { approveRegistration, createJob, fetchCategories, fetchJob, fetchJobs, fetchMe, fetchRegistrationApplications, fetchSiteSummary, fetchVoices, fetchWorkflow, fetchWorkflows, generateSpeech, login, logout, register, rejectRegistration, retryJob, toggleFavorite as saveFavorite, uploadAsset } from "./api";
+import { approveRegistration, createDraftKeyRender, createJob, fetchCategories, fetchDraftKeyRenderStatus, fetchJob, fetchJobs, fetchMe, fetchRegistrationApplications, fetchSiteSummary, fetchVoices, fetchWorkflow, fetchWorkflows, generateSpeech, login, logout, register, rejectRegistration, retryJob, toggleFavorite as saveFavorite, uploadAsset } from "./api";
 import type { AuthUser, InputField, Job, RegistrationApplication, SiteSummary, Voice, Workflow } from "./types";
 import "./styles.css";
 
@@ -34,6 +34,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <nav className="topnav">
           <Link className={location.pathname === "/" ? "active" : ""} to="/">首页</Link>
           <Link className={location.pathname.startsWith("/workflows") ? "active" : ""} to="/workflows">工作流商店</Link>
+          <Link className={location.pathname.startsWith("/jianying-export") ? "active" : ""} to="/jianying-export">剪映导出</Link>
           <Link className={location.pathname.startsWith("/voices") ? "active" : ""} to="/voices">配音广场</Link>
           <a href="https://www.coze.cn/user/4237988494589307?access_entrance=plugin_detail&sub_tab=plugins&tab=user_product" target="_blank" rel="noreferrer">扣子插件</a>
           <a href="https://ai.laobaiai.top/" target="_blank" rel="noreferrer">AI爆款创作平台</a>
@@ -574,6 +575,7 @@ function HomePage() {
           <div className="section-heading"><span>核心功能</span><h2>探索我们的 AI 服务生态</h2></div>
           <div className="feature-grid">
             <Link to="/workflows"><WorkflowIcon /><h3>工作流商店</h3><p>智能工作流模板，按起号、电商、养生、减肥和财经快速生成。</p><span>立即查看 →</span></Link>
+            <Link to="/jianying-export"><UploadCloud /><h3>剪映原生导出</h3><p>上传已有 draft_key，由后台剪映直接导出并返回 MP4。</p><span>一键生成视频 →</span></Link>
             <Link to="/voices"><Mic2 /><h3>配音广场</h3><p>{summary?.voice_service.message || "读取服务器当前可用的真实音色与配音服务。"}</p><span>{summary?.voice_service.available ? `${summary.catalog.voices} 个音色可用 →` : "查看服务状态 →"}</span></Link>
             <a href="https://www.coze.cn/user/4237988494589307?access_entrance=plugin_detail&sub_tab=plugins&tab=user_product" target="_blank" rel="noreferrer"><Sparkles /><h3>扣子插件</h3><p>扩展工作流所需的图片、音频、草稿和内容处理能力。</p><span>打开插件页 →</span></a>
           </div>
@@ -879,6 +881,161 @@ function RegistrationAdminPage() {
   );
 }
 
+function extractDraftKeyJson(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) throw new Error("draft_key JSON 为空");
+    try {
+      return extractDraftKeyJson(JSON.parse(raw));
+    } catch (error) {
+      if (error instanceof SyntaxError) throw new Error("不是合法的 JSON 文件");
+      throw error;
+    }
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("draft_key 必须是 JSON 对象");
+  }
+  const object = value as Record<string, unknown>;
+  if (Array.isArray(object.calls)) return object;
+  for (const field of ["draft_key", "key", "key_json", "output", "result", "data", "body"]) {
+    const nested = object[field];
+    if (nested === undefined || nested === null || nested === "") continue;
+    try {
+      return extractDraftKeyJson(nested);
+    } catch {
+      // Continue through common Coze result wrappers.
+    }
+  }
+  throw new Error("没有找到包含 calls 数组的 draft_key");
+}
+
+function JianyingExportPage() {
+  const navigate = useNavigate();
+  const [draftText, setDraftText] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [job, setJob] = useState<Job | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [service, setService] = useState({ configured: false, message: "正在检查剪映导出服务" });
+
+  useEffect(() => {
+    fetchDraftKeyRenderStatus()
+      .then(setService)
+      .catch((err: Error) => setService({ configured: false, message: err.message }));
+  }, []);
+
+  useEffect(() => {
+    if (!job || ["succeeded", "failed"].includes(job.status)) return;
+    const timer = window.setTimeout(() => {
+      fetchJob(job.id)
+        .then(({ job: next }) => setJob(next))
+        .catch((err: Error) => setError(err.message));
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [job]);
+
+  async function loadFile(file?: File) {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError("draft_key JSON 不能超过 5MB");
+      return;
+    }
+    try {
+      setDraftText(await file.text());
+      setFileName(file.name);
+      setError("");
+      setJob(null);
+    } catch {
+      setError("无法读取所选 JSON 文件");
+    }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setJob(null);
+    try {
+      const draftKey = extractDraftKeyJson(draftText);
+      const response = await createDraftKeyRender(draftKey);
+      setJob(response.job);
+    } catch (err) {
+      const message = (err as Error).message;
+      if (message === "请先登录") {
+        navigate(`/login?redirect=${encodeURIComponent("/jianying-export")}`);
+      } else {
+        setError(message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retry() {
+    if (!job) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await retryJob(job.id);
+      setJob(response.job);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Shell>
+      <main className="content-page page-width jianying-export-page">
+        <div className="page-heading">
+          <span className="page-icon"><Sparkles /></span>
+          <div><h1>剪映原生视频导出</h1><p>上传或粘贴 draft_key，后台自动生成剪映草稿并返回原生导出的 MP4。</p></div>
+        </div>
+        <div className={`service-status ${service.configured ? "ready" : "unavailable"}`}>
+          <strong>{service.message}</strong>
+          <span>{service.configured ? "用户端无需安装剪映或桥接器；后台原生导出，不使用 FFmpeg。" : "管理员完成后台 Windows 剪映服务配置后即可使用。"}</span>
+        </div>
+        <div className="jianying-export-layout">
+          <section className="generator-panel">
+            <div className="section-title"><span>提交 draft_key</span><small>支持标准 JSON 和扣子嵌套输出</small></div>
+            <form onSubmit={(event) => void submit(event)}>
+              <label className="draft-key-upload">
+                <span><UploadCloud size={18} />选择 JSON 文件</span>
+                <input type="file" accept=".json,application/json" onChange={(event) => void loadFile(event.target.files?.[0])} />
+                <small>{fileName || "文件只会提交给本站后台"}</small>
+              </label>
+              <label className="form-field">
+                <span>draft_key JSON</span>
+                <textarea
+                  className="draft-key-textarea"
+                  value={draftText}
+                  onChange={(event) => { setDraftText(event.target.value); setFileName(""); }}
+                  placeholder={'{"kind":"jianying_draft_key","draft":{...},"calls":[...]}'}
+                  spellCheck={false}
+                />
+              </label>
+              {error && <div className="notice error">{error}</div>}
+              <button className="primary-button" disabled={busy || !draftText.trim() || !service.configured} type="submit">
+                {busy ? <LoaderCircle className="spin" size={18} /> : <Sparkles size={18} />}
+                {busy ? "正在提交" : "一键生成剪映视频"}
+              </button>
+            </form>
+          </section>
+          <aside className="execution-column">
+            <div className="execution-placeholder">
+              <strong>自动执行过程</strong>
+              <p>校验 JSON → 下载素材 → 创建唯一草稿 → 剪映原生导出 → MP4 回传网站。</p>
+            </div>
+            {job && <JobProgress job={job} onRetry={() => void retry()} />}
+          </aside>
+        </div>
+        {job && <Results job={job} />}
+      </main>
+    </Shell>
+  );
+}
+
 function RecordsPage() {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -932,7 +1089,9 @@ function RecordsPage() {
                 <div className="record-actions">
                   <span>{job.progress}%</span>
                   {job.results.map((result, index) => <a key={`${result.url}-${index}`} href={result.url} target="_blank" rel="noreferrer">结果 {index + 1}</a>)}
-                  <Link to={`/workflows/${job.workflow_code}?category=${encodeURIComponent(job.category)}`}>打开工作流</Link>
+                  {job.workflow_code === "DRAFT_KEY_EXPORT"
+                    ? <Link to="/jianying-export">打开剪映导出</Link>
+                    : <Link to={`/workflows/${job.workflow_code}?category=${encodeURIComponent(job.category)}`}>打开工作流</Link>}
                 </div>
               </article>
             ))}
@@ -981,6 +1140,7 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/workflows" element={<CatalogPage />} />
         <Route path="/workflows/:code" element={<DetailPage />} />
+        <Route path="/jianying-export" element={<JianyingExportPage />} />
         <Route path="/voices" element={<VoicesPage />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />

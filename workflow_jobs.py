@@ -25,6 +25,9 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 RESULT_DIR = DATA_DIR / "results"
 DB_PATH = Path(os.getenv("WORKFLOW_DB_PATH") or DATA_DIR / "workflow.sqlite3").resolve()
 MAX_UPLOAD_BYTES = int(os.getenv("WORKFLOW_MAX_UPLOAD_BYTES") or 100 * 1024 * 1024)
+DRAFT_KEY_RENDER_CODE = "DRAFT_KEY_EXPORT"
+DRAFT_KEY_RENDER_CATEGORY = "剪映原生导出"
+MAX_DRAFT_KEY_BYTES = int(os.getenv("WORKFLOW_MAX_DRAFT_KEY_BYTES") or 5 * 1024 * 1024)
 
 ALLOWED_MIME_PREFIXES = ("image/", "video/", "audio/")
 ALLOWED_DOCUMENT_MIMES = {
@@ -139,6 +142,48 @@ def create_job(workflow_code: str, category: str, inputs: dict, user_id: str | N
              error_code, error_message, user_id, cost_cents, price_cents, created_at, updated_at)
             VALUES (?, ?, ?, 'queued', 'queued', 0, ?, '[]', NULL, NULL, ?, 0, 0, ?, ?)""",
             (job_id, workflow_code.upper(), category, json.dumps(inputs, ensure_ascii=False), user_id, now, now),
+        )
+        db.commit()
+    return get_job(job_id)
+
+
+def create_draft_key_render_job(payload: Any, user_id: str | None = None) -> dict:
+    """Create a normal background job for an already generated draft_key."""
+    from desktop_bridge.core import BridgeError, extract_draft_key
+    from utils.draft_key_importer import KeyValidationError, import_draft_key
+
+    try:
+        draft_key = extract_draft_key(payload)
+        encoded = json.dumps(draft_key, ensure_ascii=False)
+        if len(encoded.encode("utf-8")) > MAX_DRAFT_KEY_BYTES:
+            raise ValueError("draft_key 文件过大")
+        import_draft_key(draft_key, dry_run=True)
+    except BridgeError as exc:
+        raise ValueError(str(exc)) from exc
+    except KeyValidationError as exc:
+        raise ValueError("draft_key 校验失败：" + "；".join(exc.errors)) from exc
+
+    if not (os.getenv("WORKFLOW_RENDER_API_URL") or "").strip():
+        raise PermissionError("render_not_configured")
+
+    now = time.time()
+    job_id = uuid.uuid4().hex
+    inputs = {"draft_key": draft_key}
+    with _connect() as db:
+        db.execute(
+            """INSERT INTO jobs
+            (id, workflow_code, category, status, stage, progress, inputs_json, results_json,
+             error_code, error_message, user_id, cost_cents, price_cents, created_at, updated_at)
+            VALUES (?, ?, ?, 'queued', 'queued', 0, ?, '[]', NULL, NULL, ?, 0, 0, ?, ?)""",
+            (
+                job_id,
+                DRAFT_KEY_RENDER_CODE,
+                DRAFT_KEY_RENDER_CATEGORY,
+                json.dumps(inputs, ensure_ascii=False),
+                user_id,
+                now,
+                now,
+            ),
         )
         db.commit()
     return get_job(job_id)
@@ -271,7 +316,9 @@ def execute_job(job_id: str):
             and bool((os.getenv("COZE_API_TOKEN") or "").strip())
             and bool(published_workflow_id(job["workflow_code"]))
         )
-        if published_local:
+        if job["workflow_code"] == DRAFT_KEY_RENDER_CODE:
+            results = _save_draft_key_result(job, job["inputs"])
+        elif published_local:
             results = _run_coze(job)
         elif job["workflow_code"] in LOCAL_CODES:
             results = _run_local_workflow(job)

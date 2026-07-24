@@ -109,6 +109,9 @@ WORKFLOW_RENDER_TIMEOUT_SECONDS=2400
 Worker 生成草稿、启动剪映并完成原生导出后返回带签名的 `video_url`。主站无需暴露
 草稿 JSON、剪映或 Windows 文件路径。
 
+新的 React 前端在 `/business/jianying-export` 提供直接导出入口。登录用户可以上传或
+粘贴现成的 `draft_key`；浏览器只创建后台任务并查询进度，不会连接用户本机或渲染机。
+
 ## 运行限制
 
 - 渲染账号必须保持已登录且桌面未锁定；

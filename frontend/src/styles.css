@@ -56,7 +56,7 @@ button { color: inherit; }
 .section-heading { margin-bottom: 25px; text-align: center; }
 .section-heading span { color: #c5954f; font-size: 12px; letter-spacing: .16em; }
 .section-heading h2 { margin: 8px 0 0; font-size: 30px; }
-.feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
 .feature-grid > a { min-height: 250px; padding: 28px; border: 1px solid #363531; border-radius: 16px; background: linear-gradient(145deg, #1d1c1a, #151515); transition: .2s ease; }
 .feature-grid > a:hover { transform: translateY(-4px); border-color: #765d38; }
 .feature-grid svg { width: 34px; height: 34px; color: #dfb367; }
@@ -176,6 +176,15 @@ button { color: inherit; }
 .primary-button:disabled { opacity: .55; cursor: not-allowed; }
 .secondary-button { min-height: 36px; padding: 0 12px; border: 1px solid #665136; color: #dfba77; background: transparent; }
 .execution-column { display: grid; gap: 14px; position: sticky; top: 86px; }
+.jianying-export-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, .7fr); align-items: start; gap: 18px; }
+.jianying-export-page .service-status { margin-top: 0; }
+.jianying-export-page > .result-panel { margin-top: 18px; }
+.draft-key-upload { min-height: 92px; display: grid; place-content: center; justify-items: center; gap: 7px; border: 1px dashed #665335; border-radius: 10px; color: #d7b273; background: #17140f; cursor: pointer; }
+.draft-key-upload:hover { border-color: #b38343; background: #1d1811; }
+.draft-key-upload > span { display: flex; align-items: center; gap: 7px; font-weight: 650; }
+.draft-key-upload input { display: none; }
+.draft-key-upload small { max-width: 460px; overflow: hidden; color: #77736b; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.form-field .draft-key-textarea { min-height: 280px; font-family: Consolas, "SFMono-Regular", monospace; font-size: 12px; line-height: 1.65; }
 .execution-placeholder, .job-panel { padding: 18px; }
 .execution-placeholder strong { font-size: 15px; }
 .execution-placeholder p, .job-panel p { color: #87857f; font-size: 12px; line-height: 1.7; margin-bottom: 0; }
@@ -322,6 +331,7 @@ button { color: inherit; }
   .detail-preview { min-height: 300px; }
   .detail-copy { padding: 30px; }
   .detail-layout { grid-template-columns: 1fr; }
+  .jianying-export-layout { grid-template-columns: 1fr; }
   .execution-column { position: static; }
   .result-grid { grid-template-columns: repeat(2, 1fr); }
   .content-page { padding-top: 32px; }

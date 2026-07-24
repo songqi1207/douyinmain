@@ -40,7 +40,19 @@ from site_accounts import (
     user_from_session,
 )
 from workflow_catalog import IMAGE_WORKFLOWS, workflow_categories
-from workflow_jobs import create_asset, create_job, enqueue_job, get_asset, get_job, get_result_path, job_summary, list_jobs, workflow_job_counts
+from workflow_jobs import (
+    DRAFT_KEY_RENDER_CODE,
+    create_asset,
+    create_draft_key_render_job,
+    create_job,
+    enqueue_job,
+    get_asset,
+    get_job,
+    get_result_path,
+    job_summary,
+    list_jobs,
+    workflow_job_counts,
+)
 from workflow_registry import category_summary, get_workflow, list_workflows
 from utils.draft_key_importer import KeyValidationError
 from utils.email_delivery import EmailConfigurationError, email_delivery_status, send_registration_approved
@@ -574,6 +586,42 @@ def api_create_job(
     return {"job": _public_job(job)}
 
 
+@app.post("/api/v1/draft-key-renders", status_code=202)
+def api_create_draft_key_render(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    payload: dict = Body(default_factory=dict),
+):
+    """Queue a Jianying-native MP4 export without exposing the Windows worker."""
+    user = _require_user(request)
+    try:
+        job = create_draft_key_render_job(
+            payload.get("draft_key") or payload.get("key") or payload,
+            user["id"],
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "render_not_configured", "message": "剪映原生视频导出服务尚未配置"},
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_draft_key", "message": str(exc)},
+        ) from exc
+    enqueue_job(job["id"], background_tasks)
+    return {"job": _public_job(job)}
+
+
+@app.get("/api/v1/draft-key-renders/status")
+def api_draft_key_render_status():
+    configured = bool((os.getenv("WORKFLOW_RENDER_API_URL") or "").strip())
+    return {
+        "configured": configured,
+        "message": "剪映原生导出服务可用" if configured else "剪映原生导出服务尚未配置",
+    }
+
+
 @app.get("/api/v1/jobs")
 def api_jobs(
     request: Request,
@@ -687,7 +735,10 @@ def api_retry_job(job_id: str, request: Request, background_tasks: BackgroundTas
         raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "任务不存在"})
     if old_job["status"] != "failed":
         raise HTTPException(status_code=409, detail={"code": "job_not_failed", "message": "只有失败任务可以重试"})
-    job = create_job(old_job["workflow_code"], old_job["category"], old_job["inputs"], old_job.get("user_id"))
+    if old_job["workflow_code"] == DRAFT_KEY_RENDER_CODE:
+        job = create_draft_key_render_job(old_job["inputs"], old_job.get("user_id"))
+    else:
+        job = create_job(old_job["workflow_code"], old_job["category"], old_job["inputs"], old_job.get("user_id"))
     enqueue_job(job["id"], background_tasks)
     return {"job": _public_job(job)}
 
