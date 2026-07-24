@@ -54,6 +54,16 @@ export type Job = {
   updated_at: number;
 };
 
+export type RenderDevice = {
+  id: string;
+  name: string;
+  platform: string;
+  capabilities: Record<string, unknown>;
+  online: boolean;
+  last_seen?: number | null;
+  created_at: number;
+};
+
 export type AuthUser = { id: string; username: string; email?: string | null; role: "user" | "admin"; must_change_password?: boolean };
 
 export type RegistrationApplication = {

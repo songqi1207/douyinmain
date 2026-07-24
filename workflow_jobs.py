@@ -74,6 +74,8 @@ def init_database():
                 error_code TEXT,
                 error_message TEXT,
                 user_id TEXT,
+                render_device_id TEXT,
+                render_claimed_at REAL,
                 cost_cents INTEGER NOT NULL DEFAULT 0,
                 price_cents INTEGER NOT NULL DEFAULT 0,
                 created_at REAL NOT NULL,
@@ -81,6 +83,11 @@ def init_database():
             )
             """
         )
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(jobs)").fetchall()}
+        if "render_device_id" not in columns:
+            db.execute("ALTER TABLE jobs ADD COLUMN render_device_id TEXT")
+        if "render_claimed_at" not in columns:
+            db.execute("ALTER TABLE jobs ADD COLUMN render_claimed_at REAL")
         db.commit()
 
 
@@ -126,7 +133,13 @@ def get_asset(asset_id: str) -> dict | None:
     return data
 
 
-def create_job(workflow_code: str, category: str, inputs: dict, user_id: str | None = None) -> dict:
+def create_job(
+    workflow_code: str,
+    category: str,
+    inputs: dict,
+    user_id: str | None = None,
+    render_device_id: str | None = None,
+) -> dict:
     workflow = get_workflow(workflow_code, category)
     if not workflow:
         raise KeyError("workflow_not_found")
@@ -139,15 +152,29 @@ def create_job(workflow_code: str, category: str, inputs: dict, user_id: str | N
         db.execute(
             """INSERT INTO jobs
             (id, workflow_code, category, status, stage, progress, inputs_json, results_json,
-             error_code, error_message, user_id, cost_cents, price_cents, created_at, updated_at)
-            VALUES (?, ?, ?, 'queued', 'queued', 0, ?, '[]', NULL, NULL, ?, 0, 0, ?, ?)""",
-            (job_id, workflow_code.upper(), category, json.dumps(inputs, ensure_ascii=False), user_id, now, now),
+             error_code, error_message, user_id, render_device_id, render_claimed_at,
+             cost_cents, price_cents, created_at, updated_at)
+            VALUES (?, ?, ?, 'queued', 'queued', 0, ?, '[]', NULL, NULL, ?, ?, NULL, 0, 0, ?, ?)""",
+            (
+                job_id,
+                workflow_code.upper(),
+                category,
+                json.dumps(inputs, ensure_ascii=False),
+                user_id,
+                render_device_id,
+                now,
+                now,
+            ),
         )
         db.commit()
     return get_job(job_id)
 
 
-def create_draft_key_render_job(payload: Any, user_id: str | None = None) -> dict:
+def create_draft_key_render_job(
+    payload: Any,
+    user_id: str | None = None,
+    render_device_id: str | None = None,
+) -> dict:
     """Create a normal background job for an already generated draft_key."""
     from desktop_bridge.core import BridgeError, extract_draft_key
     from utils.draft_key_importer import KeyValidationError, import_draft_key
@@ -163,7 +190,7 @@ def create_draft_key_render_job(payload: Any, user_id: str | None = None) -> dic
     except KeyValidationError as exc:
         raise ValueError("draft_key 校验失败：" + "；".join(exc.errors)) from exc
 
-    if not (os.getenv("WORKFLOW_RENDER_API_URL") or "").strip():
+    if not render_device_id and not (os.getenv("WORKFLOW_RENDER_API_URL") or "").strip():
         raise PermissionError("render_not_configured")
 
     now = time.time()
@@ -173,14 +200,16 @@ def create_draft_key_render_job(payload: Any, user_id: str | None = None) -> dic
         db.execute(
             """INSERT INTO jobs
             (id, workflow_code, category, status, stage, progress, inputs_json, results_json,
-             error_code, error_message, user_id, cost_cents, price_cents, created_at, updated_at)
-            VALUES (?, ?, ?, 'queued', 'queued', 0, ?, '[]', NULL, NULL, ?, 0, 0, ?, ?)""",
+             error_code, error_message, user_id, render_device_id, render_claimed_at,
+             cost_cents, price_cents, created_at, updated_at)
+            VALUES (?, ?, ?, 'queued', 'queued', 0, ?, '[]', NULL, NULL, ?, ?, NULL, 0, 0, ?, ?)""",
             (
                 job_id,
                 DRAFT_KEY_RENDER_CODE,
                 DRAFT_KEY_RENDER_CATEGORY,
                 json.dumps(inputs, ensure_ascii=False),
                 user_id,
+                render_device_id,
                 now,
                 now,
             ),
@@ -280,7 +309,17 @@ def workflow_job_counts(workflow_codes: list[str]) -> dict[str, int]:
 
 
 def _update_job(job_id: str, **changes):
-    allowed = {"status", "stage", "progress", "results_json", "error_code", "error_message", "cost_cents", "price_cents"}
+    allowed = {
+        "status",
+        "stage",
+        "progress",
+        "results_json",
+        "error_code",
+        "error_message",
+        "render_claimed_at",
+        "cost_cents",
+        "price_cents",
+    }
     values = {key: value for key, value in changes.items() if key in allowed}
     values["updated_at"] = time.time()
     assignments = ", ".join(f"{key} = ?" for key in values)
@@ -333,6 +372,9 @@ def execute_job(job_id: str):
             workflow.get("generation_mode") != "workflow_template"
             and any(result["type"] == "draft" for result in results)
         ):
+            if job.get("render_device_id"):
+                _queue_device_render(job, results)
+                return
             results = _render_drafts(job, results)
         cost_cents = int(os.getenv(f"WORKFLOW_COST_CENTS_{job['workflow_code']}") or 0)
         price_cents = int(os.getenv(f"WORKFLOW_PRICE_CENTS_{job['workflow_code']}") or 0)
@@ -564,20 +606,7 @@ def _render_drafts(job: dict, results: list[dict]) -> list[dict]:
     headers = {"Content-Type": "application/json"}
     if render_token:
         headers["Authorization"] = f"Bearer {render_token}"
-    draft_key = None
-    for result in results:
-        if result.get("type") != "draft" or result.get("format") != "draft_key":
-            continue
-        result_name = Path(str(result.get("url") or "")).name
-        candidate = (RESULT_DIR / result_name).resolve()
-        if RESULT_DIR.resolve() not in candidate.parents or not candidate.is_file():
-            raise ProviderError("draft_key_missing", "后台生成的 draft_key 文件不存在")
-        try:
-            draft_key = json.loads(candidate.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            raise ProviderError("invalid_draft_key", "后台生成的 draft_key 文件无法读取") from exc
-        break
-
+    draft_key = _load_draft_key_result(results)
     request_body = {
         "job_id": job["id"],
         "workflow_code": job["workflow_code"],
@@ -652,6 +681,111 @@ def _render_drafts(job: dict, results: list[dict]) -> list[dict]:
             }
         )
     return [result for result in results if result["type"] != "draft"] + hosted_videos
+
+
+def _load_draft_key_result(results: list[dict]) -> dict[str, Any] | None:
+    for result in results:
+        if result.get("type") != "draft" or result.get("format") != "draft_key":
+            continue
+        result_name = Path(str(result.get("url") or "")).name
+        candidate = (RESULT_DIR / result_name).resolve()
+        if RESULT_DIR.resolve() not in candidate.parents or not candidate.is_file():
+            raise ProviderError("draft_key_missing", "后台生成的 draft_key 文件不存在")
+        try:
+            draft_key = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ProviderError("invalid_draft_key", "后台生成的 draft_key 文件无法读取") from exc
+        return draft_key
+    return None
+
+
+def _queue_device_render(job: dict, results: list[dict]) -> None:
+    if _load_draft_key_result(results) is None:
+        raise ProviderError("draft_key_missing", "任务没有可发送给本机剪映助手的 draft_key")
+    _update_job(
+        job["id"],
+        status="rendering",
+        stage="waiting_for_device",
+        progress=78,
+        results_json=json.dumps(results, ensure_ascii=False),
+        render_claimed_at=None,
+    )
+
+
+def claim_device_render_job(device_id: str, user_id: str, lease_seconds: int = 600) -> dict | None:
+    """Atomically lease one waiting job to its paired device."""
+    now = time.time()
+    expired = now - max(60, int(lease_seconds))
+    with _connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            """SELECT id FROM jobs
+               WHERE render_device_id = ? AND user_id = ? AND status = 'rendering'
+                 AND (stage = 'waiting_for_device'
+                      OR (stage = 'device_rendering' AND COALESCE(render_claimed_at, 0) < ?))
+               ORDER BY created_at LIMIT 1""",
+            (device_id, user_id, expired),
+        ).fetchone()
+        if not row:
+            db.commit()
+            return None
+        db.execute(
+            """UPDATE jobs SET stage = 'device_rendering', progress = 82,
+               render_claimed_at = ?, updated_at = ? WHERE id = ?""",
+            (now, now, row["id"]),
+        )
+        db.commit()
+    job = get_job(row["id"])
+    if not job:
+        return None
+    draft_key = _load_draft_key_result(job["results"])
+    if draft_key is None:
+        fail_device_render_job(job["id"], device_id, "draft_key_missing", "后台任务缺少 draft_key")
+        return None
+    return {
+        "job_id": job["id"],
+        "workflow_code": job["workflow_code"],
+        "draft_key": draft_key,
+    }
+
+
+def complete_device_render_job(job_id: str, device_id: str, result_name: str) -> bool:
+    job = get_job(job_id)
+    if not job or job.get("render_device_id") != device_id or job["status"] != "rendering":
+        return False
+    results = [
+        {
+            "type": "video",
+            "url": f"/api/v1/job-results/{Path(result_name).name}",
+            "poster_url": None,
+            "downloadable": True,
+        }
+    ]
+    _update_job(
+        job_id,
+        status="succeeded",
+        stage="completed",
+        progress=100,
+        results_json=json.dumps(results, ensure_ascii=False),
+        error_code=None,
+        error_message=None,
+    )
+    return True
+
+
+def fail_device_render_job(job_id: str, device_id: str, code: str, message: str) -> bool:
+    job = get_job(job_id)
+    if not job or job.get("render_device_id") != device_id or job["status"] != "rendering":
+        return False
+    _update_job(
+        job_id,
+        status="failed",
+        stage="failed",
+        progress=100,
+        error_code=str(code or "device_render_failed")[:80],
+        error_message=str(message or "本机剪映导出失败")[:2000],
+    )
+    return True
 
 
 def _run_demo(job: dict) -> list[dict]:

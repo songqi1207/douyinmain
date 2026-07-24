@@ -21,6 +21,15 @@ from starlette.middleware.wsgi import WSGIMiddleware
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 from business_workflows import find_preview_asset, find_workflow_downloads
+from device_rendering import (
+    authenticate_device,
+    create_pairing_code,
+    heartbeat_device,
+    list_devices,
+    pair_device,
+    preferred_device,
+    revoke_device,
+)
 from site_accounts import (
     SESSION_TTL_SECONDS,
     authenticate_user,
@@ -42,10 +51,14 @@ from site_accounts import (
 from workflow_catalog import IMAGE_WORKFLOWS, workflow_categories
 from workflow_jobs import (
     DRAFT_KEY_RENDER_CODE,
+    RESULT_DIR,
+    claim_device_render_job,
+    complete_device_render_job,
     create_asset,
     create_draft_key_render_job,
     create_job,
     enqueue_job,
+    fail_device_render_job,
     get_asset,
     get_job,
     get_result_path,
@@ -108,6 +121,18 @@ def _require_admin(request: Request) -> dict:
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail={"code": "admin_required", "message": "仅管理员可以审核注册申请"})
     return user
+
+
+def _require_render_device(request: Request) -> dict:
+    authorization = str(request.headers.get("authorization") or "")
+    scheme, _, token = authorization.partition(" ")
+    device = authenticate_device(token if scheme.lower() == "bearer" else "")
+    if not device:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "invalid_device_token", "message": "本机剪映助手尚未配对或授权已失效"},
+        )
+    return device
 
 
 def _request_event_key(request: Request, resource_id: str, event_type: str) -> str:
@@ -562,6 +587,150 @@ def api_job_result(filename: str):
     return FileResponse(path, media_type="application/json", filename=path.name)
 
 
+@app.get("/api/v1/downloads/draft-bridge")
+def api_download_draft_bridge():
+    executable = ROOT / "dist" / "DouyinDraftBridge.exe"
+    if not executable.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "bridge_not_built", "message": "Windows 本机剪映助手尚未打包"},
+        )
+    return FileResponse(
+        executable,
+        media_type="application/vnd.microsoft.portable-executable",
+        filename="DouyinDraftBridge.exe",
+    )
+
+
+@app.post("/api/v1/render-devices/pairing-codes", status_code=201)
+def api_create_render_device_pairing_code(request: Request):
+    user = _require_user(request)
+    return create_pairing_code(user["id"])
+
+
+@app.get("/api/v1/render-devices")
+def api_render_devices(request: Request):
+    user = _require_user(request)
+    devices = list_devices(user["id"])
+    return {"items": devices, "online": any(device["online"] for device in devices)}
+
+
+@app.delete("/api/v1/render-devices/{device_id}", status_code=204)
+def api_revoke_render_device(device_id: str, request: Request):
+    user = _require_user(request)
+    if not revoke_device(user["id"], device_id):
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "device_not_found", "message": "本机剪映助手不存在"},
+        )
+    return Response(status_code=204)
+
+
+@app.post("/api/v1/render-agent/pair")
+def api_pair_render_agent(payload: dict = Body(default_factory=dict)):
+    try:
+        return pair_device(
+            str(payload.get("code") or ""),
+            str(payload.get("name") or ""),
+            str(payload.get("platform") or "windows"),
+            payload.get("capabilities") if isinstance(payload.get("capabilities"), dict) else {},
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_pairing_code", "message": str(exc)},
+        ) from exc
+
+
+@app.post("/api/v1/render-agent/heartbeat")
+def api_render_agent_heartbeat(request: Request, payload: dict = Body(default_factory=dict)):
+    device = _require_render_device(request)
+    updated = heartbeat_device(
+        device["id"],
+        payload.get("capabilities") if isinstance(payload.get("capabilities"), dict) else None,
+    )
+    if not updated:
+        raise HTTPException(status_code=401, detail={"code": "device_revoked", "message": "设备授权已失效"})
+    return {"device": updated}
+
+
+@app.post("/api/v1/render-agent/claim")
+def api_render_agent_claim(request: Request):
+    device = _require_render_device(request)
+    heartbeat_device(device["id"])
+    task = claim_device_render_job(
+        device["id"],
+        device["user_id"],
+        int(os.getenv("DEVICE_RENDER_LEASE_SECONDS") or 3600),
+    )
+    if not task:
+        return Response(status_code=204)
+    return {"task": task}
+
+
+@app.post("/api/v1/render-agent/jobs/{job_id}/complete")
+async def api_complete_render_agent_job(job_id: str, request: Request, video: UploadFile = File(...)):
+    device = _require_render_device(request)
+    job = get_job(job_id)
+    if (
+        not job
+        or job.get("render_device_id") != device["id"]
+        or job.get("user_id") != device["user_id"]
+        or job.get("status") != "rendering"
+    ):
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "导出任务不存在"})
+
+    max_bytes = int(os.getenv("DEVICE_RENDER_MAX_UPLOAD_BYTES") or 2 * 1024 * 1024 * 1024)
+    RESULT_DIR.mkdir(parents=True, exist_ok=True)
+    result_name = f"{job_id}-device.mp4"
+    destination = (RESULT_DIR / result_name).resolve()
+    temporary = (RESULT_DIR / f".{result_name}.{time.time_ns()}.part").resolve()
+    total = 0
+    first_chunk = b""
+    try:
+        with temporary.open("wb") as stream:
+            while chunk := await video.read(1024 * 1024):
+                if not first_chunk:
+                    first_chunk = chunk[:64]
+                total += len(chunk)
+                if total > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail={"code": "video_too_large", "message": "导出视频超过上传大小限制"},
+                    )
+                stream.write(chunk)
+        if total < 12 or b"ftyp" not in first_chunk:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "invalid_video", "message": "上传结果不是有效的 MP4 文件"},
+            )
+        os.replace(temporary, destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+    if not complete_device_render_job(job_id, device["id"], result_name):
+        if destination.exists():
+            destination.unlink()
+        raise HTTPException(status_code=409, detail={"code": "job_not_rendering", "message": "任务状态已变化"})
+    heartbeat_device(device["id"])
+    return {"job": _public_job(get_job(job_id))}
+
+
+@app.post("/api/v1/render-agent/jobs/{job_id}/fail")
+def api_fail_render_agent_job(job_id: str, request: Request, payload: dict = Body(default_factory=dict)):
+    device = _require_render_device(request)
+    if not fail_device_render_job(
+        job_id,
+        device["id"],
+        str(payload.get("code") or "device_render_failed"),
+        str(payload.get("message") or "本机剪映导出失败"),
+    ):
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "导出任务不存在"})
+    heartbeat_device(device["id"])
+    return {"job": _public_job(get_job(job_id))}
+
+
 @app.post("/api/v1/jobs", status_code=202)
 def api_create_job(
     request: Request,
@@ -574,8 +743,29 @@ def api_create_job(
     inputs = payload.get("inputs") or {}
     if not isinstance(inputs, dict):
         raise HTTPException(status_code=422, detail={"code": "invalid_inputs", "message": "inputs 必须是对象"})
+    workflow = get_workflow(workflow_code, category)
+    render_device = preferred_device(user["id"]) if workflow and workflow.get("generation_mode") == "draft" else None
+    if (
+        workflow
+        and workflow.get("generation_mode") == "draft"
+        and not render_device
+        and not (os.getenv("WORKFLOW_RENDER_API_URL") or "").strip()
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "render_device_required",
+                "message": "请先配对并启动本机剪映导出助手，再运行这个工作流",
+            },
+        )
     try:
-        job = create_job(workflow_code, category, inputs, user["id"])
+        job = create_job(
+            workflow_code,
+            category,
+            inputs,
+            user["id"],
+            render_device["id"] if render_device else None,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"code": "workflow_not_found", "message": "工作流不存在"}) from exc
     except PermissionError as exc:
@@ -594,15 +784,17 @@ def api_create_draft_key_render(
 ):
     """Queue a Jianying-native MP4 export without exposing the Windows worker."""
     user = _require_user(request)
+    render_device = preferred_device(user["id"])
     try:
         job = create_draft_key_render_job(
             payload.get("draft_key") or payload.get("key") or payload,
             user["id"],
+            render_device["id"] if render_device else None,
         )
     except PermissionError as exc:
         raise HTTPException(
-            status_code=503,
-            detail={"code": "render_not_configured", "message": "剪映原生视频导出服务尚未配置"},
+            status_code=409,
+            detail={"code": "render_device_required", "message": "请先配对并启动本机剪映导出助手"},
         ) from exc
     except ValueError as exc:
         raise HTTPException(
@@ -614,11 +806,20 @@ def api_create_draft_key_render(
 
 
 @app.get("/api/v1/draft-key-renders/status")
-def api_draft_key_render_status():
-    configured = bool((os.getenv("WORKFLOW_RENDER_API_URL") or "").strip())
+def api_draft_key_render_status(request: Request):
+    user = _request_user(request)
+    devices = list_devices(user["id"]) if user else []
+    device_online = any(device["online"] for device in devices)
+    central_configured = bool((os.getenv("WORKFLOW_RENDER_API_URL") or "").strip())
+    configured = device_online or central_configured
     return {
         "configured": configured,
-        "message": "剪映原生导出服务可用" if configured else "剪映原生导出服务尚未配置",
+        "device_online": device_online,
+        "central_configured": central_configured,
+        "devices": devices,
+        "message": "本机剪映导出助手在线" if device_online else (
+            "剪映原生导出服务可用" if central_configured else "请先配对并启动本机剪映导出助手"
+        ),
     }
 
 
@@ -735,10 +936,38 @@ def api_retry_job(job_id: str, request: Request, background_tasks: BackgroundTas
         raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "任务不存在"})
     if old_job["status"] != "failed":
         raise HTTPException(status_code=409, detail={"code": "job_not_failed", "message": "只有失败任务可以重试"})
+    render_device = preferred_device(user["id"])
     if old_job["workflow_code"] == DRAFT_KEY_RENDER_CODE:
-        job = create_draft_key_render_job(old_job["inputs"], old_job.get("user_id"))
+        try:
+            job = create_draft_key_render_job(
+                old_job["inputs"],
+                old_job.get("user_id"),
+                render_device["id"] if render_device else None,
+            )
+        except PermissionError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "render_device_required", "message": "请先启动本机剪映导出助手再重试"},
+            ) from exc
     else:
-        job = create_job(old_job["workflow_code"], old_job["category"], old_job["inputs"], old_job.get("user_id"))
+        workflow = get_workflow(old_job["workflow_code"], old_job["category"])
+        if (
+            workflow
+            and workflow.get("generation_mode") == "draft"
+            and not render_device
+            and not (os.getenv("WORKFLOW_RENDER_API_URL") or "").strip()
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "render_device_required", "message": "请先启动本机剪映导出助手再重试"},
+            )
+        job = create_job(
+            old_job["workflow_code"],
+            old_job["category"],
+            old_job["inputs"],
+            old_job.get("user_id"),
+            render_device["id"] if render_device and workflow and workflow.get("generation_mode") == "draft" else None,
+        )
     enqueue_job(job["id"], background_tasks)
     return {"job": _public_job(job)}
 

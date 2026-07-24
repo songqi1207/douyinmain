@@ -179,6 +179,24 @@ button { color: inherit; }
 .jianying-export-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, .7fr); align-items: start; gap: 18px; }
 .jianying-export-page .service-status { margin-top: 0; }
 .jianying-export-page > .result-panel { margin-top: 18px; }
+.device-setup-panel { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); gap: 20px; margin: 14px 0 18px; padding: 20px; border: 1px solid #3a352e; border-radius: 14px; background: #191714; }
+.device-setup-copy > strong, .device-list > strong { color: #e7dfd2; font-size: 15px; }
+.device-setup-copy > p, .device-list > p { max-width: 720px; margin: 7px 0 14px; color: #8f8a80; font-size: 12px; line-height: 1.7; }
+.device-setup-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.device-setup-actions a { text-decoration: none; }
+.pairing-button { min-height: 36px; padding: 0 14px; }
+.pairing-code { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; padding: 12px; border: 1px solid #5c4a30; border-radius: 9px; background: #12110f; }
+.pairing-code span { width: 100%; color: #8c877e; font-size: 11px; word-break: break-all; }
+.pairing-code strong { color: #f0c978; font-family: Consolas, monospace; font-size: 25px; letter-spacing: 5px; }
+.pairing-code small { color: #77736c; font-size: 11px; }
+.device-list { display: grid; align-content: start; gap: 9px; }
+.device-item { display: grid; grid-template-columns: 9px 1fr auto; align-items: center; gap: 9px; padding: 10px; border: 1px solid #35322d; border-radius: 9px; background: #141311; }
+.device-item > div { display: grid; gap: 2px; }
+.device-item > div strong { color: #cbc6bd; font-size: 12px; }
+.device-item small { color: #77736c; font-size: 10px; }
+.device-item button { border: 0; color: #9b7770; background: none; font-size: 11px; cursor: pointer; }
+.device-online-dot { width: 8px; height: 8px; border-radius: 50%; background: #615f5a; }
+.device-online-dot.online { background: #61c58c; box-shadow: 0 0 8px rgba(97,197,140,.55); }
 .draft-key-upload { min-height: 92px; display: grid; place-content: center; justify-items: center; gap: 7px; border: 1px dashed #665335; border-radius: 10px; color: #d7b273; background: #17140f; cursor: pointer; }
 .draft-key-upload:hover { border-color: #b38343; background: #1d1811; }
 .draft-key-upload > span { display: flex; align-items: center; gap: 7px; font-weight: 650; }
@@ -332,6 +350,7 @@ button { color: inherit; }
   .detail-copy { padding: 30px; }
   .detail-layout { grid-template-columns: 1fr; }
   .jianying-export-layout { grid-template-columns: 1fr; }
+  .device-setup-panel { grid-template-columns: 1fr; }
   .execution-column { position: static; }
   .result-grid { grid-template-columns: repeat(2, 1fr); }
   .content-page { padding-top: 32px; }

@@ -2,8 +2,8 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, BookOpen, Clock3, Download, Eye, FileText, Headphones, Heart, ImageIcon, LoaderCircle, LogOut, Mic2, Pause, Play, RotateCcw, Search, Sparkles, UploadCloud, Workflow as WorkflowIcon } from "lucide-react";
 import { Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { approveRegistration, createDraftKeyRender, createJob, fetchCategories, fetchDraftKeyRenderStatus, fetchJob, fetchJobs, fetchMe, fetchRegistrationApplications, fetchSiteSummary, fetchVoices, fetchWorkflow, fetchWorkflows, generateSpeech, login, logout, register, rejectRegistration, retryJob, toggleFavorite as saveFavorite, uploadAsset } from "./api";
-import type { AuthUser, InputField, Job, RegistrationApplication, SiteSummary, Voice, Workflow } from "./types";
+import { approveRegistration, createDraftKeyRender, createJob, createRenderDevicePairingCode, fetchCategories, fetchDraftKeyRenderStatus, fetchJob, fetchJobs, fetchMe, fetchRegistrationApplications, fetchRenderDevices, fetchSiteSummary, fetchVoices, fetchWorkflow, fetchWorkflows, generateSpeech, login, logout, register, rejectRegistration, retryJob, revokeRenderDevice, toggleFavorite as saveFavorite, uploadAsset } from "./api";
+import type { AuthUser, InputField, Job, RegistrationApplication, RenderDevice, SiteSummary, Voice, Workflow } from "./types";
 import "./styles.css";
 
 function formatMetric(value: number) {
@@ -916,12 +916,36 @@ function JianyingExportPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [service, setService] = useState({ configured: false, message: "正在检查剪映导出服务" });
+  const [service, setService] = useState({
+    configured: false,
+    device_online: false,
+    central_configured: false,
+    devices: [] as RenderDevice[],
+    message: "正在检查剪映导出服务",
+  });
+  const [devices, setDevices] = useState<RenderDevice[]>([]);
+  const [pairing, setPairing] = useState<{ code: string; expires_at: number } | null>(null);
+  const [pairBusy, setPairBusy] = useState(false);
 
   useEffect(() => {
-    fetchDraftKeyRenderStatus()
-      .then(setService)
-      .catch((err: Error) => setService({ configured: false, message: err.message }));
+    let active = true;
+    async function refresh() {
+      try {
+        const next = await fetchDraftKeyRenderStatus();
+        if (active) {
+          setService(next);
+          setDevices(next.devices || []);
+        }
+      } catch (err) {
+        if (active) setService((current) => ({ ...current, configured: false, message: (err as Error).message }));
+      }
+    }
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -985,6 +1009,40 @@ function JianyingExportPage() {
     }
   }
 
+  async function createPairing() {
+    setPairBusy(true);
+    setError("");
+    try {
+      setPairing(await createRenderDevicePairingCode());
+    } catch (err) {
+      const message = (err as Error).message;
+      if (message === "请先登录") {
+        navigate(`/login?redirect=${encodeURIComponent("/jianying-export")}`);
+      } else {
+        setError(message);
+      }
+    } finally {
+      setPairBusy(false);
+    }
+  }
+
+  async function removeDevice(deviceId: string) {
+    try {
+      await revokeRenderDevice(deviceId);
+      const next = await fetchRenderDevices();
+      setDevices(next.items);
+      setService((current) => ({
+        ...current,
+        configured: next.online || current.central_configured,
+        device_online: next.online,
+        devices: next.items,
+        message: next.online ? "本机剪映导出助手在线" : "请先配对并启动本机剪映导出助手",
+      }));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   return (
     <Shell>
       <main className="content-page page-width jianying-export-page">
@@ -994,8 +1052,41 @@ function JianyingExportPage() {
         </div>
         <div className={`service-status ${service.configured ? "ready" : "unavailable"}`}>
           <strong>{service.message}</strong>
-          <span>{service.configured ? "用户端无需安装剪映或桥接器；后台原生导出，不使用 FFmpeg。" : "管理员完成后台 Windows 剪映服务配置后即可使用。"}</span>
+          <span>{service.device_online ? "任务会自动发送到你的电脑，由剪映专业版原生导出；网页关闭也不影响。" : "每位用户只需在自己的 Windows 电脑安装一次助手并配对，无需云渲染机。"}</span>
         </div>
+        <section className="device-setup-panel">
+          <div className="device-setup-copy">
+            <strong>把这台电脑设为剪映导出设备</strong>
+            <p>下载并打开助手，在助手里填写当前网站地址和配对码。以后“一键生成”会自动唤起本机剪映并把 MP4 返回网页。</p>
+            <div className="device-setup-actions">
+              <a className="secondary-button" href="/api/v1/downloads/draft-bridge">下载 Windows 助手</a>
+              <button className="primary-button pairing-button" type="button" disabled={pairBusy} onClick={() => void createPairing()}>
+                {pairBusy ? "正在生成" : "生成配对码"}
+              </button>
+            </div>
+            {pairing && (
+              <div className="pairing-code">
+                <span>网站地址：{window.location.origin}</span>
+                <strong>{pairing.code}</strong>
+                <small>配对码约 10 分钟内有效，且只能使用一次</small>
+              </div>
+            )}
+          </div>
+          <div className="device-list">
+            <strong>我的设备</strong>
+            {devices.length === 0 && <p>尚未配对设备</p>}
+            {devices.map((device) => (
+              <div className="device-item" key={device.id}>
+                <span className={`device-online-dot ${device.online ? "online" : ""}`} />
+                <div>
+                  <strong>{device.name}</strong>
+                  <small>{device.online ? "在线，等待任务" : "离线，请打开本机助手"}</small>
+                </div>
+                <button type="button" onClick={() => void removeDevice(device.id)}>解除</button>
+              </div>
+            ))}
+          </div>
+        </section>
         <div className="jianying-export-layout">
           <section className="generator-panel">
             <div className="section-title"><span>提交 draft_key</span><small>支持标准 JSON 和扣子嵌套输出</small></div>

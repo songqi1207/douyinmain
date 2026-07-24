@@ -19,6 +19,7 @@ os.environ["MIHE_KEY"] = ""
 
 from fastapi.testclient import TestClient
 
+import fastapi_app
 from fastapi_app import app
 import workflow_jobs
 from workflow_jobs import _provider_inputs, _run_coze
@@ -488,6 +489,86 @@ class WorkflowApiTests(unittest.TestCase):
 
         traversal = self.client.get("/api/v1/workflows/G259/download/json", params={"category": "../"})
         self.assertEqual(traversal.status_code, 404)
+
+    def test_z_user_computer_can_pair_claim_and_return_native_mp4(self):
+        pairing = self.client.post("/api/v1/render-devices/pairing-codes")
+        self.assertEqual(pairing.status_code, 201, pairing.text)
+        code = pairing.json()["code"]
+
+        paired = TestClient(app).post(
+            "/api/v1/render-agent/pair",
+            json={
+                "code": code,
+                "name": "测试剪映电脑",
+                "platform": "windows",
+                "capabilities": {"jianying_native_export": True, "ffmpeg": False},
+            },
+        )
+        self.assertEqual(paired.status_code, 200, paired.text)
+        device_id = paired.json()["device_id"]
+        token = paired.json()["device_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        repeated = TestClient(app).post(
+            "/api/v1/render-agent/pair",
+            json={"code": code, "name": "重复设备"},
+        )
+        self.assertEqual(repeated.status_code, 422)
+
+        heartbeat = TestClient(app).post(
+            "/api/v1/render-agent/heartbeat",
+            headers=headers,
+            json={"capabilities": {"jianying_native_export": True, "ffmpeg": False}},
+        )
+        self.assertEqual(heartbeat.status_code, 200, heartbeat.text)
+        self.assertTrue(heartbeat.json()["device"]["online"])
+
+        key = {
+            "kind": "jianying_draft_key",
+            "run_id": "device-agent-api-test",
+            "draft": {"name": "设备导出测试", "width": 1080, "height": 1920, "fps": 30},
+            "calls": [
+                {
+                    "call_id": "caption",
+                    "tool": "add_captions",
+                    "params": {"captions": [{"text": "本机导出", "start": 0, "end": 1_000_000}]},
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory(prefix="device-render-result-") as temporary:
+            with (
+                patch.dict(os.environ, {"WORKFLOW_RENDER_API_URL": ""}),
+                patch.object(workflow_jobs, "RESULT_DIR", Path(temporary)),
+                patch.object(fastapi_app, "RESULT_DIR", Path(temporary)),
+            ):
+                created = self.client.post("/api/v1/draft-key-renders", json={"draft_key": key})
+                self.assertEqual(created.status_code, 202, created.text)
+                job_id = created.json()["job"]["id"]
+                waiting = self.client.get(f"/api/v1/jobs/{job_id}").json()["job"]
+                self.assertEqual(waiting["status"], "rendering", waiting)
+                self.assertEqual(waiting["stage"], "waiting_for_device")
+
+                claimed = TestClient(app).post("/api/v1/render-agent/claim", headers=headers)
+                self.assertEqual(claimed.status_code, 200, claimed.text)
+                self.assertEqual(claimed.json()["task"]["job_id"], job_id)
+                self.assertEqual(claimed.json()["task"]["draft_key"], key)
+
+                mp4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
+                completed = TestClient(app).post(
+                    f"/api/v1/render-agent/jobs/{job_id}/complete",
+                    headers=headers,
+                    files={"video": ("result.mp4", mp4, "video/mp4")},
+                )
+                self.assertEqual(completed.status_code, 200, completed.text)
+                self.assertEqual(completed.json()["job"]["status"], "succeeded")
+                result_url = completed.json()["job"]["results"][0]["url"]
+                hosted = self.client.get(result_url)
+                self.assertEqual(hosted.status_code, 200)
+                self.assertEqual(hosted.content, mp4)
+
+        removed = self.client.delete(f"/api/v1/render-devices/{device_id}")
+        self.assertEqual(removed.status_code, 204, removed.text)
+        self.assertEqual(TestClient(app).post("/api/v1/render-agent/heartbeat", headers=headers).status_code, 401)
 
     def test_public_schema_never_exposes_secret_inputs(self):
         response = self.client.get("/api/v1/workflows/G247", params={"category": "电商"})

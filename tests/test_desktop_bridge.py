@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
@@ -17,9 +18,25 @@ from desktop_bridge.core import (
     import_draft_payload,
     import_mihe_server_draft,
 )
+from desktop_bridge.device_agent import normalize_site_url, pair_with_site
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_pairs_outbound_device_agent_without_local_server(self):
+        response = MagicMock(status_code=200)
+        response.json.return_value = {
+            "device_id": "device-1",
+            "device_token": "secret-token",
+            "name": "办公室电脑",
+        }
+        with patch("desktop_bridge.device_agent.requests.post", return_value=response) as post:
+            result = pair_with_site("https://example.test/business/", "ABCD2345", "办公室电脑")
+        self.assertEqual(normalize_site_url("https://example.test/business"), "https://example.test")
+        self.assertEqual(result["site_url"], "https://example.test")
+        self.assertEqual(result["device_token"], "secret-token")
+        self.assertEqual(post.call_args.args[0], "https://example.test/api/v1/render-agent/pair")
+        self.assertFalse(post.call_args.kwargs["json"]["capabilities"]["ffmpeg"])
+
     def test_exports_raw_mihe_json_and_navigable_structure(self):
         with tempfile.TemporaryDirectory(prefix="mihe-export-test-") as temporary:
             payload = {

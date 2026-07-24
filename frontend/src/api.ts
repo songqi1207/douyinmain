@@ -1,4 +1,4 @@
-import type { AuthUser, Job, RegistrationApplication, SiteSummary, VoiceCatalog, Workflow } from "./types";
+import type { AuthUser, Job, RegistrationApplication, RenderDevice, SiteSummary, VoiceCatalog, Workflow } from "./types";
 
 type ApiErrorShape = { detail?: string | { message?: string }; message?: string };
 
@@ -66,7 +66,28 @@ export async function createDraftKeyRender(draftKey: Record<string, unknown>) {
 }
 
 export async function fetchDraftKeyRenderStatus() {
-  return request<{ configured: boolean; message: string }>("/api/v1/draft-key-renders/status");
+  return request<{
+    configured: boolean;
+    device_online: boolean;
+    central_configured: boolean;
+    devices: RenderDevice[];
+    message: string;
+  }>("/api/v1/draft-key-renders/status");
+}
+
+export async function fetchRenderDevices() {
+  return request<{ items: RenderDevice[]; online: boolean }>("/api/v1/render-devices");
+}
+
+export async function createRenderDevicePairingCode() {
+  return request<{ code: string; expires_at: number }>("/api/v1/render-devices/pairing-codes", {
+    method: "POST",
+  });
+}
+
+export async function revokeRenderDevice(deviceId: string) {
+  const response = await fetch(`/api/v1/render-devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
+  if (!response.ok) throw new Error("解除设备失败");
 }
 
 export type AuthState = {

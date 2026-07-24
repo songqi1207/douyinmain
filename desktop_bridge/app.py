@@ -25,6 +25,7 @@ from desktop_bridge.core import (
     mihe_sync_executable_path,
     open_directory,
 )
+from desktop_bridge.device_agent import DeviceAgent, pair_with_site
 
 
 def _settings_path() -> Path:
@@ -43,7 +44,9 @@ def _load_settings() -> dict:
 def _save_settings(payload: dict) -> None:
     path = _settings_path()
     temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    merged = _load_settings()
+    merged.update(payload)
+    temporary.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(path)
 
 
@@ -55,11 +58,12 @@ class DraftBridgeApp:
         self.tk = tk
         self.ttk = ttk
         self.root = tk.Tk()
-        self.root.title("抖音工作流 · 剪映草稿桥接器")
-        self.root.geometry("900x790")
-        self.root.minsize(760, 690)
+        self.root.title("抖音工作流 · 本机剪映导出助手")
+        self.root.geometry("940x900")
+        self.root.minsize(800, 760)
         self.last_report: dict = {}
         self.settings = _load_settings()
+        self.device_agent: DeviceAgent | None = None
 
         roots = detect_draft_roots()
         executables = detect_jianying_executables()
@@ -67,10 +71,19 @@ class DraftBridgeApp:
         default_exe = self.settings.get("jianying_exe") or (str(executables[0]) if executables else "")
         self.draft_root_var = tk.StringVar(value=default_root)
         self.jianying_exe_var = tk.StringVar(value=default_exe)
+        self.site_url_var = tk.StringVar(value=str(self.settings.get("site_url") or ""))
+        self.pairing_code_var = tk.StringVar(value="")
+        self.device_name_var = tk.StringVar(
+            value=str(self.settings.get("device_name") or os.getenv("COMPUTERNAME") or "我的电脑")
+        )
+        self.device_status_var = tk.StringVar(value="尚未连接网站")
         self.mihe_draft_id_var = tk.StringVar(value="")
         self.force_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="旧工作流填 draft_id；本地草稿工作流粘贴 draft_key JSON")
         self._build_ui()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        if self.settings.get("device_token") and self.settings.get("device_id"):
+            self.root.after(400, self.start_device_agent)
         if initial_file:
             self.load_file(initial_file)
 
@@ -80,7 +93,7 @@ class DraftBridgeApp:
         frame = self.ttk.Frame(self.root, padding=14)
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
-        frame.rowconfigure(5, weight=1)
+        frame.rowconfigure(6, weight=1)
 
         self.ttk.Label(frame, text="剪映草稿目录").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=5)
         self.ttk.Entry(frame, textvariable=self.draft_root_var).grid(row=0, column=1, sticky="ew", pady=5)
@@ -90,8 +103,23 @@ class DraftBridgeApp:
         self.ttk.Entry(frame, textvariable=self.jianying_exe_var).grid(row=1, column=1, sticky="ew", pady=5)
         self.ttk.Button(frame, text="选择 EXE", command=self.choose_jianying_exe).grid(row=1, column=2, padx=(8, 0), pady=5)
 
+        device = self.ttk.LabelFrame(frame, text="网站一键生成视频（本机剪映原生导出，不使用 FFmpeg）", padding=10)
+        device.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(10, 8))
+        device.columnconfigure(1, weight=1)
+        self.ttk.Label(device, text="网站地址").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
+        self.ttk.Entry(device, textvariable=self.site_url_var).grid(row=0, column=1, columnspan=3, sticky="ew", pady=4)
+        self.ttk.Label(device, text="配对码").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=4)
+        self.ttk.Entry(device, textvariable=self.pairing_code_var, width=16).grid(row=1, column=1, sticky="w", pady=4)
+        self.ttk.Label(device, text="电脑名称").grid(row=1, column=2, sticky="e", padx=(12, 8), pady=4)
+        self.ttk.Entry(device, textvariable=self.device_name_var, width=22).grid(row=1, column=3, sticky="ew", pady=4)
+        self.pair_button = self.ttk.Button(device, text="配对并保持在线", command=self.start_pairing)
+        self.pair_button.grid(row=0, column=4, rowspan=2, padx=(10, 0), pady=4)
+        self.ttk.Label(device, textvariable=self.device_status_var, foreground="#19714a").grid(
+            row=2, column=0, columnspan=5, sticky="w", pady=(6, 0)
+        )
+
         legacy = self.ttk.LabelFrame(frame, text="兼容现有扣子工作流（米核服务器 draft_id）", padding=10)
-        legacy.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(10, 8))
+        legacy.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(2, 8))
         legacy.columnconfigure(0, weight=1)
         self.ttk.Entry(legacy, textvariable=self.mihe_draft_id_var).grid(row=0, column=0, sticky="ew")
         self.ttk.Button(legacy, text="粘贴 ID", command=self.paste_mihe_id).grid(row=0, column=1, padx=8)
@@ -106,18 +134,18 @@ class DraftBridgeApp:
         ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(7, 0))
 
         toolbar = self.ttk.Frame(frame)
-        toolbar.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(2, 8))
+        toolbar.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(2, 8))
         self.ttk.Button(toolbar, text="选择 JSON 文件", command=self.choose_json).pack(side="left")
         self.ttk.Button(toolbar, text="粘贴剪贴板", command=self.paste_clipboard).pack(side="left", padx=8)
         self.ttk.Button(toolbar, text="清空", command=lambda: self.text.delete("1.0", "end")).pack(side="left")
         self.ttk.Checkbutton(toolbar, text="强制重新导入同一任务", variable=self.force_var).pack(side="right")
 
-        self.ttk.Label(frame, text="新本地草稿工作流 / draft_key JSON").grid(row=4, column=0, columnspan=3, sticky="w")
+        self.ttk.Label(frame, text="新本地草稿工作流 / draft_key JSON").grid(row=5, column=0, columnspan=3, sticky="w")
         self.text = scrolledtext.ScrolledText(frame, wrap="none", font=("Consolas", 10), undo=True)
-        self.text.grid(row=5, column=0, columnspan=3, sticky="nsew", pady=(5, 10))
+        self.text.grid(row=6, column=0, columnspan=3, sticky="nsew", pady=(5, 10))
 
         action = self.ttk.Frame(frame)
-        action.grid(row=6, column=0, columnspan=3, sticky="ew")
+        action.grid(row=7, column=0, columnspan=3, sticky="ew")
         self.import_button = self.ttk.Button(action, text="导入到本机剪映", command=self.start_import)
         self.import_button.pack(side="left")
         self.ttk.Button(action, text="打开草稿目录", command=self.open_last_draft).pack(side="left", padx=8)
@@ -126,8 +154,102 @@ class DraftBridgeApp:
         self.progress.pack(side="right")
 
         self.ttk.Label(frame, textvariable=self.status_var, foreground="#285f8f").grid(
-            row=7, column=0, columnspan=3, sticky="w", pady=(10, 0)
+            row=8, column=0, columnspan=3, sticky="w", pady=(10, 0)
         )
+
+    def start_pairing(self) -> None:
+        site_url = self.site_url_var.get().strip()
+        pairing_code = self.pairing_code_var.get().strip()
+        device_name = self.device_name_var.get().strip()
+        if not site_url or not pairing_code:
+            self.show_error("请先填写网站地址和网站生成的 8 位配对码")
+            return
+        self.pair_button.configure(state="disabled")
+        self.device_status_var.set("正在与网站配对…")
+        threading.Thread(
+            target=self._pair_worker,
+            args=(site_url, pairing_code, device_name),
+            daemon=True,
+        ).start()
+
+    def _pair_worker(self, site_url: str, pairing_code: str, device_name: str) -> None:
+        try:
+            result = pair_with_site(site_url, pairing_code, device_name)
+        except Exception as exc:
+            self.root.after(0, self._finish_pair_error, str(exc))
+            return
+        self.root.after(0, self._finish_pairing, result)
+
+    def _finish_pair_error(self, message: str) -> None:
+        self.pair_button.configure(state="normal")
+        self.device_status_var.set(f"配对失败：{message}")
+        self.show_error(message)
+
+    def _finish_pairing(self, result: dict) -> None:
+        self.pair_button.configure(state="normal")
+        self.pairing_code_var.set("")
+        self.site_url_var.set(str(result["site_url"]))
+        self.device_status_var.set("配对成功，正在启动本机剪映任务监听…")
+        self.settings.update(
+            {
+                "site_url": result["site_url"],
+                "device_id": result["device_id"],
+                "device_token": result["device_token"],
+                "device_name": result.get("name") or self.device_name_var.get().strip(),
+            }
+        )
+        self._persist_paths()
+        self.start_device_agent()
+
+    def _persist_paths(self) -> None:
+        values = {
+            **self.settings,
+            "site_url": self.site_url_var.get().strip(),
+            "device_name": self.device_name_var.get().strip(),
+            "draft_root": self.draft_root_var.get().strip(),
+            "jianying_exe": self.jianying_exe_var.get().strip(),
+        }
+        self.settings.update(values)
+        _save_settings(values)
+
+    def _set_device_status(self, message: str) -> None:
+        try:
+            self.root.after(0, self.device_status_var.set, message)
+        except Exception:
+            pass
+
+    def start_device_agent(self) -> None:
+        if self.device_agent:
+            self.device_agent.stop()
+        site_url = self.site_url_var.get().strip() or str(self.settings.get("site_url") or "")
+        device_id = str(self.settings.get("device_id") or "")
+        device_token = str(self.settings.get("device_token") or "")
+        draft_root = self.draft_root_var.get().strip()
+        jianying_exe = self.jianying_exe_var.get().strip()
+        if not site_url or not device_id or not device_token:
+            self.device_status_var.set("请从网站获取配对码，然后在这里完成一次配对")
+            return
+        if not draft_root or not jianying_exe:
+            self.device_status_var.set("已配对；选择剪映草稿目录和 JianyingPro.exe 后即可在线")
+            return
+        self._persist_paths()
+        try:
+            self.device_agent = DeviceAgent(
+                site_url=site_url,
+                device_id=device_id,
+                device_token=device_token,
+                draft_root=draft_root,
+                jianying_exe=jianying_exe,
+                status=self._set_device_status,
+            )
+            self.device_agent.start()
+        except Exception as exc:
+            self.device_status_var.set(f"本机助手启动失败：{exc}")
+
+    def _on_close(self) -> None:
+        if self.device_agent:
+            self.device_agent.stop()
+        self.root.destroy()
 
     def choose_draft_root(self) -> None:
         from tkinter import filedialog
@@ -135,6 +257,9 @@ class DraftBridgeApp:
         selected = filedialog.askdirectory(title="选择 com.lveditor.draft 草稿目录")
         if selected:
             self.draft_root_var.set(selected)
+            self._persist_paths()
+            if not self.device_agent or not self.device_agent.running:
+                self.start_device_agent()
 
     def choose_jianying_exe(self) -> None:
         from tkinter import filedialog
@@ -142,6 +267,9 @@ class DraftBridgeApp:
         selected = filedialog.askopenfilename(title="选择 JianyingPro.exe", filetypes=[("程序", "*.exe")])
         if selected:
             self.jianying_exe_var.set(selected)
+            self._persist_paths()
+            if not self.device_agent or not self.device_agent.running:
+                self.start_device_agent()
 
     def choose_json(self) -> None:
         from tkinter import filedialog

@@ -12,6 +12,7 @@ a = Analysis(
     datas=[
         (str(root / "utils" / "data" / "jianying_meta.json"), "utils/data"),
         (str(root / "scripts" / "run_mihe_sync_automation.ps1"), "scripts"),
+        (str(root / "scripts" / "run_jianying_export_automation.ps1"), "scripts"),
     ],
     hiddenimports=["PIL.Image", "requests"],
     hookspath=[],
