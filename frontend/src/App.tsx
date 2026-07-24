@@ -981,6 +981,36 @@ function JianyingExportPage() {
     setJob(null);
     try {
       const draftKey = extractDraftKeyJson(draftText);
+      if (!service.device_online && !service.central_configured) {
+        let activePairing = pairing;
+        if (devices.length === 0 && (!activePairing || activePairing.expires_at * 1000 <= Date.now() + 5000)) {
+          activePairing = await createRenderDevicePairingCode();
+          setPairing(activePairing);
+        }
+        const query = new URLSearchParams({ site: window.location.origin });
+        if (devices.length === 0 && activePairing) query.set("code", activePairing.code);
+        const launcher = document.createElement("iframe");
+        launcher.style.display = "none";
+        launcher.src = `douyin-draft://wake?${query.toString()}`;
+        document.body.appendChild(launcher);
+        window.setTimeout(() => launcher.remove(), 1500);
+        setService((current) => ({ ...current, message: "正在启动本机剪映助手，请稍候…" }));
+
+        let online = false;
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+          const next = await fetchDraftKeyRenderStatus();
+          setService(next);
+          setDevices(next.devices || []);
+          if (next.device_online) {
+            online = true;
+            break;
+          }
+        }
+        if (!online) {
+          throw new Error("助手没有上线。请先下载并双击运行 Windows 助手，然后再次点击生成。");
+        }
+      }
       const response = await createDraftKeyRender(draftKey);
       setJob(response.job);
     } catch (err) {
@@ -1057,11 +1087,11 @@ function JianyingExportPage() {
         <section className="device-setup-panel">
           <div className="device-setup-copy">
             <strong>把这台电脑设为剪映导出设备</strong>
-            <p>下载并打开助手，在助手里填写当前网站地址和配对码。以后“一键生成”会自动唤起本机剪映并把 MP4 返回网页。</p>
+            <p>下载后双击运行一次即可。助手会安装到当前用户、注册后台自启；以后点击生成时网页会自动唤醒它，并把 MP4 返回网页。</p>
             <div className="device-setup-actions">
               <a className="secondary-button" href="/api/v1/downloads/draft-bridge">下载 Windows 助手</a>
               <button className="primary-button pairing-button" type="button" disabled={pairBusy} onClick={() => void createPairing()}>
-                {pairBusy ? "正在生成" : "生成配对码"}
+                {pairBusy ? "正在生成" : "手动生成配对码"}
               </button>
             </div>
             {pairing && (
@@ -1107,9 +1137,9 @@ function JianyingExportPage() {
                 />
               </label>
               {error && <div className="notice error">{error}</div>}
-              <button className="primary-button" disabled={busy || !draftText.trim() || !service.configured} type="submit">
+              <button className="primary-button" disabled={busy || !draftText.trim()} type="submit">
                 {busy ? <LoaderCircle className="spin" size={18} /> : <Sparkles size={18} />}
-                {busy ? "正在提交" : "一键生成剪映视频"}
+                {busy ? "正在启动并提交" : service.configured ? "一键生成剪映视频" : "启动助手并生成视频"}
               </button>
             </form>
           </section>

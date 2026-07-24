@@ -19,6 +19,8 @@ from desktop_bridge.core import (
     import_mihe_server_draft,
 )
 from desktop_bridge.device_agent import normalize_site_url, pair_with_site
+import desktop_bridge.windows_integration as windows_integration
+from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
@@ -36,6 +38,38 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertEqual(result["device_token"], "secret-token")
         self.assertEqual(post.call_args.args[0], "https://example.test/api/v1/render-agent/pair")
         self.assertFalse(post.call_args.kwargs["json"]["capabilities"]["ffmpeg"])
+
+    def test_parses_browser_wake_protocol_without_executing_shell_text(self):
+        parsed = parse_protocol_url(
+            "douyin-draft://wake?site=https%3A%2F%2Fvideo.example.test&code=ABCD2345"
+        )
+        self.assertEqual(parsed["action"], "wake")
+        self.assertEqual(parsed["site_url"], "https://video.example.test")
+        self.assertEqual(parsed["pairing_code"], "ABCD2345")
+        self.assertEqual(parse_protocol_url("https://example.test"), {})
+
+    def test_frozen_helper_self_installs_and_relaunches_from_user_directory(self):
+        with tempfile.TemporaryDirectory(prefix="bridge-self-install-") as temporary:
+            root = Path(temporary)
+            source = root / "downloaded.exe"
+            source.write_bytes(b"MZ-test-helper")
+            installed = root / "installed"
+            installed.mkdir()
+            process = MagicMock()
+            with (
+                patch.object(windows_integration.os, "name", "nt"),
+                patch.object(windows_integration.sys, "frozen", True, create=True),
+                patch.object(windows_integration.sys, "executable", str(source)),
+                patch.object(windows_integration, "install_dir", return_value=installed),
+                patch.object(windows_integration, "_register_windows_integration") as register,
+                patch.object(windows_integration.subprocess, "Popen", return_value=process) as popen,
+            ):
+                relaunched = windows_integration.install_for_current_user(["--background"])
+            self.assertTrue(relaunched)
+            target = register.call_args.args[0]
+            self.assertTrue(target.is_file())
+            self.assertEqual(target.read_bytes(), source.read_bytes())
+            self.assertEqual(popen.call_args.args[0], [str(target), "--background"])
 
     def test_exports_raw_mihe_json_and_navigable_structure(self):
         with tempfile.TemporaryDirectory(prefix="mihe-export-test-") as temporary:

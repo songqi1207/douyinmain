@@ -26,6 +26,13 @@ from desktop_bridge.core import (
     open_directory,
 )
 from desktop_bridge.device_agent import DeviceAgent, pair_with_site
+from desktop_bridge.windows_integration import (
+    acquire_single_instance,
+    consume_wake_signal,
+    install_for_current_user,
+    notify_primary,
+    parse_protocol_url,
+)
 
 
 def _settings_path() -> Path:
@@ -51,7 +58,7 @@ def _save_settings(payload: dict) -> None:
 
 
 class DraftBridgeApp:
-    def __init__(self, initial_file: str = ""):
+    def __init__(self, initial_file: str = "", start_hidden: bool = False, protocol_url: str = ""):
         import tkinter as tk
         from tkinter import ttk
 
@@ -64,6 +71,7 @@ class DraftBridgeApp:
         self.last_report: dict = {}
         self.settings = _load_settings()
         self.device_agent: DeviceAgent | None = None
+        self.hide_after_pairing = False
 
         roots = detect_draft_roots()
         executables = detect_jianying_executables()
@@ -84,6 +92,11 @@ class DraftBridgeApp:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         if self.settings.get("device_token") and self.settings.get("device_id"):
             self.root.after(400, self.start_device_agent)
+        if start_hidden:
+            self.root.withdraw()
+        if protocol_url:
+            self.root.after(250, self._handle_protocol_url, protocol_url)
+        self.root.after(800, self._poll_wake_signal)
         if initial_file:
             self.load_file(initial_file)
 
@@ -114,8 +127,11 @@ class DraftBridgeApp:
         self.ttk.Entry(device, textvariable=self.device_name_var, width=22).grid(row=1, column=3, sticky="ew", pady=4)
         self.pair_button = self.ttk.Button(device, text="配对并保持在线", command=self.start_pairing)
         self.pair_button.grid(row=0, column=4, rowspan=2, padx=(10, 0), pady=4)
+        self.ttk.Button(device, text="退出助手", command=self._exit_app).grid(
+            row=2, column=4, padx=(10, 0), pady=(6, 0)
+        )
         self.ttk.Label(device, textvariable=self.device_status_var, foreground="#19714a").grid(
-            row=2, column=0, columnspan=5, sticky="w", pady=(6, 0)
+            row=2, column=0, columnspan=4, sticky="w", pady=(6, 0)
         )
 
         legacy = self.ttk.LabelFrame(frame, text="兼容现有扣子工作流（米核服务器 draft_id）", padding=10)
@@ -183,6 +199,8 @@ class DraftBridgeApp:
     def _finish_pair_error(self, message: str) -> None:
         self.pair_button.configure(state="normal")
         self.device_status_var.set(f"配对失败：{message}")
+        self.root.deiconify()
+        self.root.lift()
         self.show_error(message)
 
     def _finish_pairing(self, result: dict) -> None:
@@ -200,6 +218,45 @@ class DraftBridgeApp:
         )
         self._persist_paths()
         self.start_device_agent()
+        if self.hide_after_pairing:
+            self.hide_after_pairing = False
+            self.root.after(700, self.root.withdraw)
+
+    def _handle_protocol_url(self, protocol_url: str) -> None:
+        options = parse_protocol_url(protocol_url)
+        if not options:
+            return
+        site_url = str(options.get("site_url") or "")
+        pairing_code = str(options.get("pairing_code") or "")
+        if site_url:
+            self.site_url_var.set(site_url)
+        current_site = str(self.settings.get("site_url") or "").rstrip("/")
+        needs_pairing = pairing_code and (
+            not self.settings.get("device_token") or (site_url and current_site != site_url.rstrip("/"))
+        )
+        if needs_pairing:
+            self.pairing_code_var.set(pairing_code)
+            self.hide_after_pairing = options.get("action") == "wake"
+            self.device_status_var.set("网页已填入配对信息，请确认网站地址后点击“配对并保持在线”")
+            self.root.deiconify()
+            self.root.lift()
+            self.root.focus_force()
+            return
+        if self.settings.get("device_token"):
+            self.start_device_agent()
+        if options.get("action") == "open" or not self.settings.get("device_token"):
+            self.root.deiconify()
+            self.root.lift()
+            self.root.focus_force()
+
+    def _poll_wake_signal(self) -> None:
+        protocol_url = consume_wake_signal()
+        if protocol_url:
+            self._handle_protocol_url(protocol_url)
+        try:
+            self.root.after(800, self._poll_wake_signal)
+        except Exception:
+            pass
 
     def _persist_paths(self) -> None:
         values = {
@@ -247,6 +304,12 @@ class DraftBridgeApp:
             self.device_status_var.set(f"本机助手启动失败：{exc}")
 
     def _on_close(self) -> None:
+        if getattr(sys, "frozen", False) and self.settings.get("device_token"):
+            self.root.withdraw()
+            return
+        self._exit_app()
+
+    def _exit_app(self) -> None:
         if self.device_agent:
             self.device_agent.stop()
         self.root.destroy()
@@ -498,11 +561,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--jianying-exe", help="JianyingPro.exe 路径")
     parser.add_argument("--mihe-draft-id", help="直接从米核服务器下载的旧工作流 draft_id")
     parser.add_argument("--install-mihe-sync", action="store_true", help="下载并校验米核官方同步器")
+    parser.add_argument("--background", action="store_true", help="后台启动网站剪映任务助手")
+    parser.add_argument("--protocol", help="处理 douyin-draft:// 网页唤醒地址")
     parser.add_argument("--no-gui", action="store_true", help="命令行模式")
     args = parser.parse_args(argv)
 
     if not args.no_gui:
-        DraftBridgeApp(args.key or "").run()
+        relaunch_arguments = list(argv if argv is not None else sys.argv[1:])
+        if install_for_current_user(relaunch_arguments):
+            return 0
+        protocol_url = str(args.protocol or "")
+        if not acquire_single_instance():
+            notify_primary(protocol_url or "douyin-draft://open")
+            return 0
+        protocol = parse_protocol_url(protocol_url)
+        DraftBridgeApp(
+            args.key or "",
+            start_hidden=bool(args.background or protocol.get("action") == "wake"),
+            protocol_url=protocol_url,
+        ).run()
         return 0
     if args.mihe_draft_id:
         roots = detect_draft_roots()
