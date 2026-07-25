@@ -98,27 +98,6 @@ LOCAL_WORKFLOWS = [
 ]
 
 INPUT_SCHEMAS = {
-    "OWN01": [
-        {"name": "book_name", "label": "书名", "type": "text", "required": True, "placeholder": "例如：活着"},
-        {"name": "author", "label": "作者", "type": "text", "required": False, "placeholder": "可选"},
-        {"name": "scene_count", "label": "正文配图数量", "type": "number", "required": True, "default": 6, "min": 1, "max": 22},
-        {"name": "visual_style", "label": "画面风格", "type": "textarea", "required": False, "placeholder": "例如：电影感、低饱和、现实主义"},
-        {"name": "book_script", "label": "参考文案", "type": "textarea", "required": False, "placeholder": "不填写则由工作流自动生成"},
-        {"name": "voice_id", "label": "配音音色 ID", "type": "text", "required": False},
-    ],
-    "OWN02": [
-        {"name": "cigarette_name", "label": "香烟名称", "type": "text", "required": True, "placeholder": "例如：中华、红塔山、荷花"},
-        {"name": "cover_url", "label": "烟盒图片地址", "type": "text", "required": False, "placeholder": "图库没有该品牌时填写"},
-        {"name": "voice_id", "label": "配音音色 ID", "type": "text", "required": False},
-    ],
-    "OWN03": [
-        {"name": "god_name", "label": "神名", "type": "text", "required": True, "placeholder": "例如：哪吒、妈祖、二郎神"},
-        {"name": "description", "label": "主神形象描述", "type": "textarea", "required": False, "placeholder": "内置形象库没有时可补充"},
-        {"name": "scene_count", "label": "分镜数量", "type": "number", "required": True, "default": 10, "min": 1, "max": 22},
-        {"name": "script", "label": "自定义解说文案", "type": "textarea", "required": False},
-        {"name": "audio_url", "label": "背景音乐地址", "type": "text", "required": False},
-        {"name": "voice_id", "label": "配音音色 ID", "type": "text", "required": False},
-    ],
     "G247": [
         {
             "name": "name",

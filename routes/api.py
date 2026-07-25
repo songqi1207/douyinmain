@@ -77,7 +77,6 @@ api_bp = Blueprint("api", __name__, url_prefix="/api")
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 GOD_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-god-template.js"
 BOOK_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-book-template.js"
-CIG_TEMPLATE_GENERATOR = _REPO_ROOT / "generate-cigarette-template.js"
 _FLASK_DRAFT_KEY_DIR = _REPO_ROOT / "temp" / "flask_draft_keys"
 _SETTINGS_ENV_PATH = _REPO_ROOT / ".env"
 _SETTINGS_WRITE_LOCK = threading.Lock()
