@@ -546,17 +546,34 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
     return result
 
 
+def _post_coze_workflow(url: str, *, headers: dict, payload: dict):
+    """Retry directly when a stale environment proxy blocks Coze."""
+    request_kwargs = {
+        "headers": headers,
+        "json": payload,
+        "timeout": (20, 900),
+    }
+    try:
+        return requests.post(url, **request_kwargs)
+    except requests.exceptions.ProxyError:
+        direct_session = requests.Session()
+        direct_session.trust_env = False
+        try:
+            return direct_session.post(url, **request_kwargs)
+        finally:
+            direct_session.close()
+
+
 def _run_coze(job: dict) -> list[dict]:
     token = (os.getenv("COZE_API_TOKEN") or "").strip()
     workflow_id = published_workflow_id(job["workflow_code"])
     if not token or not workflow_id:
         raise ProviderError("provider_not_configured", "扣子工作流尚未发布或后台 Token 未配置")
     _update_job(job["id"], stage="generating", progress=35)
-    response = requests.post(
+    response = _post_coze_workflow(
         (os.getenv("COZE_API_BASE_URL") or "https://api.coze.cn").rstrip("/") + "/v1/workflow/run",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={"workflow_id": workflow_id, "parameters": _provider_inputs(job["inputs"], job["workflow_code"])},
-        timeout=(20, 900),
+        payload={"workflow_id": workflow_id, "parameters": _provider_inputs(job["inputs"], job["workflow_code"])},
     )
     if response.status_code == 429:
         raise ProviderError("provider_rate_limited", "扣子服务繁忙，请稍后重试")

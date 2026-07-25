@@ -24,7 +24,7 @@ from fastapi.testclient import TestClient
 import fastapi_app
 from fastapi_app import app
 import workflow_jobs
-from workflow_jobs import _provider_inputs, _run_coze
+from workflow_jobs import _post_coze_workflow, _provider_inputs, _run_coze
 from workflow_registry import get_workflow
 
 
@@ -377,6 +377,28 @@ class WorkflowApiTests(unittest.TestCase):
         )
         self.assertNotIn("theme", book)
         self.assertNotIn("theme", cigarette)
+
+    def test_background_coze_request_retries_without_environment_proxy(self):
+        proxy_error = workflow_jobs.requests.exceptions.ProxyError("proxy unavailable")
+        direct_response = MagicMock(status_code=200)
+        direct_session = MagicMock()
+        direct_session.post.return_value = direct_response
+
+        with (
+            patch.object(workflow_jobs.requests, "post", side_effect=proxy_error) as proxied_post,
+            patch.object(workflow_jobs.requests, "Session", return_value=direct_session),
+        ):
+            response = _post_coze_workflow(
+                "https://api.coze.cn/v1/workflow/run",
+                headers={"Authorization": "Bearer test-token"},
+                payload={"workflow_id": "test-workflow", "parameters": {"theme": "测试"}},
+            )
+
+        self.assertIs(response, direct_response)
+        proxied_post.assert_called_once()
+        self.assertFalse(direct_session.trust_env)
+        direct_session.post.assert_called_once()
+        direct_session.close.assert_called_once()
 
     def test_published_god_workflow_saves_nested_draft_key_result(self):
         key = {
