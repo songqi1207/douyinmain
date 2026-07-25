@@ -547,21 +547,37 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
 
 
 def _post_coze_workflow(url: str, *, headers: dict, payload: dict):
-    """Retry directly when a stale environment proxy blocks Coze."""
+    """Call Coze directly unless environment proxy use is explicitly enabled."""
     request_kwargs = {
         "headers": headers,
         "json": payload,
-        "timeout": (20, 900),
+        "timeout": (
+            max(1, int(os.getenv("COZE_CONNECT_TIMEOUT_SECONDS") or 20)),
+            max(1, int(os.getenv("COZE_WORKFLOW_TIMEOUT_SECONDS") or 900)),
+        ),
     }
-    try:
-        return requests.post(url, **request_kwargs)
-    except requests.exceptions.ProxyError:
-        direct_session = requests.Session()
-        direct_session.trust_env = False
+    use_env_proxy = (os.getenv("COZE_USE_ENV_PROXY") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if use_env_proxy:
         try:
-            return direct_session.post(url, **request_kwargs)
-        finally:
-            direct_session.close()
+            return requests.post(url, **request_kwargs)
+        except requests.exceptions.ProxyError:
+            pass
+
+    direct_session = requests.Session()
+    direct_session.trust_env = False
+    try:
+        return direct_session.post(url, **request_kwargs)
+    except requests.exceptions.Timeout as exc:
+        raise ProviderError("provider_timeout", "扣子工作流执行超时，请稍后重试") from exc
+    except requests.exceptions.RequestException as exc:
+        raise ProviderError("provider_unavailable", "无法连接扣子服务，请检查服务器网络") from exc
+    finally:
+        direct_session.close()
 
 
 def _run_coze(job: dict) -> list[dict]:

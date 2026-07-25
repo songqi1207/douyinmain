@@ -378,6 +378,28 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertNotIn("theme", book)
         self.assertNotIn("theme", cigarette)
 
+    def test_background_coze_request_uses_direct_session_by_default(self):
+        direct_response = MagicMock(status_code=200)
+        direct_session = MagicMock()
+        direct_session.post.return_value = direct_response
+
+        with (
+            patch.dict(os.environ, {"COZE_USE_ENV_PROXY": ""}),
+            patch.object(workflow_jobs.requests, "post") as proxied_post,
+            patch.object(workflow_jobs.requests, "Session", return_value=direct_session),
+        ):
+            response = _post_coze_workflow(
+                "https://api.coze.cn/v1/workflow/run",
+                headers={"Authorization": "Bearer test-token"},
+                payload={"workflow_id": "test-workflow", "parameters": {"theme": "测试"}},
+            )
+
+        self.assertIs(response, direct_response)
+        proxied_post.assert_not_called()
+        self.assertFalse(direct_session.trust_env)
+        direct_session.post.assert_called_once()
+        direct_session.close.assert_called_once()
+
     def test_background_coze_request_retries_without_environment_proxy(self):
         proxy_error = workflow_jobs.requests.exceptions.ProxyError("proxy unavailable")
         direct_response = MagicMock(status_code=200)
@@ -385,6 +407,7 @@ class WorkflowApiTests(unittest.TestCase):
         direct_session.post.return_value = direct_response
 
         with (
+            patch.dict(os.environ, {"COZE_USE_ENV_PROXY": "true"}),
             patch.object(workflow_jobs.requests, "post", side_effect=proxy_error) as proxied_post,
             patch.object(workflow_jobs.requests, "Session", return_value=direct_session),
         ):
@@ -398,6 +421,24 @@ class WorkflowApiTests(unittest.TestCase):
         proxied_post.assert_called_once()
         self.assertFalse(direct_session.trust_env)
         direct_session.post.assert_called_once()
+        direct_session.close.assert_called_once()
+
+    def test_background_coze_timeout_becomes_provider_error(self):
+        direct_session = MagicMock()
+        direct_session.post.side_effect = workflow_jobs.requests.exceptions.Timeout("timed out")
+
+        with (
+            patch.dict(os.environ, {"COZE_USE_ENV_PROXY": ""}),
+            patch.object(workflow_jobs.requests, "Session", return_value=direct_session),
+        ):
+            with self.assertRaises(workflow_jobs.ProviderError) as raised:
+                _post_coze_workflow(
+                    "https://api.coze.cn/v1/workflow/run",
+                    headers={"Authorization": "Bearer test-token"},
+                    payload={"workflow_id": "test-workflow", "parameters": {}},
+                )
+
+        self.assertEqual(raised.exception.code, "provider_timeout")
         direct_session.close.assert_called_once()
 
     def test_published_god_workflow_saves_nested_draft_key_result(self):
@@ -428,6 +469,7 @@ class WorkflowApiTests(unittest.TestCase):
                     {
                         "COZE_API_TOKEN": "test-token",
                         "COZE_WORKFLOW_OWN03": "published-workflow-id",
+                        "COZE_USE_ENV_PROXY": "true",
                         "MIHE_KEY": "test-mihe-key",
                     },
                 ),
@@ -508,6 +550,7 @@ class WorkflowApiTests(unittest.TestCase):
                 {
                     "COZE_API_TOKEN": "test-token",
                     "COZE_WORKFLOW_OWN03": "published-workflow-id",
+                    "COZE_USE_ENV_PROXY": "true",
                     "MIHE_KEY": "test-mihe-key",
                     "WORKFLOW_RENDER_API_URL": "http://render-worker.test/render",
                     "WORKFLOW_RENDER_API_TOKEN": "render-token",
