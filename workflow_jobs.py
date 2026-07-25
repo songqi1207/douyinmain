@@ -280,14 +280,40 @@ def get_result_path(filename: str) -> Path | None:
     return path
 
 
-def list_jobs(user_id: str, page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
+def list_jobs(
+    user_id: str,
+    page: int = 1,
+    page_size: int = 20,
+    *,
+    status: str = "",
+    workflow_code: str = "",
+) -> tuple[list[dict], int]:
     """Return newest jobs without exposing their submitted input payloads."""
     offset = (page - 1) * page_size
+    clauses = ["user_id = ?"]
+    parameters: list[Any] = [user_id]
+    normalized_status = str(status or "").strip().lower()
+    if normalized_status and normalized_status != "all":
+        if normalized_status not in {"queued", "running", "rendering", "succeeded", "failed"}:
+            raise ValueError("invalid_job_status")
+        clauses.append("status = ?")
+        parameters.append(normalized_status)
+    normalized_code = str(workflow_code or "").strip().upper()
+    if normalized_code:
+        clauses.append("workflow_code = ?")
+        parameters.append(normalized_code)
+    where = " AND ".join(clauses)
     with _connect() as db:
-        total = int(db.execute("SELECT COUNT(*) FROM jobs WHERE user_id = ?", (user_id,)).fetchone()[0])
+        total = int(
+            db.execute(
+                f"SELECT COUNT(*) FROM jobs WHERE {where}",
+                parameters,
+            ).fetchone()[0]
+        )
         rows = db.execute(
-            "SELECT id FROM jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (user_id, page_size, offset),
+            f"""SELECT id FROM jobs WHERE {where}
+                ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+            (*parameters, page_size, offset),
         ).fetchall()
     return [job for row in rows if (job := get_job(row["id"]))], total
 

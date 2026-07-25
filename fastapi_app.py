@@ -33,6 +33,7 @@ from device_rendering import (
 from site_accounts import (
     SESSION_TTL_SECONDS,
     authenticate_user,
+    change_user_password,
     complete_registration_approval,
     create_session,
     delete_session,
@@ -113,6 +114,19 @@ def _require_user(request: Request) -> dict:
     user = _request_user(request)
     if not user:
         raise HTTPException(status_code=401, detail={"code": "login_required", "message": "请先登录"})
+    return user
+
+
+def _require_ready_user(request: Request) -> dict:
+    user = _require_user(request)
+    if user.get("must_change_password"):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "password_change_required",
+                "message": "请先修改邮件中的临时密码",
+            },
+        )
     return user
 
 
@@ -322,6 +336,44 @@ def api_logout(request: Request, response: Response):
     response.delete_cookie(SESSION_COOKIE, path="/")
 
 
+@app.post("/api/v1/auth/password")
+def api_change_password(
+    request: Request,
+    response: Response,
+    payload: dict = Body(default_factory=dict),
+):
+    user = _require_user(request)
+    try:
+        updated_user = change_user_password(
+            user["id"],
+            str(payload.get("current_password") or ""),
+            str(payload.get("new_password") or ""),
+        )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "user_not_found", "message": "账号不存在"},
+        ) from exc
+    except ValueError as exc:
+        code = str(exc)
+        messages = {
+            "new_password_length": "新密码需为 8–128 个字符",
+            "password_reuse": "新密码不能与当前密码相同",
+            "invalid_current_password": "当前密码不正确",
+        }
+        raise HTTPException(
+            status_code=422,
+            detail={"code": code, "message": messages.get(code, "密码修改失败")},
+        ) from exc
+    token = create_session(updated_user["id"])
+    _set_session_cookie(response, token)
+    return {
+        "user": updated_user,
+        "workflow_favorites": favorite_ids(updated_user["id"], "workflow"),
+        "voice_favorites": favorite_ids(updated_user["id"], "voice"),
+    }
+
+
 @app.get("/api/v1/auth/me")
 def api_me(request: Request):
     user = _request_user(request)
@@ -386,7 +438,7 @@ def api_site_summary():
 
 @app.post("/api/v1/tts", status_code=201)
 def api_tts(request: Request, payload: dict = Body(default_factory=dict)):
-    user = _require_user(request)
+    user = _require_ready_user(request)
     text = str(payload.get("text") or "").strip()
     if not text:
         raise HTTPException(status_code=422, detail={"code": "missing_text", "message": "请输入配音文案"})
@@ -604,7 +656,7 @@ def api_download_draft_bridge():
 
 @app.post("/api/v1/render-devices/pairing-codes", status_code=201)
 def api_create_render_device_pairing_code(request: Request):
-    user = _require_user(request)
+    user = _require_ready_user(request)
     return create_pairing_code(user["id"])
 
 
@@ -737,7 +789,7 @@ def api_create_job(
     background_tasks: BackgroundTasks,
     payload: dict = Body(default_factory=dict),
 ):
-    user = _require_user(request)
+    user = _require_ready_user(request)
     workflow_code = str(payload.get("workflow_code") or "").upper()
     category = str(payload.get("category") or "").strip()
     inputs = payload.get("inputs") or {}
@@ -783,7 +835,7 @@ def api_create_draft_key_render(
     payload: dict = Body(default_factory=dict),
 ):
     """Queue a Jianying-native MP4 export without exposing the Windows worker."""
-    user = _require_user(request)
+    user = _require_ready_user(request)
     render_device = preferred_device(user["id"])
     try:
         job = create_draft_key_render_job(
@@ -828,9 +880,23 @@ def api_jobs(
     request: Request,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    status: str = Query(default=""),
+    workflow_code: str = Query(default=""),
 ):
     user = _require_user(request)
-    jobs, total = list_jobs(user["id"], page, page_size)
+    try:
+        jobs, total = list_jobs(
+            user["id"],
+            page,
+            page_size,
+            status=status,
+            workflow_code=workflow_code,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": str(exc), "message": "不支持的任务筛选条件"},
+        ) from exc
     return {
         "items": [_public_job(job) for job in jobs],
         "total": total,
@@ -930,7 +996,7 @@ def api_vod_render_status(req_id: str):
 
 @app.post("/api/v1/jobs/{job_id}/retry", status_code=202)
 def api_retry_job(job_id: str, request: Request, background_tasks: BackgroundTasks):
-    user = _require_user(request)
+    user = _require_ready_user(request)
     old_job = get_job(job_id)
     if not old_job or old_job.get("user_id") != user["id"]:
         raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "任务不存在"})
@@ -983,10 +1049,32 @@ def demo_g159_result():
 
 
 def _public_job(job: dict) -> dict:
+    inputs = job.get("inputs") if isinstance(job.get("inputs"), dict) else {}
+    display_title = ""
+    if job["workflow_code"] == DRAFT_KEY_RENDER_CODE:
+        display_title = "剪映草稿导出"
+    else:
+        for key in (
+            "theme",
+            "book_name",
+            "cigarette_name",
+            "god_name",
+            "subject",
+            "title",
+            "name",
+        ):
+            value = inputs.get(key)
+            if isinstance(value, str) and value.strip():
+                display_title = value.strip()[:100]
+                break
+    if not display_title:
+        workflow = get_workflow(job["workflow_code"], job["category"])
+        display_title = str((workflow or {}).get("name") or job["workflow_code"])
     return {
         "id": job["id"],
         "workflow_code": job["workflow_code"],
         "category": job["category"],
+        "display_title": display_title,
         "status": job["status"],
         "stage": job["stage"],
         "progress": job["progress"],

@@ -279,7 +279,9 @@ def complete_registration_approval(application_id: str) -> dict:
         if not application or application["status"] != "delivering":
             raise ValueError("申请不在发信处理中")
         db.execute(
-            "UPDATE users SET active = 1 WHERE email = ? COLLATE NOCASE", (application["email"],)
+            """UPDATE users SET active = 1, must_change_password = 1
+               WHERE email = ? COLLATE NOCASE""",
+            (application["email"],),
         )
         db.execute(
             """UPDATE registration_applications SET status = 'approved', delivery_status = 'sent',
@@ -385,6 +387,41 @@ def delete_session(raw_token: str | None):
     with _connect() as db:
         db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
         db.commit()
+
+
+def change_user_password(user_id: str, current_password: str, new_password: str) -> dict:
+    current_password = str(current_password or "")
+    new_password = str(new_password or "")
+    if len(new_password) < 8 or len(new_password) > 128:
+        raise ValueError("new_password_length")
+    if hmac.compare_digest(current_password, new_password):
+        raise ValueError("password_reuse")
+
+    with _connect() as db:
+        row = db.execute(
+            "SELECT * FROM users WHERE id = ? AND active = 1",
+            (user_id,),
+        ).fetchone()
+        if not row:
+            raise KeyError("user_not_found")
+        expected = _hash_password(
+            current_password,
+            bytes.fromhex(row["password_salt"]),
+        )
+        if not hmac.compare_digest(expected, row["password_hash"]):
+            raise ValueError("invalid_current_password")
+
+        salt = secrets.token_bytes(16)
+        db.execute(
+            """UPDATE users
+               SET password_hash = ?, password_salt = ?, must_change_password = 0
+               WHERE id = ?""",
+            (_hash_password(new_password, salt), salt.hex(), user_id),
+        )
+        db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        db.commit()
+        updated = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return _public_user(updated)
 
 
 def user_from_session(raw_token: str | None) -> dict | None:

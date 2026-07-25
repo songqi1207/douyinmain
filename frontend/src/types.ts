@@ -45,6 +45,7 @@ export type Job = {
   id: string;
   workflow_code: string;
   category: string;
+  display_title: string;
   status: "queued" | "running" | "rendering" | "succeeded" | "failed";
   stage: string;
   progress: number;
@@ -102,4 +103,19 @@ export type SiteSummary = {
   activity: { users: number; favorites: number; views: number; downloads: number; runs: number };
   jobs: { total: number; succeeded: number; active: number; failed: number };
   voice_service: { provider: string; available: boolean; message: string };
+};
+
+export type RenderStatus = {
+  configured: boolean;
+  device_online: boolean;
+  central_configured: boolean;
+  devices: RenderDevice[];
+  message: string;
+};
+
+export type JobPage = {
+  items: Job[];
+  total: number;
+  page: number;
+  page_size: number;
 };

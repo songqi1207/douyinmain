@@ -61,6 +61,17 @@ class WorkflowApiTests(unittest.TestCase):
             json={"email": sent["email"], "password": sent["password"]},
         )
         assert logged_in.status_code == 200, logged_in.text
+        assert logged_in.json()["user"]["must_change_password"] is True
+        cls.user_password = "workflow-user-password-123"
+        changed = cls.client.post(
+            "/api/v1/auth/password",
+            json={
+                "current_password": sent["password"],
+                "new_password": cls.user_password,
+            },
+        )
+        assert changed.status_code == 200, changed.text
+        assert changed.json()["user"]["must_change_password"] is False
 
     def test_account_login_and_server_side_favorites(self):
         anonymous = TestClient(app)
@@ -138,6 +149,65 @@ class WorkflowApiTests(unittest.TestCase):
             json={"email": "smtp-failure@example.test", "password": attempted_password["value"]},
         )
         self.assertEqual(rejected_login.status_code, 401)
+
+    def test_temporary_password_requires_change_and_rotates_sessions(self):
+        email = "password-change-user@example.test"
+        applicant = TestClient(app)
+        applied = applicant.post("/api/v1/auth/register", json={"email": email})
+        self.assertEqual(applied.status_code, 202, applied.text)
+        delivered = {}
+
+        def capture_email(target, temporary_password, login_url):
+            delivered.update(
+                email=target,
+                password=temporary_password,
+                login_url=login_url,
+            )
+
+        with patch("fastapi_app.send_registration_approved", side_effect=capture_email):
+            approved = self.admin_client.post(
+                f"/api/v1/admin/registration-applications/{applied.json()['application']['id']}/approve"
+            )
+        self.assertEqual(approved.status_code, 200, approved.text)
+
+        first = TestClient(app)
+        second = TestClient(app)
+        for client in (first, second):
+            login_response = client.post(
+                "/api/v1/auth/login",
+                json={"email": email, "password": delivered["password"]},
+            )
+            self.assertEqual(login_response.status_code, 200, login_response.text)
+            self.assertTrue(login_response.json()["user"]["must_change_password"])
+
+        blocked = first.post("/api/v1/render-devices/pairing-codes")
+        self.assertEqual(blocked.status_code, 403)
+        self.assertEqual(blocked.json()["detail"]["code"], "password_change_required")
+
+        wrong = first.post(
+            "/api/v1/auth/password",
+            json={"current_password": "wrong-password", "new_password": "new-password-123"},
+        )
+        self.assertEqual(wrong.status_code, 422)
+        self.assertEqual(wrong.json()["detail"]["code"], "invalid_current_password")
+
+        changed = first.post(
+            "/api/v1/auth/password",
+            json={
+                "current_password": delivered["password"],
+                "new_password": "new-password-123",
+            },
+        )
+        self.assertEqual(changed.status_code, 200, changed.text)
+        self.assertFalse(changed.json()["user"]["must_change_password"])
+        self.assertIsNone(second.get("/api/v1/auth/me").json()["user"])
+        self.assertEqual(
+            TestClient(app).post(
+                "/api/v1/auth/login",
+                json={"email": email, "password": delivered["password"]},
+            ).status_code,
+            401,
+        )
 
     def test_categories_and_catalog(self):
         response = self.client.get("/api/v1/categories")
@@ -669,6 +739,27 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertGreaterEqual(records.json()["total"], 2)
         self.assertIn("created_at", records.json()["items"][0])
         self.assertNotIn("inputs", records.json()["items"][0])
+        filtered = self.client.get(
+            "/api/v1/jobs",
+            params={"status": "succeeded", "workflow_code": "G218"},
+        )
+        self.assertEqual(filtered.status_code, 200)
+        self.assertGreaterEqual(filtered.json()["total"], 1)
+        self.assertTrue(
+            all(item["workflow_code"] == "G218" for item in filtered.json()["items"])
+        )
+        self.assertEqual(
+            next(
+                item
+                for item in filtered.json()["items"]
+                if item["id"] == g218_job["id"]
+            )["display_title"],
+            "夏季养生",
+        )
+        self.assertNotIn("inputs", filtered.text)
+        self.assertNotIn("draft_key", filtered.text)
+        invalid_filter = self.client.get("/api/v1/jobs", params={"status": "unknown"})
+        self.assertEqual(invalid_filter.status_code, 422)
 
     def test_all_selected_reference_workflows_build_topic_json(self):
         examples = [

@@ -1,14 +1,56 @@
-import type { AuthUser, Job, RegistrationApplication, RenderDevice, SiteSummary, VoiceCatalog, Workflow } from "./types";
+import type {
+  AuthUser,
+  Job,
+  JobPage,
+  RegistrationApplication,
+  RenderDevice,
+  RenderStatus,
+  SiteSummary,
+  VoiceCatalog,
+  Workflow,
+} from "./types";
 
-type ApiErrorShape = { detail?: string | { message?: string }; message?: string };
+type ApiErrorShape = {
+  detail?: string | { code?: string; message?: string; errors?: unknown };
+  message?: string;
+};
+
+export class ApiError extends Error {
+  status: number;
+  code: string;
+  details?: unknown;
+
+  constructor(message: string, status = 0, code = "request_failed", details?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch {
+    throw new ApiError("网络连接失败，请检查服务是否可用", 0, "network_error");
+  }
   const payload = (await response.json().catch(() => ({}))) as ApiErrorShape & T;
   if (!response.ok) {
     const detail = payload.detail;
-    const message = typeof detail === "string" ? detail : detail?.message || payload.message || "请求失败";
-    throw new Error(message);
+    const message = typeof detail === "string"
+      ? detail
+      : detail?.message || payload.message || "请求失败";
+    const code = typeof detail === "object" && detail?.code
+      ? detail.code
+      : `http_${response.status}`;
+    throw new ApiError(
+      message,
+      response.status,
+      code,
+      typeof detail === "object" ? detail.errors : undefined,
+    );
   }
   return payload as T;
 }
@@ -22,14 +64,40 @@ export async function fetchWorkflows(params: { category: string; q: string; sort
   return request<{ items: Workflow[]; total: number }>(`/api/v1/workflows?${query}`);
 }
 
-export async function fetchJobs(page = 1) {
-  const query = new URLSearchParams({ page: String(page), page_size: "20" });
-  return request<{ items: Job[]; total: number; page: number; page_size: number }>(`/api/v1/jobs?${query}`);
-}
-
 export async function fetchWorkflow(code: string, category: string) {
   const query = new URLSearchParams({ category });
   return request<{ workflow: Workflow }>(`/api/v1/workflows/${encodeURIComponent(code)}?${query}`);
+}
+
+export async function fetchJobs(params: {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  workflowCode?: string;
+} = {}) {
+  const query = new URLSearchParams({
+    page: String(params.page || 1),
+    page_size: String(params.pageSize || 20),
+  });
+  if (params.status && params.status !== "all") query.set("status", params.status);
+  if (params.workflowCode) query.set("workflow_code", params.workflowCode);
+  return request<JobPage>(`/api/v1/jobs?${query}`);
+}
+
+export async function fetchJob(jobId: string) {
+  return request<{ job: Job }>(`/api/v1/jobs/${jobId}`);
+}
+
+export async function createJob(workflowCode: string, category: string, inputs: Record<string, unknown>) {
+  return request<{ job: Job }>("/api/v1/jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workflow_code: workflowCode, category, inputs }),
+  });
+}
+
+export async function retryJob(jobId: string) {
+  return request<{ job: Job }>(`/api/v1/jobs/${jobId}/retry`, { method: "POST" });
 }
 
 export async function uploadAsset(file: File) {
@@ -37,42 +105,20 @@ export async function uploadAsset(file: File) {
   body.append("file", file);
   return request<{ asset: { id: string; name: string; mime_type: string; size_bytes: number; url: string } }>(
     "/api/v1/assets",
-    { method: "POST", body }
+    { method: "POST", body },
   );
-}
-
-export async function createJob(workflowCode: string, category: string, inputs: Record<string, unknown>) {
-  return request<{ job: Job }>("/api/v1/jobs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workflow_code: workflowCode, category, inputs })
-  });
-}
-
-export async function fetchJob(jobId: string) {
-  return request<{ job: Job }>(`/api/v1/jobs/${jobId}`);
-}
-
-export async function retryJob(jobId: string) {
-  return request<{ job: Job }>(`/api/v1/jobs/${jobId}/retry`, { method: "POST" });
 }
 
 export async function createDraftKeyRender(draftKey: Record<string, unknown>) {
   return request<{ job: Job }>("/api/v1/draft-key-renders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ draft_key: draftKey })
+    body: JSON.stringify({ draft_key: draftKey }),
   });
 }
 
 export async function fetchDraftKeyRenderStatus() {
-  return request<{
-    configured: boolean;
-    device_online: boolean;
-    central_configured: boolean;
-    devices: RenderDevice[];
-    message: string;
-  }>("/api/v1/draft-key-renders/status");
+  return request<RenderStatus>("/api/v1/draft-key-renders/status");
 }
 
 export async function fetchRenderDevices() {
@@ -86,8 +132,7 @@ export async function createRenderDevicePairingCode() {
 }
 
 export async function revokeRenderDevice(deviceId: string) {
-  const response = await fetch(`/api/v1/render-devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
-  if (!response.ok) throw new Error("解除设备失败");
+  return request<void>(`/api/v1/render-devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
 }
 
 export type AuthState = {
@@ -108,12 +153,27 @@ export async function login(email: string, password: string) {
   });
 }
 
+export async function changePassword(currentPassword: string, newPassword: string) {
+  return request<AuthState>("/api/v1/auth/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+}
+
 export async function register(email: string) {
   return request<{ application: RegistrationApplication; message: string }>("/api/v1/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   });
+}
+
+export async function logout() {
+  await request<void>("/api/v1/auth/logout", { method: "POST" });
 }
 
 export async function fetchRegistrationApplications(status = "pending") {
@@ -139,17 +199,15 @@ export async function rejectRegistration(applicationId: string) {
   );
 }
 
-export async function logout() {
-  const response = await fetch("/api/v1/auth/logout", { method: "POST" });
-  if (!response.ok) throw new Error("退出失败");
-}
-
 export async function toggleFavorite(resourceType: "workflow" | "voice", resourceId: string) {
-  return request<{ selected: boolean; resource_id: string; favorites: number }>(`/api/v1/favorites/${resourceType}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ resource_id: resourceId }),
-  });
+  return request<{ selected: boolean; resource_id: string; favorites: number }>(
+    `/api/v1/favorites/${resourceType}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resource_id: resourceId }),
+    },
+  );
 }
 
 export async function fetchVoices() {

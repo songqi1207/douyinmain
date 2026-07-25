@@ -54,6 +54,8 @@ downloads/reference_workflows/
 frontend/node_modules/
 frontend/node_modules_failed/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
 frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
