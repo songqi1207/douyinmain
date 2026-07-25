@@ -40,6 +40,36 @@ TEMPLATE_INPUT_SCHEMAS = {
     "G222": [{"name": "theme", "label": "商业案例主题", "type": "text", "required": True, "placeholder": "例如：蜜雪冰城靠什么赚钱"}],
 }
 
+ONE_CLICK_INPUT_SCHEMAS = {
+    "OWN01": [
+        {
+            "name": "theme",
+            "label": "书名 / 主题",
+            "type": "text",
+            "required": True,
+            "placeholder": "例如：克林索尔的最后夏天｜黑塞（作者可省略）",
+        }
+    ],
+    "OWN02": [
+        {
+            "name": "theme",
+            "label": "香烟名称",
+            "type": "text",
+            "required": True,
+            "placeholder": "例如：中华",
+        }
+    ],
+    "OWN03": [
+        {
+            "name": "theme",
+            "label": "神名 / 主题",
+            "type": "text",
+            "required": True,
+            "placeholder": "例如：哪吒",
+        }
+    ],
+}
+
 LOCAL_WORKFLOWS = [
     {
         "code": "OWN01",
@@ -329,7 +359,11 @@ def _normalize_item(category: str, item: dict) -> dict:
         "updated_at": item.get("updated_at") or item.get("created_at"),
         "status": "online" if enabled else "coming_soon",
         "input_schema": deepcopy(
-            TEMPLATE_INPUT_SCHEMAS.get(code, []) if template_builder else INPUT_SCHEMAS.get(code, [])
+            TEMPLATE_INPUT_SCHEMAS.get(code, [])
+            if template_builder
+            else ONE_CLICK_INPUT_SCHEMAS.get(code, [])
+            if published_local
+            else INPUT_SCHEMAS.get(code, [])
         ),
         "output_type": OUTPUT_TYPES.get(code, "draft"),
         "generation_mode": "workflow_template" if template_builder else "draft" if published_local else "video",

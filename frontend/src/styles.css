@@ -52,6 +52,30 @@ button { color: inherit; }
 .live-stat-grid > div { display: flex; min-height: 104px; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #363531; border-radius: 14px; background: rgba(25, 25, 24, .92); }
 .live-stat-grid strong { color: #e5bd78; font-size: 28px; }
 .live-stat-grid span { margin-top: 5px; color: #817f79; font-size: 12px; }
+.quick-create-section { margin: 0 0 64px; padding: 34px; border: 1px solid #4b4030; border-radius: 20px; background: radial-gradient(circle at 15% 0, rgba(194, 141, 67, .14), transparent 42%), #181715; box-shadow: 0 24px 70px rgba(0, 0, 0, .2); }
+.quick-create-copy { max-width: 760px; margin: 0 auto 28px; text-align: center; }
+.quick-create-copy h2 { margin: 10px 0 9px; font-size: clamp(26px, 3vw, 40px); letter-spacing: -.035em; }
+.quick-create-copy p { margin: 0; color: #98958e; font-size: 13px; line-height: 1.75; }
+.quick-create-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr); gap: 18px; align-items: start; }
+.quick-create-form { display: grid; gap: 18px; padding: 24px; border: 1px solid #36332d; border-radius: 15px; background: #1d1c1a; }
+.quick-workflow-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.quick-workflow-tabs button { min-height: 42px; border: 1px solid #403d37; border-radius: 9px; color: #a7a39b; background: #151514; cursor: pointer; }
+.quick-workflow-tabs button:hover { color: #eee4d1; border-color: #775d37; }
+.quick-workflow-tabs button.active { color: #19130a; border-color: #d2a65d; background: linear-gradient(135deg, #efd08f, #c38e45); font-weight: 700; }
+.quick-create-form label { display: grid; gap: 9px; }
+.quick-create-form label > span { color: #d0cdc5; font-size: 13px; }
+.quick-theme-input { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; }
+.quick-theme-input input { min-width: 0; min-height: 48px; border: 1px solid #454038; border-radius: 10px; padding: 0 14px; outline: 0; color: #f2f0eb; background: #111; }
+.quick-theme-input input:focus { border-color: #a47a40; box-shadow: 0 0 0 3px rgba(180, 131, 62, .1); }
+.quick-theme-input button { min-width: 158px; min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 10px; color: #1d160b; background: linear-gradient(135deg, #f0cf88, #c38d42); font-weight: 700; cursor: pointer; }
+.quick-theme-input button:disabled { opacity: .55; cursor: not-allowed; }
+.quick-create-form > small { color: #77736b; line-height: 1.6; }
+.quick-create-status { min-width: 0; display: grid; gap: 14px; }
+.quick-create-status .result-panel { padding: 18px; }
+.quick-create-empty { min-height: 238px; display: grid; place-content: center; justify-items: center; gap: 9px; border: 1px dashed #494136; border-radius: 15px; color: #756b5c; background: #151412; }
+.quick-create-empty svg { width: 32px; height: 32px; color: #a57b42; }
+.quick-create-empty strong { color: #c7c0b4; }
+.quick-create-empty span { font-size: 12px; }
 .feature-section { padding-top: 20px; }
 .section-heading { margin-bottom: 25px; text-align: center; }
 .section-heading span { color: #c5954f; font-size: 12px; letter-spacing: .16em; }
@@ -356,6 +380,7 @@ button { color: inherit; }
   .content-page { padding-top: 32px; }
   .feature-grid { grid-template-columns: 1fr; }
   .live-stat-grid { grid-template-columns: repeat(2, 1fr); margin-top: -30px; }
+  .quick-create-layout { grid-template-columns: 1fr; }
   .feature-grid > a { min-height: 210px; }
 }
 
@@ -373,6 +398,11 @@ button { color: inherit; }
   .home-hero p { font-size: 14px; }
   .home-actions { width: 100%; }
   .home-actions a { min-width: 0; flex: 1; padding: 10px 8px; }
+  .quick-create-section { padding: 22px 13px; border-radius: 15px; }
+  .quick-create-form { padding: 16px 12px; }
+  .quick-workflow-tabs { grid-template-columns: 1fr; }
+  .quick-theme-input { grid-template-columns: 1fr; }
+  .quick-theme-input button { width: 100%; }
   .catalog-page { padding-top: 25px; }
   .hero-copy { padding: 8px 8px 28px; }
   .hero-copy h1 { font-size: 25px; line-height: 1.42; }

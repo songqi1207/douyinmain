@@ -475,211 +475,6 @@
                 }
             },
             {
-                "id": "152468",
-                "type": "4",
-                "meta": {
-                    "position": {
-                        "x": -13,
-                        "y": 89.4995
-                    }
-                },
-                "data": {
-                    "nodeMeta": {
-                        "description": "将输入的一整段中文文本，按照标点智能断句处理，去除标点并合并短段，输出清洗后的文本数组。",
-                        "icon": "https://p9-flow-product-sign.byteimg.com/tos-cn-i-13w3uml6bg/20bbce4a2fac4d13a7dec9913f08a39b~tplv-13w3uml6bg-resize:128:128.image?rk3s=2e2596fd&x-expires=1758096435&x-signature=et%2Fm%2BnU8dQIhbbpcpDbDX8T9voQ%3D",
-                        "subtitle": "剪映小助手辅助工具:text_splitter",
-                        "title": "口播稿智能分隔"
-                    },
-                    "inputs": {
-                        "apiParam": [
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "7534599670396665871",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "apiID"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "text_splitter",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "apiName"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "7532910474124427290",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "pluginID"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "剪映小助手辅助工具",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "pluginName"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "pluginVersion"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "tips"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "outDocLink"
-                            }
-                        ],
-                        "inputParameters": [
-                            {
-                                "name": "text",
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "type": "ref",
-                                        "content": {
-                                            "source": "block-output",
-                                            "blockID": "157315",
-                                            "name": "wenan"
-                                        },
-                                        "rawMeta": {
-                                            "type": 1
-                                        }
-                                    }
-                                }
-                            }
-                        ],
-                        "settingOnError": {
-                            "processType": 1,
-                            "timeoutMs": 180000,
-                            "retryTimes": 0
-                        }
-                    },
-                    "outputs": [
-                        {
-                            "type": "string",
-                            "name": "error",
-                            "required": false
-                        },
-                        {
-                            "type": "list",
-                            "name": "segments",
-                            "schema": {
-                                "type": "string"
-                            },
-                            "required": false
-                        }
-                    ]
-                },
-                "_temp": {
-                    "bounds": {
-                        "x": -193,
-                        "y": 89.4995,
-                        "width": 360,
-                        "height": 112
-                    },
-                    "externalData": {
-                        "icon": "https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/plugin_icon/899867902747117_1754468610220323838_uNVu6vrWbD.png?lk3s=cd508e2b&x-expires=1783140551&x-signature=Gd9jUXpNZhC1gxLQPjngFcu0H6w%3D",
-                        "apiName": "text_splitter",
-                        "pluginID": "7532910474124427290",
-                        "pluginProductStatus": 1,
-                        "pluginProductUnlistType": 0,
-                        "pluginType": 1,
-                        "spaceID": "7469773998000734227",
-                        "inputs": [
-                            {
-                                "description": "需要进行智能断句处理的原始文本",
-                                "input": {},
-                                "name": "text",
-                                "required": true,
-                                "type": "string"
-                            }
-                        ],
-                        "outputs": [
-                            {
-                                "input": {},
-                                "name": "error",
-                                "required": false,
-                                "type": "string"
-                            },
-                            {
-                                "input": {},
-                                "name": "segments",
-                                "required": false,
-                                "schema": {
-                                    "assistType": 0,
-                                    "type": "string"
-                                },
-                                "type": "list"
-                            }
-                        ],
-                        "updateTime": 1779869881,
-                        "channel_id": 2,
-                        "commercial_setting": {},
-                        "latestVersionTs": "0",
-                        "latestVersionName": "",
-                        "versionName": "",
-                        "description": "将输入的一整段中文文本，按照标点智能断句处理，去除标点并合并短段，输出清洗后的文本数组。",
-                        "title": "text_splitter",
-                        "mainColor": "#CA61FF"
-                    }
-                }
-            },
-            {
                 "id": "114310",
                 "type": "5",
                 "meta": {
@@ -730,26 +525,23 @@
                             {
                                 "name": "wenan",
                                 "input": {
-                                    "type": "list",
-                                    "schema": {
-                                        "type": "string"
-                                    },
+                                    "type": "string",
                                     "value": {
                                         "type": "ref",
                                         "content": {
                                             "source": "block-output",
-                                            "blockID": "152468",
-                                            "name": "segments"
+                                            "blockID": "157315",
+                                            "name": "wenan"
                                         },
                                         "rawMeta": {
-                                            "type": 99
+                                            "type": 1
                                         }
                                     }
                                 }
                             }
                         ],
-                        "code": "\nasync function main({ params }: Args): Promise<Output> {\n    const ret: Output = {\n      kc_wenan: [],\n      subject_wenan: [],\n      zw_wenan: []\n    };\n  \n    try {\n      // 输入合法性校验\n      if (typeof params.kc_wenan !== \"string\" || !params.kc_wenan.trim()) {\n        throw new Error(\"kc_wenan 必须为非空字符串\");\n      }\n      if (typeof params.subject !== \"string\" || !params.subject.trim()) {\n        throw new Error(\"subject 必须为非空字符串\");\n      }\n      if (!Array.isArray(params.wenan)) {\n        throw new Error(\"wenan 必须为字符串数组\");\n      }\n  \n      // 处理 kc_wenan -> 数组\n      ret.kc_wenan = [params.kc_wenan]\n  \n      // 处理 subject -> 数组\n      ret.subject_wenan = [params.subject]\n  \n      // 直接输出 wenan\n      ret.zw_wenan = params.wenan;\n    } catch (err) {\n      // 异常处理：抛出错误供上层捕获\n      throw err;\n    }\n  \n    return ret;\n  }",
-                        "language": 5,
+                        "code": "import re\n\n\ndef _is_readable(value):\n    return bool(re.search(r'[A-Za-z0-9\\u4e00-\\u9fff]', str(value or '')))\n\n\ndef _non_empty_segments(value):\n    if isinstance(value, (list, tuple)):\n        result = [str(item or '').strip() for item in value]\n        return [item for item in result if item and _is_readable(item)]\n\n    text = str(value or '').strip()\n    if not text or not _is_readable(text):\n        return []\n    result = [\n        item.strip()\n        for item in re.findall(r'[^。！？!?\\n]+[。！？!?]?', text)\n        if item.strip() and _is_readable(item)\n    ]\n    return result or [text]\n\n\nasync def main(args: Args) -> Output:\n    params = args.params\n    subject = str(params.get('subject') or '').strip()\n    if not _is_readable(subject):\n        subject = '一本好书'\n    intro = str(params.get('kc_wenan') or '').strip()\n    if not _is_readable(intro):\n        intro = '今天我们要讲的是'\n    body = _non_empty_segments(params.get('wenan'))\n    if not body:\n        body = [subject]\n\n    return {\n        'kc_wenan': [intro],\n        'subject_wenan': [subject],\n        'zw_wenan': body,\n    }",
+                        "language": 3,
                         "settingOnError": {
                             "switch": false,
                             "processType": 1,
@@ -802,7 +594,7 @@
             },
             {
                 "id": "150200",
-                "type": "4",
+                "type": "5",
                 "meta": {
                     "position": {
                         "x": 1059.3055555555554,
@@ -811,105 +603,12 @@
                 },
                 "data": {
                     "nodeMeta": {
-                        "description": "直接提取音频批处理中的音频链接，配合官方音频生成插件",
-                        "icon": "https://p26-flow-product-sign.byteimg.com/tos-cn-i-13w3uml6bg/20bbce4a2fac4d13a7dec9913f08a39b~tplv-13w3uml6bg-resize:128:128.image?rk3s=2e2596fd&x-expires=1758098239&x-signature=29Mq8a2cRpFURnxh6bvSLAkxT%2Bc%3D",
-                        "subtitle": "剪映小助手辅助工具:audio_link_collector",
+                        "description": "编写代码，处理输入变量来生成返回值",
+                        "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Code-v2.jpg",
+                        "subTitle": "代码",
                         "title": "提取正文音频链接"
                     },
                     "inputs": {
-                        "apiParam": [
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "7532910474124443674",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "apiID"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "audio_link_collector",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "apiName"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "7532910474124427290",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "pluginID"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "剪映小助手辅助工具",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "pluginName"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "pluginVersion"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "tips"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "outDocLink"
-                            }
-                        ],
                         "inputParameters": [
                             {
                                 "name": "outputList",
@@ -917,41 +616,7 @@
                                     "type": "list",
                                     "schema": {
                                         "type": "object",
-                                        "schema": [
-                                            {
-                                                "type": "float",
-                                                "name": "code",
-                                                "required": false
-                                            },
-                                            {
-                                                "type": "object",
-                                                "name": "data",
-                                                "schema": [
-                                                    {
-                                                        "type": "float",
-                                                        "name": "duration",
-                                                        "required": false,
-                                                        "description": "音频时长，单位是s"
-                                                    },
-                                                    {
-                                                        "type": "string",
-                                                        "name": "link",
-                                                        "required": false
-                                                    }
-                                                ],
-                                                "required": false
-                                            },
-                                            {
-                                                "type": "string",
-                                                "name": "log_id",
-                                                "required": false
-                                            },
-                                            {
-                                                "type": "string",
-                                                "name": "msg",
-                                                "required": false
-                                            }
-                                        ]
+                                        "schema": []
                                     },
                                     "value": {
                                         "type": "ref",
@@ -965,11 +630,47 @@
                                         }
                                     }
                                 }
+                            },
+                            {
+                                "name": "texts",
+                                "input": {
+                                    "type": "list",
+                                    "schema": {
+                                        "type": "string"
+                                    },
+                                    "value": {
+                                        "type": "ref",
+                                        "content": {
+                                            "source": "block-output",
+                                            "blockID": "114310",
+                                            "name": "zw_wenan"
+                                        },
+                                        "rawMeta": {
+                                            "type": 99
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                "name": "label",
+                                "input": {
+                                    "type": "string",
+                                    "value": {
+                                        "type": "literal",
+                                        "content": "正文配音",
+                                        "rawMeta": {
+                                            "type": 1
+                                        }
+                                    }
+                                }
                             }
                         ],
+                        "code": "def _message(row, index, label, texts):\n    source_text = ''\n    if isinstance(texts, list) and index < len(texts):\n        source_text = str(texts[index] or '').strip()\n    preview = source_text[:80] if source_text else '<空>'\n    if not isinstance(row, dict):\n        return '{}第{}项返回格式异常，原文={}'.format(label, index + 1, preview)\n    code = row.get('code')\n    message = str(row.get('msg') or row.get('message') or '').strip()\n    if message:\n        return '{}第{}项 code={}，原文={}：{}'.format(\n            label, index + 1, code, preview, message\n        )\n    return '{}第{}项 code={}，原文={}：未返回音频 data.link'.format(\n        label, index + 1, code, preview\n    )\n\n\nasync def main(args: Args) -> Output:\n    rows = args.params.get('outputList') or []\n    texts = args.params.get('texts') or []\n    label = str(args.params.get('label') or '配音').strip()\n    links = []\n    errors = []\n    for index, row in enumerate(rows):\n        data = row.get('data') if isinstance(row, dict) else None\n        link = str(data.get('link') or '').strip() if isinstance(data, dict) else ''\n        if link:\n            links.append(link)\n        else:\n            errors.append(_message(row, index, label, texts))\n\n    if not rows:\n        raise RuntimeError('{}未返回任何批处理结果'.format(label))\n    if errors:\n        raise RuntimeError('语音合成失败；' + '；'.join(errors))\n    return {'links': links, 'errors': []}",
+                        "language": 3,
                         "settingOnError": {
+                            "switch": false,
                             "processType": 1,
-                            "timeoutMs": 180000,
+                            "timeoutMs": 60000,
                             "retryTimes": 0
                         }
                     },
@@ -981,8 +682,17 @@
                                 "type": "string"
                             },
                             "required": false
+                        },
+                        {
+                            "type": "list",
+                            "name": "errors",
+                            "schema": {
+                                "type": "string"
+                            },
+                            "required": false
                         }
-                    ]
+                    ],
+                    "version": "v2"
                 },
                 "_temp": {
                     "bounds": {
@@ -992,70 +702,16 @@
                         "height": 112
                     },
                     "externalData": {
-                        "icon": "https://lf6-appstore-sign.oceancloudapi.com/ocean-cloud-tos/plugin_icon/899867902747117_1754468610220323838_uNVu6vrWbD.png?lk3s=cd508e2b&x-expires=1783140551&x-signature=wDNveJXSmV6AupvSCPK4hfW7ixM%3D",
-                        "apiName": "audio_link_collector",
-                        "pluginID": "7532910474124427290",
-                        "pluginProductStatus": 1,
-                        "pluginProductUnlistType": 0,
-                        "pluginType": 1,
-                        "spaceID": "7469773998000734227",
-                        "inputs": [
-                            {
-                                "description": "待处理的对象数组，元素需包含 data.link 字段",
-                                "input": {},
-                                "name": "outputList",
-                                "required": true,
-                                "schema": {
-                                    "schema": [
-                                        {
-                                            "description": "业务数据对象，至少包含 link",
-                                            "input": {},
-                                            "name": "data",
-                                            "required": true,
-                                            "schema": [
-                                                {
-                                                    "description": "音频链接",
-                                                    "input": {},
-                                                    "name": "link",
-                                                    "required": true,
-                                                    "type": "string"
-                                                }
-                                            ],
-                                            "type": "object"
-                                        }
-                                    ],
-                                    "type": "object"
-                                },
-                                "type": "list"
-                            }
-                        ],
-                        "outputs": [
-                            {
-                                "input": {},
-                                "name": "links",
-                                "required": false,
-                                "schema": {
-                                    "assistType": 0,
-                                    "type": "string"
-                                },
-                                "type": "list"
-                            }
-                        ],
-                        "updateTime": 1779869881,
-                        "channel_id": 2,
-                        "commercial_setting": {},
-                        "latestVersionTs": "0",
-                        "latestVersionName": "",
-                        "versionName": "",
-                        "description": "直接提取音频批处理中的音频链接，配合官方音频生成插件",
-                        "title": "audio_link_collector",
-                        "mainColor": "#CA61FF"
+                        "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Code-v2.jpg",
+                        "description": "编写代码，处理输入变量来生成返回值",
+                        "title": "代码",
+                        "mainColor": "#00B2B2"
                     }
                 }
             },
             {
                 "id": "152457",
-                "type": "4",
+                "type": "5",
                 "meta": {
                     "position": {
                         "x": 1059.3055555555554,
@@ -1064,105 +720,12 @@
                 },
                 "data": {
                     "nodeMeta": {
-                        "description": "直接提取音频批处理中的音频链接，配合官方音频生成插件",
-                        "icon": "https://p26-flow-product-sign.byteimg.com/tos-cn-i-13w3uml6bg/20bbce4a2fac4d13a7dec9913f08a39b~tplv-13w3uml6bg-resize:128:128.image?rk3s=2e2596fd&x-expires=1758098239&x-signature=29Mq8a2cRpFURnxh6bvSLAkxT%2Bc%3D",
-                        "subtitle": "剪映小助手辅助工具:audio_link_collector",
+                        "description": "编写代码，处理输入变量来生成返回值",
+                        "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Code-v2.jpg",
+                        "subTitle": "代码",
                         "title": "提取开场语音链接"
                     },
                     "inputs": {
-                        "apiParam": [
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "7532910474124443674",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "apiID"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "audio_link_collector",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "apiName"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "7532910474124427290",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "pluginID"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "剪映小助手辅助工具",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "pluginName"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "pluginVersion"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "tips"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "outDocLink"
-                            }
-                        ],
                         "inputParameters": [
                             {
                                 "name": "outputList",
@@ -1170,41 +733,7 @@
                                     "type": "list",
                                     "schema": {
                                         "type": "object",
-                                        "schema": [
-                                            {
-                                                "type": "float",
-                                                "name": "code",
-                                                "required": false
-                                            },
-                                            {
-                                                "type": "object",
-                                                "name": "data",
-                                                "schema": [
-                                                    {
-                                                        "type": "float",
-                                                        "name": "duration",
-                                                        "required": false,
-                                                        "description": "音频时长，单位是s"
-                                                    },
-                                                    {
-                                                        "type": "string",
-                                                        "name": "link",
-                                                        "required": false
-                                                    }
-                                                ],
-                                                "required": false
-                                            },
-                                            {
-                                                "type": "string",
-                                                "name": "log_id",
-                                                "required": false
-                                            },
-                                            {
-                                                "type": "string",
-                                                "name": "msg",
-                                                "required": false
-                                            }
-                                        ]
+                                        "schema": []
                                     },
                                     "value": {
                                         "type": "ref",
@@ -1218,11 +747,47 @@
                                         }
                                     }
                                 }
+                            },
+                            {
+                                "name": "texts",
+                                "input": {
+                                    "type": "list",
+                                    "schema": {
+                                        "type": "string"
+                                    },
+                                    "value": {
+                                        "type": "ref",
+                                        "content": {
+                                            "source": "block-output",
+                                            "blockID": "114310",
+                                            "name": "kc_wenan"
+                                        },
+                                        "rawMeta": {
+                                            "type": 99
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                "name": "label",
+                                "input": {
+                                    "type": "string",
+                                    "value": {
+                                        "type": "literal",
+                                        "content": "开场配音",
+                                        "rawMeta": {
+                                            "type": 1
+                                        }
+                                    }
+                                }
                             }
                         ],
+                        "code": "def _message(row, index, label, texts):\n    source_text = ''\n    if isinstance(texts, list) and index < len(texts):\n        source_text = str(texts[index] or '').strip()\n    preview = source_text[:80] if source_text else '<空>'\n    if not isinstance(row, dict):\n        return '{}第{}项返回格式异常，原文={}'.format(label, index + 1, preview)\n    code = row.get('code')\n    message = str(row.get('msg') or row.get('message') or '').strip()\n    if message:\n        return '{}第{}项 code={}，原文={}：{}'.format(\n            label, index + 1, code, preview, message\n        )\n    return '{}第{}项 code={}，原文={}：未返回音频 data.link'.format(\n        label, index + 1, code, preview\n    )\n\n\nasync def main(args: Args) -> Output:\n    rows = args.params.get('outputList') or []\n    texts = args.params.get('texts') or []\n    label = str(args.params.get('label') or '配音').strip()\n    links = []\n    errors = []\n    for index, row in enumerate(rows):\n        data = row.get('data') if isinstance(row, dict) else None\n        link = str(data.get('link') or '').strip() if isinstance(data, dict) else ''\n        if link:\n            links.append(link)\n        else:\n            errors.append(_message(row, index, label, texts))\n\n    if not rows:\n        raise RuntimeError('{}未返回任何批处理结果'.format(label))\n    if errors:\n        raise RuntimeError('语音合成失败；' + '；'.join(errors))\n    return {'links': links, 'errors': []}",
+                        "language": 3,
                         "settingOnError": {
+                            "switch": false,
                             "processType": 1,
-                            "timeoutMs": 180000,
+                            "timeoutMs": 60000,
                             "retryTimes": 0
                         }
                     },
@@ -1234,8 +799,17 @@
                                 "type": "string"
                             },
                             "required": false
+                        },
+                        {
+                            "type": "list",
+                            "name": "errors",
+                            "schema": {
+                                "type": "string"
+                            },
+                            "required": false
                         }
-                    ]
+                    ],
+                    "version": "v2"
                 },
                 "_temp": {
                     "bounds": {
@@ -1245,70 +819,16 @@
                         "height": 112
                     },
                     "externalData": {
-                        "icon": "https://lf6-appstore-sign.oceancloudapi.com/ocean-cloud-tos/plugin_icon/899867902747117_1754468610220323838_uNVu6vrWbD.png?lk3s=cd508e2b&x-expires=1783140551&x-signature=wDNveJXSmV6AupvSCPK4hfW7ixM%3D",
-                        "apiName": "audio_link_collector",
-                        "pluginID": "7532910474124427290",
-                        "pluginProductStatus": 1,
-                        "pluginProductUnlistType": 0,
-                        "pluginType": 1,
-                        "spaceID": "7469773998000734227",
-                        "inputs": [
-                            {
-                                "description": "待处理的对象数组，元素需包含 data.link 字段",
-                                "input": {},
-                                "name": "outputList",
-                                "required": true,
-                                "schema": {
-                                    "schema": [
-                                        {
-                                            "description": "业务数据对象，至少包含 link",
-                                            "input": {},
-                                            "name": "data",
-                                            "required": true,
-                                            "schema": [
-                                                {
-                                                    "description": "音频链接",
-                                                    "input": {},
-                                                    "name": "link",
-                                                    "required": true,
-                                                    "type": "string"
-                                                }
-                                            ],
-                                            "type": "object"
-                                        }
-                                    ],
-                                    "type": "object"
-                                },
-                                "type": "list"
-                            }
-                        ],
-                        "outputs": [
-                            {
-                                "input": {},
-                                "name": "links",
-                                "required": false,
-                                "schema": {
-                                    "assistType": 0,
-                                    "type": "string"
-                                },
-                                "type": "list"
-                            }
-                        ],
-                        "updateTime": 1779869881,
-                        "channel_id": 2,
-                        "commercial_setting": {},
-                        "latestVersionTs": "0",
-                        "latestVersionName": "",
-                        "versionName": "",
-                        "description": "直接提取音频批处理中的音频链接，配合官方音频生成插件",
-                        "title": "audio_link_collector",
-                        "mainColor": "#CA61FF"
+                        "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Code-v2.jpg",
+                        "description": "编写代码，处理输入变量来生成返回值",
+                        "title": "代码",
+                        "mainColor": "#00B2B2"
                     }
                 }
             },
             {
                 "id": "181955",
-                "type": "4",
+                "type": "5",
                 "meta": {
                     "position": {
                         "x": 1059.3055555555554,
@@ -1317,105 +837,12 @@
                 },
                 "data": {
                     "nodeMeta": {
-                        "description": "直接提取音频批处理中的音频链接，配合官方音频生成插件",
-                        "icon": "https://p26-flow-product-sign.byteimg.com/tos-cn-i-13w3uml6bg/20bbce4a2fac4d13a7dec9913f08a39b~tplv-13w3uml6bg-resize:128:128.image?rk3s=2e2596fd&x-expires=1758098239&x-signature=29Mq8a2cRpFURnxh6bvSLAkxT%2Bc%3D",
-                        "subtitle": "剪映小助手辅助工具:audio_link_collector",
+                        "description": "编写代码，处理输入变量来生成返回值",
+                        "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Code-v2.jpg",
+                        "subTitle": "代码",
                         "title": "提取选题语音链接"
                     },
                     "inputs": {
-                        "apiParam": [
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "7532910474124443674",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "apiID"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "audio_link_collector",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "apiName"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "7532910474124427290",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "pluginID"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "剪映小助手辅助工具",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "pluginName"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "pluginVersion"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "tips"
-                            },
-                            {
-                                "input": {
-                                    "type": "string",
-                                    "value": {
-                                        "content": "",
-                                        "rawMeta": {
-                                            "type": 1
-                                        },
-                                        "type": "literal"
-                                    }
-                                },
-                                "name": "outDocLink"
-                            }
-                        ],
                         "inputParameters": [
                             {
                                 "name": "outputList",
@@ -1423,41 +850,7 @@
                                     "type": "list",
                                     "schema": {
                                         "type": "object",
-                                        "schema": [
-                                            {
-                                                "type": "float",
-                                                "name": "code",
-                                                "required": false
-                                            },
-                                            {
-                                                "type": "object",
-                                                "name": "data",
-                                                "schema": [
-                                                    {
-                                                        "type": "float",
-                                                        "name": "duration",
-                                                        "required": false,
-                                                        "description": "音频时长，单位是s"
-                                                    },
-                                                    {
-                                                        "type": "string",
-                                                        "name": "link",
-                                                        "required": false
-                                                    }
-                                                ],
-                                                "required": false
-                                            },
-                                            {
-                                                "type": "string",
-                                                "name": "log_id",
-                                                "required": false
-                                            },
-                                            {
-                                                "type": "string",
-                                                "name": "msg",
-                                                "required": false
-                                            }
-                                        ]
+                                        "schema": []
                                     },
                                     "value": {
                                         "type": "ref",
@@ -1471,11 +864,47 @@
                                         }
                                     }
                                 }
+                            },
+                            {
+                                "name": "texts",
+                                "input": {
+                                    "type": "list",
+                                    "schema": {
+                                        "type": "string"
+                                    },
+                                    "value": {
+                                        "type": "ref",
+                                        "content": {
+                                            "source": "block-output",
+                                            "blockID": "114310",
+                                            "name": "subject_wenan"
+                                        },
+                                        "rawMeta": {
+                                            "type": 99
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                "name": "label",
+                                "input": {
+                                    "type": "string",
+                                    "value": {
+                                        "type": "literal",
+                                        "content": "书名配音",
+                                        "rawMeta": {
+                                            "type": 1
+                                        }
+                                    }
+                                }
                             }
                         ],
+                        "code": "def _message(row, index, label, texts):\n    source_text = ''\n    if isinstance(texts, list) and index < len(texts):\n        source_text = str(texts[index] or '').strip()\n    preview = source_text[:80] if source_text else '<空>'\n    if not isinstance(row, dict):\n        return '{}第{}项返回格式异常，原文={}'.format(label, index + 1, preview)\n    code = row.get('code')\n    message = str(row.get('msg') or row.get('message') or '').strip()\n    if message:\n        return '{}第{}项 code={}，原文={}：{}'.format(\n            label, index + 1, code, preview, message\n        )\n    return '{}第{}项 code={}，原文={}：未返回音频 data.link'.format(\n        label, index + 1, code, preview\n    )\n\n\nasync def main(args: Args) -> Output:\n    rows = args.params.get('outputList') or []\n    texts = args.params.get('texts') or []\n    label = str(args.params.get('label') or '配音').strip()\n    links = []\n    errors = []\n    for index, row in enumerate(rows):\n        data = row.get('data') if isinstance(row, dict) else None\n        link = str(data.get('link') or '').strip() if isinstance(data, dict) else ''\n        if link:\n            links.append(link)\n        else:\n            errors.append(_message(row, index, label, texts))\n\n    if not rows:\n        raise RuntimeError('{}未返回任何批处理结果'.format(label))\n    if errors:\n        raise RuntimeError('语音合成失败；' + '；'.join(errors))\n    return {'links': links, 'errors': []}",
+                        "language": 3,
                         "settingOnError": {
+                            "switch": false,
                             "processType": 1,
-                            "timeoutMs": 180000,
+                            "timeoutMs": 60000,
                             "retryTimes": 0
                         }
                     },
@@ -1487,8 +916,17 @@
                                 "type": "string"
                             },
                             "required": false
+                        },
+                        {
+                            "type": "list",
+                            "name": "errors",
+                            "schema": {
+                                "type": "string"
+                            },
+                            "required": false
                         }
-                    ]
+                    ],
+                    "version": "v2"
                 },
                 "_temp": {
                     "bounds": {
@@ -1498,64 +936,10 @@
                         "height": 112
                     },
                     "externalData": {
-                        "icon": "https://lf6-appstore-sign.oceancloudapi.com/ocean-cloud-tos/plugin_icon/899867902747117_1754468610220323838_uNVu6vrWbD.png?lk3s=cd508e2b&x-expires=1783140551&x-signature=wDNveJXSmV6AupvSCPK4hfW7ixM%3D",
-                        "apiName": "audio_link_collector",
-                        "pluginID": "7532910474124427290",
-                        "pluginProductStatus": 1,
-                        "pluginProductUnlistType": 0,
-                        "pluginType": 1,
-                        "spaceID": "7469773998000734227",
-                        "inputs": [
-                            {
-                                "description": "待处理的对象数组，元素需包含 data.link 字段",
-                                "input": {},
-                                "name": "outputList",
-                                "required": true,
-                                "schema": {
-                                    "schema": [
-                                        {
-                                            "description": "业务数据对象，至少包含 link",
-                                            "input": {},
-                                            "name": "data",
-                                            "required": true,
-                                            "schema": [
-                                                {
-                                                    "description": "音频链接",
-                                                    "input": {},
-                                                    "name": "link",
-                                                    "required": true,
-                                                    "type": "string"
-                                                }
-                                            ],
-                                            "type": "object"
-                                        }
-                                    ],
-                                    "type": "object"
-                                },
-                                "type": "list"
-                            }
-                        ],
-                        "outputs": [
-                            {
-                                "input": {},
-                                "name": "links",
-                                "required": false,
-                                "schema": {
-                                    "assistType": 0,
-                                    "type": "string"
-                                },
-                                "type": "list"
-                            }
-                        ],
-                        "updateTime": 1779869881,
-                        "channel_id": 2,
-                        "commercial_setting": {},
-                        "latestVersionTs": "0",
-                        "latestVersionName": "",
-                        "versionName": "",
-                        "description": "直接提取音频批处理中的音频链接，配合官方音频生成插件",
-                        "title": "audio_link_collector",
-                        "mainColor": "#CA61FF"
+                        "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Code-v2.jpg",
+                        "description": "编写代码，处理输入变量来生成返回值",
+                        "title": "代码",
+                        "mainColor": "#00B2B2"
                     }
                 }
             },
@@ -16879,7 +16263,7 @@
                         "batch": {
                             "batchEnable": true,
                             "batchSize": 100,
-                            "concurrentSize": 2,
+                            "concurrentSize": 1,
                             "inputLists": [
                                 {
                                     "name": "item1",
@@ -16942,7 +16326,7 @@
                         "settingOnError": {
                             "processType": 1,
                             "timeoutMs": 180000,
-                            "retryTimes": 0
+                            "retryTimes": 2
                         }
                     },
                     "outputs": [
@@ -17229,7 +16613,7 @@
                         "batch": {
                             "batchEnable": true,
                             "batchSize": 100,
-                            "concurrentSize": 2,
+                            "concurrentSize": 1,
                             "inputLists": [
                                 {
                                     "name": "item1",
@@ -17292,7 +16676,7 @@
                         "settingOnError": {
                             "processType": 1,
                             "timeoutMs": 180000,
-                            "retryTimes": 0
+                            "retryTimes": 2
                         }
                     },
                     "outputs": [
@@ -17579,7 +16963,7 @@
                         "batch": {
                             "batchEnable": true,
                             "batchSize": 100,
-                            "concurrentSize": 2,
+                            "concurrentSize": 1,
                             "inputLists": [
                                 {
                                     "name": "item1",
@@ -17642,7 +17026,7 @@
                         "settingOnError": {
                             "processType": 1,
                             "timeoutMs": 180000,
-                            "retryTimes": 0
+                            "retryTimes": 2
                         }
                     },
                     "outputs": [
@@ -18312,14 +17696,6 @@
                 "targetNodeID": "900001"
             },
             {
-                "sourceNodeID": "157315",
-                "targetNodeID": "152468"
-            },
-            {
-                "sourceNodeID": "152468",
-                "targetNodeID": "114310"
-            },
-            {
                 "sourceNodeID": "114310",
                 "targetNodeID": "154758"
             },
@@ -18535,6 +17911,10 @@
             {
                 "sourceNodeID": "124102",
                 "targetNodeID": "1713008"
+            },
+            {
+                "sourceNodeID": "157315",
+                "targetNodeID": "114310"
             }
         ]
     },

@@ -545,6 +545,148 @@ function DetailPage() {
   );
 }
 
+const QUICK_WORKFLOWS = [
+  { code: "OWN01", label: "书单视频", placeholder: "输入书名；也可写成 书名｜作者" },
+  { code: "OWN02", label: "香烟视频", placeholder: "输入香烟名称，例如：中华" },
+  { code: "OWN03", label: "神话视频", placeholder: "输入神名，例如：哪吒" },
+] as const;
+
+function QuickCreatePanel() {
+  const navigate = useNavigate();
+  const [selectedCode, setSelectedCode] = useState<(typeof QUICK_WORKFLOWS)[number]["code"]>("OWN01");
+  const [theme, setTheme] = useState("");
+  const [workflows, setWorkflows] = useState<Record<string, Workflow>>({});
+  const [job, setJob] = useState<Job | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const pollRef = useRef<number | null>(null);
+  const selected = QUICK_WORKFLOWS.find((item) => item.code === selectedCode)!;
+  const selectedWorkflow = workflows[selectedCode];
+
+  useEffect(() => {
+    fetchWorkflows({ category: "自有工作流", q: "", sort: "newest" })
+      .then(({ items }) => setWorkflows(Object.fromEntries(items.map((item) => [item.code, item]))))
+      .catch((err: Error) => setError(err.message));
+  }, []);
+
+  useEffect(() => {
+    const savedJobId = localStorage.getItem("quick-create-job");
+    if (!savedJobId) return;
+    fetchJob(savedJobId)
+      .then(({ job: restored }) => setJob(restored))
+      .catch(() => localStorage.removeItem("quick-create-job"));
+  }, []);
+
+  useEffect(() => {
+    if (job) localStorage.setItem("quick-create-job", job.id);
+  }, [job?.id]);
+
+  useEffect(() => {
+    if (!job || ["succeeded", "failed"].includes(job.status)) return;
+    pollRef.current = window.setInterval(() => {
+      fetchJob(job.id).then(({ job: next }) => setJob(next)).catch((err: Error) => setError(err.message));
+    }, 2000);
+    return () => { if (pollRef.current) window.clearInterval(pollRef.current); };
+  }, [job?.id, job?.status]);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!theme.trim()) {
+      setError("请先输入主题内容");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await createJob(selectedCode, "自有工作流", { theme: theme.trim() });
+      setJob(response.job);
+    } catch (err) {
+      const message = (err as Error).message;
+      if (message === "请先登录") {
+        navigate(`/login?redirect=${encodeURIComponent("/")}`);
+      } else {
+        setError(message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retry() {
+    if (!job) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await retryJob(job.id);
+      setJob(response.job);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="quick-create-section" aria-labelledby="quick-create-title">
+      <div className="quick-create-copy">
+        <span className="eyebrow">ONE CLICK VIDEO</span>
+        <h2 id="quick-create-title">输入一个主题，直接生成视频</h2>
+        <p>Coze、米核和渲染参数由服务器安全注入。提交后自动生成 draft_key，并交给已配对的剪映导出助手生成 MP4。</p>
+      </div>
+      <div className="quick-create-layout">
+        <form className="quick-create-form" onSubmit={(event) => void submit(event)}>
+          <div className="quick-workflow-tabs">
+            {QUICK_WORKFLOWS.map((item) => (
+              <button
+                type="button"
+                className={selectedCode === item.code ? "active" : ""}
+                key={item.code}
+                onClick={() => { setSelectedCode(item.code); setError(""); }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <label>
+            <span>主题内容</span>
+            <div className="quick-theme-input">
+              <input
+                value={theme}
+                onChange={(event) => setTheme(event.target.value)}
+                placeholder={selected.placeholder}
+              />
+              <button
+                type="submit"
+                disabled={busy || selectedWorkflow?.status === "coming_soon"}
+              >
+                {busy ? <LoaderCircle className="spin" size={18} /> : <Sparkles size={18} />}
+                {busy ? "正在提交" : "一键生成视频"}
+              </button>
+            </div>
+          </label>
+          {selectedWorkflow?.status === "coming_soon" && <div className="notice">该工作流后台尚未配置完成。</div>}
+          {error && <div className="notice error">{error}</div>}
+          <small>首次使用请先在“剪映导出”中配对本机助手；之后只需输入主题。</small>
+        </form>
+        <div className="quick-create-status">
+          {job ? (
+            <>
+              <JobProgress job={job} onRetry={() => void retry()} />
+              <Results job={job} />
+            </>
+          ) : (
+            <div className="quick-create-empty">
+              <Sparkles />
+              <strong>等待你的主题</strong>
+              <span>生成进度和视频结果会显示在这里</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function HomePage() {
   const [summary, setSummary] = useState<SiteSummary | null>(null);
   const [error, setError] = useState("");
@@ -571,6 +713,7 @@ function HomePage() {
           </section>
         )}
         {error && <div className="notice error">首页数据加载失败：{error}</div>}
+        <QuickCreatePanel />
         <section className="feature-section">
           <div className="section-heading"><span>核心功能</span><h2>探索我们的 AI 服务生态</h2></div>
           <div className="feature-grid">

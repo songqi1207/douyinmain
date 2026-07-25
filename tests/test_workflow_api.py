@@ -14,6 +14,8 @@ os.environ["SMTP_HOST"] = "smtp.example.test"
 os.environ["SMTP_FROM"] = "noreply@example.test"
 os.environ["COZE_API_TOKEN"] = ""
 os.environ["COZE_WORKFLOW_GOD"] = ""
+os.environ["COZE_WORKFLOW_OWN01"] = ""
+os.environ["COZE_WORKFLOW_OWN02"] = ""
 os.environ["COZE_WORKFLOW_OWN03"] = ""
 os.environ["MIHE_KEY"] = ""
 
@@ -266,6 +268,46 @@ class WorkflowApiTests(unittest.TestCase):
         for browser_name in ("god_name", "description", "scene_count", "script", "audio_url", "voice_id"):
             self.assertNotIn(browser_name, params)
 
+    def test_published_book_and_cigarette_map_one_theme_to_private_parameters(self):
+        with patch.dict(
+            os.environ,
+            {
+                "MIHE_KEY": "server-side-mihe-key",
+                "BOOK_ACCOUNT_NAME": "测试账号",
+                "BOOK_DEFAULT_IMAGE_COUNT": "1",
+                "BOOK_DEFAULT_VOICE_ID": "voice-book",
+                "CIGARETTE_LEFT_TEXT": "未成年人禁止吸烟",
+                "CIGARETTE_LEFT_TOP_TEXT": "吸烟有害身体健康",
+            },
+        ):
+            book = _provider_inputs(
+                {"theme": "克林索尔的最后夏天｜黑塞"},
+                "OWN01",
+            )
+            cigarette = _provider_inputs({"theme": "中华"}, "OWN02")
+
+        self.assertEqual(
+            book,
+            {
+                "account_name": "测试账号",
+                "author": "黑塞",
+                "img_count": "1",
+                "subject": "克林索尔的最后夏天",
+                "yinse": "voice-book",
+                "mihe_key": "server-side-mihe-key",
+            },
+        )
+        self.assertEqual(
+            cigarette,
+            {
+                "left": "未成年人禁止吸烟",
+                "left_top": "吸烟有害身体健康",
+                "xiangyan_name": "中华",
+            },
+        )
+        self.assertNotIn("theme", book)
+        self.assertNotIn("theme", cigarette)
+
     def test_published_god_workflow_saves_nested_draft_key_result(self):
         key = {
             "kind": "jianying_draft_key",
@@ -317,20 +359,26 @@ class WorkflowApiTests(unittest.TestCase):
             self.assertEqual(request_body["workflow_id"], "published-workflow-id")
             self.assertEqual(request_body["parameters"]["mihe_key"], "test-mihe-key")
 
-    def test_configured_owned_god_workflow_switches_to_one_click_draft_mode(self):
+    def test_configured_owned_workflows_switch_to_one_theme_draft_mode(self):
         with patch.dict(
             os.environ,
             {
                 "COZE_API_TOKEN": "test-token",
+                "COZE_WORKFLOW_OWN01": "published-book-id",
+                "COZE_WORKFLOW_OWN02": "published-cigarette-id",
                 "COZE_WORKFLOW_OWN03": "published-workflow-id",
                 "WORKFLOW_RENDER_API_URL": "http://render-worker.test/render",
             },
         ):
-            workflow = get_workflow("OWN03")
+            workflows = [get_workflow(code) for code in ("OWN01", "OWN02", "OWN03")]
 
-        self.assertEqual(workflow["generation_mode"], "draft")
-        self.assertEqual(workflow["status"], "online")
-        self.assertIn("god_name", {field["name"] for field in workflow["input_schema"]})
+        for workflow in workflows:
+            self.assertEqual(workflow["generation_mode"], "draft")
+            self.assertEqual(workflow["status"], "online")
+            self.assertEqual(
+                {field["name"] for field in workflow["input_schema"]},
+                {"theme"},
+            )
 
     def test_published_god_job_renders_draft_key_on_windows_worker(self):
         key = {

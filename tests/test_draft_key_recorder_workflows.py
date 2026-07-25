@@ -6,7 +6,11 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from scripts.build_recorded_draft_key_workflows import PROFILES, build_all
+from scripts.build_recorded_draft_key_workflows import (
+    PROFILES,
+    build_all,
+    ensure_book_batch_inputs,
+)
 from utils.draft_key_importer import _merge_global_image_style
 from utils.draft_key_importer import import_draft_key
 from workflows.draft_key_recorder import add_draft_key_recorder
@@ -30,6 +34,115 @@ def _run_aggregate(node: dict, params: dict) -> dict:
 
 
 class DraftKeyRecorderWorkflowTests(unittest.TestCase):
+    def test_book_batch_normalizer_never_emits_empty_lists(self):
+        profile = next(
+            item for item in PROFILES if item["run_prefix"] == "book_recorded_"
+        )
+        workflow = json.loads(profile["source"].read_text(encoding="utf-8"))
+
+        ensure_book_batch_inputs(workflow)
+        ensure_book_batch_inputs(workflow)
+
+        nodes = {
+            str(node["id"]): node for node in workflow["json"]["nodes"]
+        }
+        self.assertNotIn("152468", nodes)
+        normalizer = nodes["114310"]
+        narration_inputs = [
+            parameter
+            for parameter in normalizer["data"]["inputs"]["inputParameters"]
+            if parameter["name"] == "wenan"
+        ]
+        self.assertEqual(len(narration_inputs), 1)
+        self.assertEqual(
+            narration_inputs[0]["input"]["value"]["content"],
+            {
+                "source": "block-output",
+                "blockID": "157315",
+                "name": "wenan",
+            },
+        )
+        self.assertEqual(normalizer["data"]["inputs"]["language"], 3)
+        edges = workflow["json"]["edges"]
+        self.assertTrue(
+            any(
+                edge["sourceNodeID"] == "157315"
+                and edge["targetNodeID"] == "114310"
+                for edge in edges
+            )
+        )
+
+        namespace = {"Args": SimpleNamespace, "Output": dict}
+        exec(normalizer["data"]["inputs"]["code"], namespace)
+        for params in (
+            {"subject": "测试书", "kc_wenan": "", "wenan": ""},
+            {
+                "subject": "测试书",
+                "kc_wenan": "今天我们要讲的是",
+                "wenan": "第一句。第二句！",
+            },
+        ):
+            result = asyncio.run(
+                namespace["main"](SimpleNamespace(params=params))
+            )
+            self.assertTrue(result["kc_wenan"])
+            self.assertTrue(result["subject_wenan"])
+            self.assertTrue(result["zw_wenan"])
+
+        for collector_id, (tts_id, label) in {
+            "150200": ("154758", "正文配音"),
+            "152457": ("1351770", "开场配音"),
+            "181955": ("1033952", "书名配音"),
+        }.items():
+            collector = nodes[collector_id]
+            tts = nodes[tts_id]
+            self.assertEqual(collector["type"], "5")
+            output_list = collector["data"]["inputs"]["inputParameters"][0]
+            self.assertEqual(
+                output_list["input"]["schema"],
+                {"type": "object", "schema": []},
+            )
+            self.assertEqual(
+                tts["data"]["inputs"]["batch"]["concurrentSize"], 1
+            )
+            self.assertEqual(
+                tts["data"]["inputs"]["settingOnError"]["retryTimes"], 2
+            )
+
+            collector_namespace = {"Args": SimpleNamespace, "Output": dict}
+            exec(
+                collector["data"]["inputs"]["code"],
+                collector_namespace,
+            )
+            success = asyncio.run(
+                collector_namespace["main"](
+                    SimpleNamespace(
+                        params={
+                            "label": label,
+                            "texts": ["测试文本"],
+                            "outputList": [
+                                {"code": 0, "data": {"link": "https://audio.test/a.mp3"}}
+                            ]
+                        }
+                    )
+                )
+            )
+            self.assertEqual(success["links"], ["https://audio.test/a.mp3"])
+            with self.assertRaisesRegex(RuntimeError, "语音合成失败"):
+                asyncio.run(
+                    collector_namespace["main"](
+                        SimpleNamespace(
+                            params={
+                                "label": label,
+                                "texts": [""],
+                                "outputList": [
+                                    {"code": 500, "data": None, "msg": "TTS failed"}
+                                ]
+                            }
+                        )
+                    )
+                )
+
     def test_importer_applies_all_node_level_image_style_fields(self):
         params = {
             "alpha": 0.8,

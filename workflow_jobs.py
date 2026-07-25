@@ -145,6 +145,16 @@ def create_job(
         raise KeyError("workflow_not_found")
     if workflow["status"] != "online":
         raise PermissionError("workflow_not_online")
+    inputs = dict(inputs)
+    aliases = {
+        "OWN01": "book_name",
+        "OWN02": "cigarette_name",
+        "OWN03": "god_name",
+    }
+    normalized_code = str(workflow_code or "").upper()
+    alias = aliases.get(normalized_code)
+    if alias and not str(inputs.get("theme") or "").strip():
+        inputs["theme"] = inputs.get(alias)
     validate_inputs(workflow, inputs)
     now = time.time()
     job_id = uuid.uuid4().hex
@@ -416,7 +426,55 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
 
     code = str(workflow_code or "").upper()
     result.pop("voice_notice", None)
-    if code == "OWN03":
+    if code == "OWN01":
+        raw_theme = str(result.pop("theme", "") or result.pop("book_name", "") or "").strip()
+        subject = raw_theme
+        author = str(result.pop("author", "") or "").strip()
+        for separator in ("｜", "|"):
+            if separator in subject:
+                subject, inline_author = (part.strip() for part in subject.split(separator, 1))
+                author = author or inline_author
+                break
+        author = author or (os.getenv("BOOK_DEFAULT_AUTHOR") or "佚名").strip()
+        try:
+            image_count = max(
+                1,
+                min(
+                    int(
+                        result.pop("scene_count", "")
+                        or result.pop("img_count", "")
+                        or os.getenv("BOOK_DEFAULT_IMAGE_COUNT")
+                        or 1
+                    ),
+                    22,
+                ),
+            )
+        except (TypeError, ValueError):
+            image_count = 1
+        result = {
+            "account_name": (os.getenv("BOOK_ACCOUNT_NAME") or "AI创作工坊").strip(),
+            "author": author,
+            "img_count": str(image_count),
+            "subject": subject,
+            "yinse": str(
+                result.pop("voice_id", "")
+                or result.pop("yinse", "")
+                or os.getenv("BOOK_DEFAULT_VOICE_ID")
+                or "7620288417930297386"
+            ).strip(),
+        }
+    elif code == "OWN02":
+        theme = str(
+            result.pop("theme", "") or result.pop("cigarette_name", "") or ""
+        ).strip()
+        result = {
+            "left": (os.getenv("CIGARETTE_LEFT_TEXT") or "未成年人禁止吸烟").strip(),
+            "left_top": (
+                os.getenv("CIGARETTE_LEFT_TOP_TEXT") or "吸烟有害身体健康"
+            ).strip(),
+            "xiangyan_name": theme,
+        }
+    elif code == "OWN03":
         from workflows.god.provider import build_god_provider_parameters
 
         result = build_god_provider_parameters(result)
@@ -455,6 +513,8 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
         "feishu_url": "FEISHU_ASSET_URL",
     }
     for parameter, env_name in secret_bindings.items():
+        if code == "OWN02" and parameter == "mihe_key":
+            continue
         if os.getenv(env_name):
             result[parameter] = os.getenv(env_name)
     return result
