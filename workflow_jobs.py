@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import os
 import shutil
@@ -17,6 +18,17 @@ import requests
 
 from business_workflows import find_workflow_downloads
 from workflow_registry import LOCAL_CODES, REFERENCE_TEMPLATE_CODES, get_workflow, published_workflow_id
+
+
+logger = logging.getLogger("workflow.jobs")
+if not logger.handlers:
+    _log_handler = logging.StreamHandler()
+    _log_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+    )
+    logger.addHandler(_log_handler)
+logger.setLevel((os.getenv("WORKFLOW_LOG_LEVEL") or "INFO").upper())
+logger.propagate = False
 
 
 ROOT = Path(__file__).resolve().parent
@@ -362,10 +374,19 @@ def _update_job(job_id: str, **changes):
     with _connect() as db:
         db.execute(f"UPDATE jobs SET {assignments} WHERE id = ?", (*values.values(), job_id))
         db.commit()
+    if {"status", "stage", "progress"} & values.keys():
+        logger.info(
+            "job_state job_id=%s status=%s stage=%s progress=%s",
+            job_id,
+            values.get("status", "-"),
+            values.get("stage", "-"),
+            values.get("progress", "-"),
+        )
 
 
 def enqueue_job(job_id: str, background_tasks=None):
     mode = (os.getenv("WORKFLOW_QUEUE_MODE") or "inline").strip().lower()
+    logger.info("job_enqueue job_id=%s queue_mode=%s", job_id, mode)
     if mode == "redis":
         from redis import Redis
         from rq import Queue
@@ -381,27 +402,43 @@ def enqueue_job(job_id: str, background_tasks=None):
 def execute_job(job_id: str):
     job = get_job(job_id)
     if not job:
+        logger.warning("job_missing job_id=%s", job_id)
         return
+    started_at = time.monotonic()
     try:
         _update_job(job_id, status="running", stage="preparing", progress=10)
         mode = (os.getenv("WORKFLOW_PROVIDER_MODE") or "demo").strip().lower()
         build_mode = (os.getenv("WORKFLOW_BUILD_MODE") or "template").strip().lower()
+        logger.info(
+            "job_started job_id=%s workflow=%s category=%s provider_mode=%s build_mode=%s",
+            job_id,
+            job["workflow_code"],
+            job["category"],
+            mode,
+            build_mode,
+        )
         published_local = (
             job["workflow_code"] in LOCAL_CODES
             and bool((os.getenv("COZE_API_TOKEN") or "").strip())
             and bool(published_workflow_id(job["workflow_code"]))
         )
         if job["workflow_code"] == DRAFT_KEY_RENDER_CODE:
+            logger.info("job_path job_id=%s path=draft_key_import", job_id)
             results = _save_draft_key_result(job, job["inputs"])
         elif published_local:
+            logger.info("job_path job_id=%s path=coze_published", job_id)
             results = _run_coze(job)
         elif job["workflow_code"] in LOCAL_CODES:
+            logger.info("job_path job_id=%s path=local_workflow", job_id)
             results = _run_local_workflow(job)
         elif job["workflow_code"] in REFERENCE_TEMPLATE_CODES and build_mode == "template":
+            logger.info("job_path job_id=%s path=reference_template", job_id)
             results = _run_reference_template(job)
         elif mode == "coze":
+            logger.info("job_path job_id=%s path=coze_provider", job_id)
             results = _run_coze(job)
         else:
+            logger.info("job_path job_id=%s path=demo", job_id)
             results = _run_demo(job)
         workflow = get_workflow(job["workflow_code"], job["category"]) or {}
         if (
@@ -409,8 +446,14 @@ def execute_job(job_id: str):
             and any(result["type"] == "draft" for result in results)
         ):
             if job.get("render_device_id"):
+                logger.info(
+                    "job_render_route job_id=%s route=device device_id=%s",
+                    job_id,
+                    job["render_device_id"],
+                )
                 _queue_device_render(job, results)
                 return
+            logger.info("job_render_route job_id=%s route=server", job_id)
             results = _render_drafts(job, results)
         cost_cents = int(os.getenv(f"WORKFLOW_COST_CENTS_{job['workflow_code']}") or 0)
         price_cents = int(os.getenv(f"WORKFLOW_PRICE_CENTS_{job['workflow_code']}") or 0)
@@ -423,10 +466,29 @@ def execute_job(job_id: str):
             cost_cents=cost_cents,
             price_cents=price_cents,
         )
+        logger.info(
+            "job_completed job_id=%s workflow=%s elapsed_seconds=%.3f",
+            job_id,
+            job["workflow_code"],
+            time.monotonic() - started_at,
+        )
     except ProviderError as exc:
         _update_job(job_id, status="failed", stage="failed", progress=100, error_code=exc.code, error_message=str(exc))
+        logger.warning(
+            "job_failed job_id=%s workflow=%s code=%s elapsed_seconds=%.3f",
+            job_id,
+            job["workflow_code"],
+            exc.code,
+            time.monotonic() - started_at,
+        )
     except Exception as exc:
         _update_job(job_id, status="failed", stage="failed", progress=100, error_code="internal_error", error_message=str(exc))
+        logger.exception(
+            "job_failed job_id=%s workflow=%s code=internal_error elapsed_seconds=%.3f",
+            job_id,
+            job["workflow_code"],
+            time.monotonic() - started_at,
+        )
 
 
 class ProviderError(RuntimeError):
@@ -546,7 +608,14 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
     return result
 
 
-def _post_coze_workflow(url: str, *, headers: dict, payload: dict):
+def _post_coze_workflow(
+    url: str,
+    *,
+    headers: dict,
+    payload: dict,
+    job_id: str = "-",
+    workflow_code: str = "-",
+):
     """Call Coze directly unless environment proxy use is explicitly enabled."""
     request_kwargs = {
         "headers": headers,
@@ -562,19 +631,61 @@ def _post_coze_workflow(url: str, *, headers: dict, payload: dict):
         "yes",
         "on",
     }
+    started_at = time.monotonic()
+    logger.info(
+        "coze_request_started job_id=%s workflow=%s transport=%s connect_timeout=%s read_timeout=%s",
+        job_id,
+        workflow_code,
+        "system_proxy" if use_env_proxy else "direct",
+        request_kwargs["timeout"][0],
+        request_kwargs["timeout"][1],
+    )
     if use_env_proxy:
         try:
-            return requests.post(url, **request_kwargs)
+            response = requests.post(url, **request_kwargs)
+            logger.info(
+                "coze_request_finished job_id=%s workflow=%s transport=system_proxy status=%s elapsed_seconds=%.3f",
+                job_id,
+                workflow_code,
+                response.status_code,
+                time.monotonic() - started_at,
+            )
+            return response
         except requests.exceptions.ProxyError:
-            pass
+            logger.warning(
+                "coze_proxy_failed job_id=%s workflow=%s fallback=direct",
+                job_id,
+                workflow_code,
+            )
 
     direct_session = requests.Session()
     direct_session.trust_env = False
     try:
-        return direct_session.post(url, **request_kwargs)
+        response = direct_session.post(url, **request_kwargs)
+        logger.info(
+            "coze_request_finished job_id=%s workflow=%s transport=direct status=%s elapsed_seconds=%.3f",
+            job_id,
+            workflow_code,
+            response.status_code,
+            time.monotonic() - started_at,
+        )
+        return response
     except requests.exceptions.Timeout as exc:
+        logger.warning(
+            "coze_request_timeout job_id=%s workflow=%s elapsed_seconds=%.3f",
+            job_id,
+            workflow_code,
+            time.monotonic() - started_at,
+        )
         raise ProviderError("provider_timeout", "扣子工作流执行超时，请稍后重试") from exc
     except requests.exceptions.RequestException as exc:
+        logger.warning(
+            "coze_request_failed job_id=%s workflow=%s exception=%s elapsed_seconds=%.3f",
+            job_id,
+            workflow_code,
+            type(exc).__name__,
+            time.monotonic() - started_at,
+        )
         raise ProviderError("provider_unavailable", "无法连接扣子服务，请检查服务器网络") from exc
     finally:
         direct_session.close()
@@ -590,6 +701,8 @@ def _run_coze(job: dict) -> list[dict]:
         (os.getenv("COZE_API_BASE_URL") or "https://api.coze.cn").rstrip("/") + "/v1/workflow/run",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         payload={"workflow_id": workflow_id, "parameters": _provider_inputs(job["inputs"], job["workflow_code"])},
+        job_id=job["id"],
+        workflow_code=job["workflow_code"],
     )
     if response.status_code == 429:
         raise ProviderError("provider_rate_limited", "扣子服务繁忙，请稍后重试")
@@ -598,6 +711,12 @@ def _run_coze(job: dict) -> list[dict]:
     payload = response.json()
     if payload.get("code") not in (None, 0):
         raise ProviderError("provider_error", str(payload.get("msg") or payload.get("message") or "扣子执行失败"))
+    logger.info(
+        "coze_payload_received job_id=%s workflow=%s api_code=%s",
+        job["id"],
+        job["workflow_code"],
+        payload.get("code", 0),
+    )
     data = _decode_nested_json(payload.get("data"))
     if job["workflow_code"] in LOCAL_CODES:
         return _save_draft_key_result(job, data)
@@ -659,6 +778,12 @@ def _save_draft_key_result(job: dict, data: Any) -> list[dict]:
     destination.write_text(json.dumps(draft_key, ensure_ascii=False, indent=2), encoding="utf-8")
     remote_draft_id = _find_nested_field(data, "draft_id")
     _update_job(job["id"], stage="draft_key_ready", progress=75)
+    logger.info(
+        "draft_key_saved job_id=%s workflow=%s file=%s",
+        job["id"],
+        job["workflow_code"],
+        destination.name,
+    )
     return [
         {
             "type": "draft",
@@ -722,6 +847,12 @@ def _render_drafts(job: dict, results: list[dict]) -> list[dict]:
         raise ProviderError("render_not_configured", "工作流返回了剪映草稿，但后台渲染服务尚未配置")
 
     _update_job(job["id"], status="rendering", stage="rendering", progress=75)
+    logger.info(
+        "render_request_started job_id=%s workflow=%s draft_count=%s",
+        job["id"],
+        job["workflow_code"],
+        sum(result["type"] == "draft" for result in results),
+    )
     headers = {"Content-Type": "application/json"}
     if render_token:
         headers["Authorization"] = f"Bearer {render_token}"
@@ -745,6 +876,12 @@ def _render_drafts(job: dict, results: list[dict]) -> list[dict]:
         raise ProviderError("render_unavailable", "视频渲染服务暂时不可用") from exc
     if response.status_code >= 400:
         raise ProviderError("render_failed", f"视频渲染失败（HTTP {response.status_code}）")
+    logger.info(
+        "render_request_finished job_id=%s workflow=%s status=%s",
+        job["id"],
+        job["workflow_code"],
+        response.status_code,
+    )
     try:
         rendered = _extract_results(response.json(), "video")
     except ValueError as exc:

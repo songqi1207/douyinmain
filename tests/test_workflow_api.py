@@ -387,11 +387,14 @@ class WorkflowApiTests(unittest.TestCase):
             patch.dict(os.environ, {"COZE_USE_ENV_PROXY": ""}),
             patch.object(workflow_jobs.requests, "post") as proxied_post,
             patch.object(workflow_jobs.requests, "Session", return_value=direct_session),
+            self.assertLogs("workflow.jobs", level="INFO") as captured,
         ):
             response = _post_coze_workflow(
                 "https://api.coze.cn/v1/workflow/run",
                 headers={"Authorization": "Bearer test-token"},
                 payload={"workflow_id": "test-workflow", "parameters": {"theme": "测试"}},
+                job_id="job-log-test",
+                workflow_code="OWN03",
             )
 
         self.assertIs(response, direct_response)
@@ -399,6 +402,11 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertFalse(direct_session.trust_env)
         direct_session.post.assert_called_once()
         direct_session.close.assert_called_once()
+        log_output = "\n".join(captured.output)
+        self.assertIn("job-log-test", log_output)
+        self.assertIn("transport=direct", log_output)
+        self.assertNotIn("test-token", log_output)
+        self.assertNotIn("测试", log_output)
 
     def test_background_coze_request_retries_without_environment_proxy(self):
         proxy_error = workflow_jobs.requests.exceptions.ProxyError("proxy unavailable")
