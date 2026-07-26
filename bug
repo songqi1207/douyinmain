@@ -48,29 +48,14 @@ Traceback (most recent call last):
   File "desktop_bridge\device_agent.py", line 188, in _run_native_export
 desktop_bridge.draft_core.BridgeError: 剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，让助手重新启动剪映并刷新本地草稿列表。
 2026-07-26 22:15:05,270 INFO device_task_failure_reported job_id=7de89c0939564b5382eb1d799dde2890 status=200
-:12:16
-任务已创建（工作流 OWN02），进入执行队列
-22:12:16
-开始执行，正在准备生成环境
-22:12:16
-执行方式：调用扣子已发布工作流生成内容
-22:12:16
-开始调用扣子工作流（workflow_id=7664842340859691042）
-22:12:16
-正在连接扣子服务（直连，最长等待 900 秒）
-22:12:47
-扣子已响应（HTTP 200，连接耗时 30.6 秒），开始接收生成结果
-22:12:50
-扣子节点开始：End
-22:12:50
-扣子节点完成：End
-22:12:50
-扣子内容生成完成（共 1 个节点）
-22:12:50
-剪映草稿 draft_key 已生成并通过校验
-22:12:50
-草稿已加入本机剪映渲染队列，等待设备领取任务
-22:12:51
-本机剪映助手已领取任务，正在导入草稿并导出视频
-22:15:05
-本机剪映导出失败：剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，让助手重新启动剪映并刷新本地草稿列表。
+2026-07-26 23:31:34,646 INFO device_task_claimed job_id=d34ac0c84bdb4f07a5c39e856b58e031 workflow=OWN02
+2026-07-26 23:31:34,648 INFO draft_import_started job_id=d34ac0c84bdb4f07a5c39e856b58e031
+2026-07-26 23:31:38,713 INFO draft_import_finished job_id=d34ac0c84bdb4f07a5c39e856b58e031 elapsed_seconds=4.063
+2026-07-26 23:31:38,725 INFO jianying_export_started job_id=d34ac0c84bdb4f07a5c39e856b58e031
+2026-07-26 23:33:16,039 INFO jianying_export_finished job_id=d34ac0c84bdb4f07a5c39e856b58e031 returncode=1 elapsed_seconds=97.312
+2026-07-26 23:33:16,039 ERROR device_task_failed job_id=d34ac0c84bdb4f07a5c39e856b58e031 error=剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，让助手重新启动剪映并刷新本地草稿列表。
+Traceback (most recent call last):
+  File "desktop_bridge\device_agent.py", line 329, in _process_task
+  File "desktop_bridge\device_agent.py", line 188, in _run_native_export
+desktop_bridge.draft_core.BridgeError: 剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，让助手重新启动剪映并刷新本地草稿列表。
+2026-07-26 23:33:16,154 INFO device_task_failure_reported job_id=d34ac0c84bdb4f07a5c39e856b58e031 status=200
