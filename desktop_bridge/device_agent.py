@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import platform
 import subprocess
 import sys
 import threading
+import time
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Callable
 
@@ -16,6 +19,35 @@ from desktop_bridge.core import BridgeError, import_draft_payload
 
 
 StatusCallback = Callable[[str], None]
+logger = logging.getLogger("douyin.render_agent")
+logger.addHandler(logging.NullHandler())
+
+
+def agent_log_path() -> Path:
+    return (
+        Path(os.getenv("APPDATA") or Path.home())
+        / "DouyinDraftBridge"
+        / "logs"
+        / "render-agent.log"
+    ).resolve()
+
+
+def _configure_agent_logging() -> None:
+    if any(getattr(handler, "_douyin_render_agent", False) for handler in logger.handlers):
+        return
+    path = agent_log_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(
+        path,
+        maxBytes=2 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    handler._douyin_render_agent = True  # type: ignore[attr-defined]
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel((os.getenv("DEVICE_AGENT_LOG_LEVEL") or "INFO").upper())
+    logger.propagate = False
 
 
 def normalize_site_url(value: str) -> str:
@@ -68,6 +100,7 @@ def _run_native_export(
     output_dir: Path,
     progress: StatusCallback | None = None,
 ) -> Path:
+    started_at = time.monotonic()
     if os.name != "nt":
         raise BridgeError("本机剪映导出助手只能在 Windows 上运行")
     root = Path(draft_root).expanduser().resolve()
@@ -79,6 +112,7 @@ def _run_native_export(
 
     if progress:
         progress("正在把任务写入本机剪映草稿…")
+    logger.info("draft_import_started job_id=%s", task.get("job_id"))
     report = import_draft_payload(
         task.get("draft_key"),
         draft_root=root,
@@ -88,6 +122,11 @@ def _run_native_export(
     draft_name = str(report.get("draft_name") or "").strip()
     if not draft_name:
         raise BridgeError("草稿导入成功，但没有得到剪映草稿名称")
+    logger.info(
+        "draft_import_finished job_id=%s elapsed_seconds=%.3f",
+        task.get("job_id"),
+        time.monotonic() - started_at,
+    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = (output_dir / f"{task['job_id']}.mp4").resolve()
@@ -116,6 +155,8 @@ def _run_native_export(
         str(int(os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800)),
     ]
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    export_started_at = time.monotonic()
+    logger.info("jianying_export_started job_id=%s", task.get("job_id"))
     completed = subprocess.run(
         command,
         capture_output=True,
@@ -124,6 +165,12 @@ def _run_native_export(
         errors="replace",
         timeout=int(os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800) + 60,
         creationflags=flags,
+    )
+    logger.info(
+        "jianying_export_finished job_id=%s returncode=%s elapsed_seconds=%.3f",
+        task.get("job_id"),
+        completed.returncode,
+        time.monotonic() - export_started_at,
     )
     if completed.returncode != 0:
         message = (completed.stderr or completed.stdout or "剪映自动导出失败").strip()
@@ -150,6 +197,7 @@ class DeviceAgent:
         self.draft_root = str(draft_root)
         self.jianying_exe = str(jianying_exe)
         self.status = status
+        _configure_agent_logging()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._heartbeat_thread: threading.Thread | None = None
@@ -166,6 +214,7 @@ class DeviceAgent:
     def start(self) -> None:
         if self.running:
             return
+        logger.info("agent_started device_id=%s site=%s", self.device_id, self.site_url)
         self._stop.clear()
         self._thread = threading.Thread(target=self._loop, daemon=True, name="jianying-device-agent")
         self._heartbeat_thread = threading.Thread(
@@ -177,6 +226,7 @@ class DeviceAgent:
         self._thread.start()
 
     def stop(self) -> None:
+        logger.info("agent_stopping device_id=%s", self.device_id)
         self._stop.set()
 
     def _set_status(self, message: str) -> None:
@@ -203,11 +253,18 @@ class DeviceAgent:
                 if not isinstance(task, dict):
                     self._stop.wait(4)
                     continue
+                logger.info(
+                    "device_task_claimed job_id=%s workflow=%s",
+                    task.get("job_id"),
+                    task.get("workflow_code"),
+                )
                 self._process_task(task)
             except requests.RequestException as exc:
+                logger.warning("agent_request_failed error=%s", exc)
                 self._set_status(f"网站暂时无法连接，稍后自动重试：{exc}")
                 self._stop.wait(10)
             except Exception as exc:
+                logger.exception("agent_loop_failed error=%s", exc)
                 self._set_status(f"本机助手异常，稍后自动重试：{exc}")
                 self._stop.wait(10)
 
@@ -262,15 +319,22 @@ class DeviceAgent:
                     timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
                 )
             response.raise_for_status()
+            logger.info("device_task_completed job_id=%s", job_id)
             self._set_status("视频已传回网站，可以直接预览和下载")
         except Exception as exc:
             message = str(exc) or "本机剪映导出失败"
+            logger.exception("device_task_failed job_id=%s error=%s", job_id, message)
             try:
-                self._request(
+                failed = self._request(
                     "POST",
                     f"/api/v1/render-agent/jobs/{job_id}/fail",
                     json={"code": "device_render_failed", "message": message[:2000]},
                 )
+                logger.info(
+                    "device_task_failure_reported job_id=%s status=%s",
+                    job_id,
+                    failed.status_code,
+                )
             except requests.RequestException:
-                pass
+                logger.exception("device_task_failure_report_failed job_id=%s", job_id)
             self._set_status(f"剪映导出失败：{message}")

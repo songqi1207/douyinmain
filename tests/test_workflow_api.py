@@ -787,6 +787,29 @@ class WorkflowApiTests(unittest.TestCase):
                 self.assertEqual(hosted.status_code, 200)
                 self.assertEqual(hosted.content, mp4)
 
+                failed_created = self.client.post("/api/v1/draft-key-renders", json={"draft_key": key})
+                self.assertEqual(failed_created.status_code, 202, failed_created.text)
+                failed_job_id = failed_created.json()["job"]["id"]
+                failed_claim = TestClient(app).post("/api/v1/render-agent/claim", headers=headers)
+                self.assertEqual(failed_claim.status_code, 200, failed_claim.text)
+                self.assertEqual(failed_claim.json()["task"]["job_id"], failed_job_id)
+                with self.assertLogs("workflow.jobs", level="WARNING") as captured:
+                    failed = TestClient(app).post(
+                        f"/api/v1/render-agent/jobs/{failed_job_id}/fail",
+                        headers=headers,
+                        json={
+                            "code": "device_render_failed",
+                            "message": "剪映窗口在导出前意外关闭",
+                        },
+                    )
+                self.assertEqual(failed.status_code, 200, failed.text)
+                failed_job = failed.json()["job"]
+                self.assertEqual(failed_job["status"], "failed")
+                self.assertEqual(failed_job["error"]["code"], "device_render_failed")
+                self.assertEqual(failed_job["error"]["message"], "剪映窗口在导出前意外关闭")
+                self.assertIn("device_render_failed", "\n".join(captured.output))
+                self.assertIn(failed_job_id, "\n".join(captured.output))
+
         removed = self.client.delete(f"/api/v1/render-devices/{device_id}")
         self.assertEqual(removed.status_code, 204, removed.text)
         self.assertEqual(TestClient(app).post("/api/v1/render-agent/heartbeat", headers=headers).status_code, 401)

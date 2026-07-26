@@ -25,7 +25,7 @@ from desktop_bridge.core import (
     mihe_sync_executable_path,
     open_directory,
 )
-from desktop_bridge.device_agent import DeviceAgent, pair_with_site
+from desktop_bridge.device_agent import DeviceAgent, agent_log_path, pair_with_site
 from desktop_bridge.windows_integration import (
     acquire_single_instance,
     consume_wake_signal,
@@ -129,6 +129,9 @@ class DraftBridgeApp:
         self.pair_button.grid(row=0, column=4, rowspan=2, padx=(10, 0), pady=4)
         self.ttk.Button(device, text="退出助手", command=self._exit_app).grid(
             row=2, column=4, padx=(10, 0), pady=(6, 0)
+        )
+        self.ttk.Button(device, text="查看日志", command=self.open_device_logs).grid(
+            row=3, column=4, padx=(10, 0), pady=(6, 0)
         )
         self.ttk.Label(device, textvariable=self.device_status_var, foreground="#19714a").grid(
             row=2, column=0, columnspan=4, sticky="w", pady=(6, 0)
@@ -313,6 +316,11 @@ class DraftBridgeApp:
         if self.device_agent:
             self.device_agent.stop()
         self.root.destroy()
+
+    def open_device_logs(self) -> None:
+        path = agent_log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        open_directory(path.parent)
 
     def choose_draft_root(self) -> None:
         from tkinter import filedialog

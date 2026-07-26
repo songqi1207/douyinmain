@@ -1051,6 +1051,11 @@ def claim_device_render_job(device_id: str, user_id: str, lease_seconds: int = 6
     job = get_job(row["id"])
     if not job:
         return None
+    logger.info(
+        "device_render_claimed job_id=%s device_id=%s",
+        job["id"],
+        device_id,
+    )
     draft_key = _load_draft_key_result(job["results"])
     if draft_key is None:
         fail_device_render_job(job["id"], device_id, "draft_key_missing", "后台任务缺少 draft_key")
@@ -1090,13 +1095,22 @@ def fail_device_render_job(job_id: str, device_id: str, code: str, message: str)
     job = get_job(job_id)
     if not job or job.get("render_device_id") != device_id or job["status"] != "rendering":
         return False
+    normalized_code = str(code or "device_render_failed")[:80]
+    normalized_message = str(message or "本机剪映导出失败")[:2000]
+    logger.warning(
+        "device_render_failed job_id=%s device_id=%s code=%s message=%r",
+        job_id,
+        device_id,
+        normalized_code,
+        normalized_message,
+    )
     _update_job(
         job_id,
         status="failed",
         stage="failed",
         progress=100,
-        error_code=str(code or "device_render_failed")[:80],
-        error_message=str(message or "本机剪映导出失败")[:2000],
+        error_code=normalized_code,
+        error_message=normalized_message,
     )
     return True
 

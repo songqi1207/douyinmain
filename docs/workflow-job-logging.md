@@ -53,8 +53,19 @@ WORKFLOW_LOG_LEVEL=INFO
 - `coze_request_finished`：Coze 已响应，同时显示 HTTP 状态与耗时。
 - `draft_key_saved`：已取得并校验 `draft_key`。
 - `job_render_route`：进入设备或服务器剪映渲染。
+- `device_render_claimed`：本机剪映助手已领取任务。
+- `device_render_failed`：本机剪映导出失败，并显示助手回传的具体错误。
 - `job_completed` / `job_failed`：任务最终结果。
 
 如果只看到 `job_enqueue` 而没有 `job_started`，检查 Redis/RQ worker。
 如果停在 `coze_request_started`，检查 Coze 网络和工作流运行时间。
 如果已有 `draft_key_saved`，则问题位于剪映设备或服务器渲染阶段。
+
+本机剪映助手会另外记录领取、草稿导入、剪映导出和结果上传阶段。可在助手中
+点击“查看日志”，或直接打开：
+
+```text
+%APPDATA%\DouyinDraftBridge\logs\render-agent.log
+```
+
+日志按 2 MB 轮换并保留 3 份，不记录设备令牌或 `draft_key` 内容。
