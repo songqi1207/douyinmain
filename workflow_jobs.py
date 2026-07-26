@@ -684,14 +684,14 @@ def _post_coze_workflow(
     workflow_code: str = "-",
 ):
     """Call Coze directly unless environment proxy use is explicitly enabled."""
+    connect_timeout = max(1, int(os.getenv("COZE_CONNECT_TIMEOUT_SECONDS") or 45))
+    read_timeout = max(1, int(os.getenv("COZE_WORKFLOW_TIMEOUT_SECONDS") or 900))
+    connect_attempts = max(1, int(os.getenv("COZE_CONNECT_ATTEMPTS") or 3))
     request_kwargs = {
         "headers": headers,
         "json": payload,
         "stream": True,
-        "timeout": (
-            max(1, int(os.getenv("COZE_CONNECT_TIMEOUT_SECONDS") or 20)),
-            max(1, int(os.getenv("COZE_WORKFLOW_TIMEOUT_SECONDS") or 900)),
-        ),
+        "timeout": (connect_timeout, read_timeout),
     }
     use_env_proxy = (os.getenv("COZE_USE_ENV_PROXY") or "").strip().lower() in {
         "1",
@@ -701,17 +701,19 @@ def _post_coze_workflow(
     }
     started_at = time.monotonic()
     logger.info(
-        "coze_request_started job_id=%s workflow=%s transport=%s connect_timeout=%s read_timeout=%s",
+        "coze_request_started job_id=%s workflow=%s transport=%s connect_timeout=%s read_timeout=%s connect_attempts=%s",
         job_id,
         workflow_code,
         "system_proxy" if use_env_proxy else "direct",
-        request_kwargs["timeout"][0],
-        request_kwargs["timeout"][1],
+        connect_timeout,
+        read_timeout,
+        connect_attempts,
     )
     if job_id != "-":
         append_job_log(
             job_id,
-            f"正在连接扣子服务（{'系统代理' if use_env_proxy else '直连'}，最长等待 {request_kwargs['timeout'][1]} 秒）",
+            f"正在连接扣子服务（{'系统代理' if use_env_proxy else '直连'}，"
+            f"连接最多 {connect_timeout} 秒/次，共 {connect_attempts} 次；生成最长等待 {read_timeout} 秒）",
         )
     if use_env_proxy:
         try:
@@ -734,20 +736,52 @@ def _post_coze_workflow(
     direct_session = requests.Session()
     direct_session.trust_env = False
     try:
-        response = direct_session.post(url, **request_kwargs)
-        logger.info(
-            "coze_request_finished job_id=%s workflow=%s transport=direct status=%s elapsed_seconds=%.3f",
-            job_id,
-            workflow_code,
-            response.status_code,
-            time.monotonic() - started_at,
-        )
-        if job_id != "-":
-            append_job_log(
-                job_id,
-                f"扣子已响应（HTTP {response.status_code}，连接耗时 {time.monotonic() - started_at:.1f} 秒），开始接收生成结果",
-            )
-        return response
+        for attempt in range(1, connect_attempts + 1):
+            try:
+                response = direct_session.post(url, **request_kwargs)
+                logger.info(
+                    "coze_request_finished job_id=%s workflow=%s transport=direct status=%s attempt=%s elapsed_seconds=%.3f",
+                    job_id,
+                    workflow_code,
+                    response.status_code,
+                    attempt,
+                    time.monotonic() - started_at,
+                )
+                if job_id != "-":
+                    append_job_log(
+                        job_id,
+                        f"扣子已响应（HTTP {response.status_code}，第 {attempt} 次连接成功，"
+                        f"耗时 {time.monotonic() - started_at:.1f} 秒），开始接收生成结果",
+                    )
+                return response
+            except requests.exceptions.ConnectTimeout as exc:
+                logger.warning(
+                    "coze_connect_timeout job_id=%s workflow=%s attempt=%s/%s elapsed_seconds=%.3f",
+                    job_id,
+                    workflow_code,
+                    attempt,
+                    connect_attempts,
+                    time.monotonic() - started_at,
+                )
+                if attempt < connect_attempts:
+                    if job_id != "-":
+                        append_job_log(
+                            job_id,
+                            f"第 {attempt} 次连接扣子超时，正在自动重试"
+                            f"（还可重试 {connect_attempts - attempt} 次）",
+                            level="warning",
+                        )
+                    continue
+                if job_id != "-":
+                    append_job_log(
+                        job_id,
+                        f"连接扣子超时（每次 {connect_timeout} 秒，已尝试 {connect_attempts} 次）",
+                        level="error",
+                    )
+                raise ProviderError(
+                    "provider_timeout",
+                    f"连接扣子服务超时，已自动尝试 {connect_attempts} 次，请稍后重试",
+                ) from exc
     except requests.exceptions.Timeout as exc:
         logger.warning(
             "coze_request_timeout job_id=%s workflow=%s elapsed_seconds=%.3f",
@@ -758,7 +792,7 @@ def _post_coze_workflow(
         if job_id != "-":
             append_job_log(
                 job_id,
-                f"扣子请求超时（已等待 {time.monotonic() - started_at:.1f} 秒）",
+                f"扣子工作流生成超时（已等待 {time.monotonic() - started_at:.1f} 秒）",
                 level="error",
             )
         raise ProviderError("provider_timeout", "扣子工作流执行超时，请稍后重试") from exc

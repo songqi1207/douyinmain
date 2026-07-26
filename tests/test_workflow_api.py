@@ -499,7 +499,13 @@ class WorkflowApiTests(unittest.TestCase):
         direct_session.post.return_value = direct_response
 
         with (
-            patch.dict(os.environ, {"COZE_USE_ENV_PROXY": ""}),
+            patch.dict(
+                os.environ,
+                {
+                    "COZE_USE_ENV_PROXY": "",
+                    "COZE_CONNECT_TIMEOUT_SECONDS": "45",
+                },
+            ),
             patch.object(workflow_jobs.requests, "post") as proxied_post,
             patch.object(workflow_jobs.requests, "Session", return_value=direct_session),
             self.assertLogs("workflow.jobs", level="INFO") as captured,
@@ -516,12 +522,49 @@ class WorkflowApiTests(unittest.TestCase):
         proxied_post.assert_not_called()
         self.assertFalse(direct_session.trust_env)
         direct_session.post.assert_called_once()
+        self.assertEqual(direct_session.post.call_args.kwargs["timeout"], (45, 900))
         direct_session.close.assert_called_once()
         log_output = "\n".join(captured.output)
         self.assertIn("job-log-test", log_output)
         self.assertIn("transport=direct", log_output)
         self.assertNotIn("test-token", log_output)
         self.assertNotIn("测试", log_output)
+
+    def test_background_coze_connect_timeout_retries_automatically(self):
+        direct_response = MagicMock(status_code=200)
+        direct_session = MagicMock()
+        direct_session.post.side_effect = [
+            workflow_jobs.requests.exceptions.ConnectTimeout("connect timed out"),
+            direct_response,
+        ]
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "COZE_USE_ENV_PROXY": "",
+                    "COZE_CONNECT_ATTEMPTS": "3",
+                    "COZE_CONNECT_TIMEOUT_SECONDS": "45",
+                },
+            ),
+            patch.object(workflow_jobs.requests, "Session", return_value=direct_session),
+            self.assertLogs("workflow.jobs", level="INFO") as captured,
+        ):
+            response = _post_coze_workflow(
+                "https://api.coze.cn/v1/workflow/run",
+                headers={"Authorization": "Bearer test-token"},
+                payload={"workflow_id": "test-workflow", "parameters": {}},
+                job_id="connect-retry-test",
+                workflow_code="OWN02",
+            )
+
+        self.assertIs(response, direct_response)
+        self.assertEqual(direct_session.post.call_count, 2)
+        self.assertIn(
+            "coze_connect_timeout",
+            "\n".join(captured.output),
+        )
+        direct_session.close.assert_called_once()
 
     def test_background_coze_request_retries_without_environment_proxy(self):
         proxy_error = workflow_jobs.requests.exceptions.ProxyError("proxy unavailable")
