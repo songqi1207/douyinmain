@@ -26,6 +26,9 @@ from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_renamed_helper_uses_an_independent_single_instance_lock(self):
+        self.assertEqual(windows_integration.MUTEX_NAME, r"Local\AIVideoCreator.UserAgent")
+
     def test_new_product_data_directory_migrates_existing_pairing_settings(self):
         with tempfile.TemporaryDirectory(prefix="helper-data-migration-") as temporary:
             root = Path(temporary)

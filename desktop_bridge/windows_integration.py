@@ -18,7 +18,7 @@ from desktop_bridge.paths import app_data_dir
 
 
 PROTOCOL_SCHEME = "douyin-draft"
-MUTEX_NAME = "Local\\DouyinDraftBridge.UserAgent"
+MUTEX_NAME = "Local\\AIVideoCreator.UserAgent"
 _mutex_handle = None
 
 

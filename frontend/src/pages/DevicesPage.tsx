@@ -119,8 +119,8 @@ export function DevicesPage() {
             <em>01</em>
             <span><Download /></span>
             <h2>下载 AI 视频创作助手</h2>
-            <p>下载 Windows 助手并双击运行。当前版本 v1.3.1，会注册为当前用户的后台启动项。</p>
-            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.3.1">下载 v1.3.1</a>
+            <p>下载 Windows 助手并双击运行。当前版本 v1.3.2，会注册为当前用户的后台启动项。</p>
+            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.3.2">下载 v1.3.2</a>
           </article>
           <article>
             <em>02</em>
