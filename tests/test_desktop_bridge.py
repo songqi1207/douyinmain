@@ -1,4 +1,5 @@
 import hashlib
+import base64
 import json
 import os
 import shutil
@@ -84,6 +85,7 @@ class DesktopBridgeTests(unittest.TestCase):
                 patch.object(windows_integration.sys, "executable", str(source)),
                 patch.object(windows_integration, "install_dir", return_value=installed),
                 patch.object(windows_integration, "_register_windows_integration") as register,
+                patch.object(windows_integration, "_stop_other_installed_helpers") as stop_old,
                 patch.object(windows_integration.subprocess, "Popen", return_value=process) as popen,
             ):
                 relaunched = windows_integration.install_for_current_user(["--background"])
@@ -91,7 +93,28 @@ class DesktopBridgeTests(unittest.TestCase):
             target = register.call_args.args[0]
             self.assertTrue(target.is_file())
             self.assertEqual(target.read_bytes(), source.read_bytes())
+            stop_old.assert_called_once_with(target)
             self.assertEqual(popen.call_args.args[0], [str(target), "--background"])
+
+    def test_helper_upgrade_stops_only_older_installed_helper_builds(self):
+        with tempfile.TemporaryDirectory(prefix="bridge-upgrade-test-") as temporary:
+            installed = Path(temporary).resolve()
+            target = installed / "AIVideoCreator-current.exe"
+            with (
+                patch.object(windows_integration.os, "name", "nt"),
+                patch.object(windows_integration, "install_dir", return_value=installed),
+                patch.object(windows_integration.subprocess, "run") as run,
+                patch.object(windows_integration.time, "sleep"),
+            ):
+                windows_integration._stop_other_installed_helpers(target)
+
+            command = run.call_args.args[0]
+            encoded = command[command.index("-EncodedCommand") + 1]
+            script = base64.b64decode(encoded).decode("utf-16le")
+            self.assertIn(str(installed), script)
+            self.assertIn(str(target), script)
+            self.assertIn("AIVideoCreator-*.exe", script)
+            self.assertIn("Stop-Process", script)
 
     def test_exports_raw_mihe_json_and_navigable_structure(self):
         with tempfile.TemporaryDirectory(prefix="mihe-export-test-") as temporary:

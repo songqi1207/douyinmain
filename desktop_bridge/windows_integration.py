@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import ctypes
 import hashlib
 import json
@@ -70,6 +71,45 @@ def _register_windows_integration(executable: Path) -> None:
         )
 
 
+def _stop_other_installed_helpers(current_target: Path) -> None:
+    """Stop an older hashed helper before launching the newly installed build."""
+    if os.name != "nt":
+        return
+    escaped_dir = str(install_dir()).replace("'", "''")
+    escaped_target = str(current_target.resolve()).replace("'", "''")
+    script = (
+        f"$helperDir = [IO.Path]::GetFullPath('{escaped_dir}'); "
+        f"$current = [IO.Path]::GetFullPath('{escaped_target}'); "
+        "Get-CimInstance Win32_Process | Where-Object { "
+        "$_.ProcessId -ne $PID -and $_.ExecutablePath -and "
+        "[IO.Path]::GetDirectoryName($_.ExecutablePath) -eq $helperDir -and "
+        "[IO.Path]::GetFileName($_.ExecutablePath) -like 'AIVideoCreator-*.exe' -and "
+        "[IO.Path]::GetFullPath($_.ExecutablePath) -ne $current "
+        "} | ForEach-Object { "
+        "Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue "
+        "}"
+    )
+    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    try:
+        subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-EncodedCommand",
+                encoded,
+            ],
+            check=False,
+            timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        time.sleep(0.8)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def install_for_current_user(arguments: list[str]) -> bool:
     """Install a frozen build per-user and relaunch it. Returns True to exit."""
     if os.name != "nt" or not getattr(sys, "frozen", False):
@@ -82,6 +122,7 @@ def install_for_current_user(arguments: list[str]) -> bool:
             shutil.copy2(source, temporary)
             os.replace(temporary, target)
         _register_windows_integration(target)
+        _stop_other_installed_helpers(target)
         subprocess.Popen(
             [str(target), *arguments],
             cwd=str(target.parent),

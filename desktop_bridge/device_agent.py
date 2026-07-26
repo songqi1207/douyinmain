@@ -16,6 +16,7 @@ from typing import Callable
 import requests
 
 from desktop_bridge.draft_core import BridgeError, import_draft_payload
+from desktop_bridge.helper_metadata import HELPER_VERSION
 from desktop_bridge.paths import app_data_dir
 
 
@@ -242,7 +243,12 @@ class DeviceAgent:
     def start(self) -> None:
         if self.running:
             return
-        logger.info("agent_started device_id=%s site=%s", self.device_id, self.site_url)
+        logger.info(
+            "agent_started version=%s device_id=%s site=%s",
+            HELPER_VERSION,
+            self.device_id,
+            self.site_url,
+        )
         self._stop.clear()
         self._thread = threading.Thread(target=self._loop, daemon=True, name="jianying-device-agent")
         self._heartbeat_thread = threading.Thread(
