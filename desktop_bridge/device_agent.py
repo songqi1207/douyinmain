@@ -119,8 +119,13 @@ def _run_native_export(
     if not draft_name:
         raise BridgeError("草稿导入成功，但没有得到剪映草稿名称")
     logger.info(
-        "draft_import_finished job_id=%s elapsed_seconds=%.3f",
+        "draft_import_finished job_id=%s draft_id=%s draft_dir=%s tracks=%s segments=%s warnings=%s elapsed_seconds=%.3f",
         task.get("job_id"),
+        report.get("draft_id") or "-",
+        report.get("draft_dir") or "-",
+        report.get("track_count", "-"),
+        report.get("segment_count", "-"),
+        len(report.get("warnings") or []),
         time.monotonic() - started_at,
     )
 

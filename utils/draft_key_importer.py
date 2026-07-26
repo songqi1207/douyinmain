@@ -546,7 +546,12 @@ def _import_draft_key_unlocked(
             type_counters[tool] += 1
             track_name = str(call.get("track_name") or "").strip() or f"{track_prefix[tool]}_{counter:02d}_{call_id}"
             render_index = call.get("render_index")
-            render_index = int(render_index) if render_index is not None else render_base[tool] + counter
+            render_index = (
+                int(render_index)
+                if render_index is not None
+                else render_base[tool]
+                + counter * (100 if tool in {"add_images", "add_videos"} else 1)
+            )
 
             if tool == "add_audios":
                 result = append_audios(draft_id, items, track_name=track_name, render_index=render_index)

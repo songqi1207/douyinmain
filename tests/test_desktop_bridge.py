@@ -266,6 +266,66 @@ class DesktopBridgeTests(unittest.TestCase):
             self.assertEqual(report["track_count"], 1)
             self.assertEqual(report["segment_count"], 1)
             self.assertTrue((Path(report["draft_dir"]) / "draft_content.json").is_file())
+            self.assertTrue((Path(report["draft_dir"]) / "draft_info.json").is_file())
+
+    def test_overlapping_images_are_split_across_video_tracks(self):
+        with tempfile.TemporaryDirectory(prefix="draft-bridge-overlap-test-") as temporary:
+            root = Path(temporary)
+            image_path = root / "image.png"
+            Image.new("RGB", (320, 180), "#332211").save(image_path)
+            key = {
+                "kind": "jianying_draft_key",
+                "meta": {"run_id": "bridge-overlap-test"},
+                "draft": {"width": 320, "height": 180, "name": "重叠图片测试"},
+                "calls": [
+                    {
+                        "call_id": "images",
+                        "tool": "add_images",
+                        "params": {
+                            "image_infos": [
+                                {"image_url": str(image_path), "start": 0, "end": 1_000_000},
+                                {"image_url": str(image_path), "start": 0, "end": 1_000_000},
+                                {
+                                    "image_url": str(image_path),
+                                    "start": 1_000_000,
+                                    "end": 2_000_000,
+                                },
+                            ]
+                        },
+                    }
+                ],
+            }
+
+            report = import_draft_payload(key, draft_root=root / "drafts")
+            content = json.loads(
+                (Path(report["draft_dir"]) / "draft_content.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            video_tracks = [
+                track for track in content["tracks"] if track["type"] == "video"
+            ]
+
+            self.assertEqual(len(video_tracks), 2)
+            self.assertEqual(
+                sorted(len(track["segments"]) for track in video_tracks),
+                [1, 2],
+            )
+            for track in video_tracks:
+                ranges = sorted(
+                    (
+                        segment["target_timerange"]["start"],
+                        segment["target_timerange"]["start"]
+                        + segment["target_timerange"]["duration"],
+                    )
+                    for segment in track["segments"]
+                )
+                self.assertTrue(
+                    all(
+                        previous[1] <= current[0]
+                        for previous, current in zip(ranges, ranges[1:])
+                    )
+                )
 
 
 if __name__ == "__main__":

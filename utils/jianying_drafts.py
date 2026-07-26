@@ -1312,8 +1312,10 @@ def append_images(
 ) -> dict[str, Any]:
     bundle = _load_bundle(draft_id)
     draft = bundle["content"]
-    track = _ensure_track(draft, "video", track_name or "video")
-    segment_render_index = int(render_index) if render_index is not None else 14000
+    base_track_name = track_name or "video"
+    base_render_index = int(render_index) if render_index is not None else 14000
+    tracks: list[dict[str, Any]] = []
+    track_end_times: list[int] = []
     items = []
     warnings: list[str] = []
 
@@ -1330,6 +1332,31 @@ def append_images(
             duration_us = _duration_to_us(info.get("duration")) or 3_000_000
             end_us = start_us + duration_us
         duration_us = max(0, end_us - start_us)
+
+        # Video tracks cannot contain simultaneous segments. Mihe's batch
+        # add_images operation creates one lane per overlapping image (the
+        # cigarette opener uses eight). Reuse a lane for sequential items and
+        # allocate a new lane whenever their ranges overlap.
+        lane_index = next(
+            (
+                index
+                for index, lane_end in enumerate(track_end_times)
+                if start_us >= lane_end
+            ),
+            len(tracks),
+        )
+        if lane_index == len(tracks):
+            lane_name = (
+                base_track_name
+                if lane_index == 0
+                else f"{base_track_name}_{lane_index + 1:02d}"
+            )
+            tracks.append(_ensure_track(draft, "video", lane_name))
+            track_end_times.append(0)
+        track = tracks[lane_index]
+        track_end_times[lane_index] = end_us
+        segment_render_index = base_render_index + lane_index
+
         video_suffixes = {".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"}
         is_video = bool(video_target) or Path(urlparse(str(target)).path).suffix.lower() in video_suffixes
         asset_path = _materialize_asset(
@@ -1410,7 +1437,8 @@ def append_images(
         "message": "ok",
         "segment_ids": [item["id"] for item in items],
         "segment_infos": items,
-        "track_id": track["id"],
+        "track_id": tracks[0]["id"] if tracks else "",
+        "track_ids": [track["id"] for track in tracks],
         "warnings": warnings,
     }
 

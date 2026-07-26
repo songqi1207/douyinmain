@@ -212,11 +212,24 @@ def validate_draft_root(path: Path | str) -> Path:
 
 def validate_import_report(report: dict[str, Any]) -> dict[str, Any]:
     draft_dir = Path(str(report.get("draft_dir") or ""))
-    required = ("draft_content.json", "draft_meta_info.json")
+    required = ("draft_content.json", "draft_info.json", "draft_meta_info.json")
     missing = [name for name in required if not (draft_dir / name).is_file()]
     if missing:
         raise BridgeError("草稿写入不完整，缺少：" + "、".join(missing))
     content = json.loads((draft_dir / "draft_content.json").read_text(encoding="utf-8"))
+    for track in content.get("tracks") or []:
+        if track.get("type") != "video":
+            continue
+        ranges = sorted(
+            (
+                int((segment.get("target_timerange") or {}).get("start") or 0),
+                int((segment.get("target_timerange") or {}).get("start") or 0)
+                + int((segment.get("target_timerange") or {}).get("duration") or 0),
+            )
+            for segment in track.get("segments") or []
+        )
+        if any(previous[1] > current[0] for previous, current in zip(ranges, ranges[1:])):
+            raise BridgeError("草稿写入结构无效：同一视频轨道存在重叠片段")
     verified = dict(report)
     verified["verified"] = True
     verified["track_count"] = len(content.get("tracks") or [])

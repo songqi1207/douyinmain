@@ -1020,21 +1020,23 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
     if unresolved:
         details.append("存在未解析片段：" + "、".join(sorted(set(unresolved))[:10]))
 
-    RESULT_DIR.mkdir(parents=True, exist_ok=True)
-    rejected_file = RESULT_DIR / f"{code.lower()}-{job['id']}-draft-key-rejected.json"
-    try:
-        rejected_file.write_text(json.dumps(draft_key, ensure_ascii=False, indent=2), encoding="utf-8")
-        logger.warning(
-            "draft_key_rejected job_id=%s workflow=%s file=%s missing=%s unresolved=%s",
-            job["id"],
-            code,
-            rejected_file.name,
-            ",".join(missing_ids) or "-",
-            len(unresolved),
-        )
-        append_job_log(job["id"], f"被拒绝的草稿已存档：{rejected_file.name}", level="warning")
-    except OSError:
-        logger.exception("draft_key_reject_dump_failed job_id=%s", job["id"])
+    job_id = str(job.get("id") or "").strip()
+    if job_id:
+        RESULT_DIR.mkdir(parents=True, exist_ok=True)
+        rejected_file = RESULT_DIR / f"{code.lower()}-{job_id}-draft-key-rejected.json"
+        try:
+            rejected_file.write_text(json.dumps(draft_key, ensure_ascii=False, indent=2), encoding="utf-8")
+            logger.warning(
+                "draft_key_rejected job_id=%s workflow=%s file=%s missing=%s unresolved=%s",
+                job_id,
+                code,
+                rejected_file.name,
+                ",".join(missing_ids) or "-",
+                len(unresolved),
+            )
+            append_job_log(job_id, f"被拒绝的草稿已存档：{rejected_file.name}", level="warning")
+        except OSError:
+            logger.exception("draft_key_reject_dump_failed job_id=%s", job_id)
     raise ProviderError(
         "incomplete_draft_key",
         "扣子返回的草稿数据不完整，已阻止导入；" + "；".join(details),
