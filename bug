@@ -1,48 +1,76 @@
-File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\uvicorn\server.py", line 65, in run
-    return asyncio.run(self.serve(sockets=sockets))
-  File "C:\Program Files\python\lib\asyncio\runners.py", line 44, in run
-    return loop.run_until_complete(main)
-  File "C:\Program Files\python\lib\asyncio\base_events.py", line 616, in run_until_complete
-    return future.result()
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\uvicorn\server.py", line 69, in serve
-    await self._serve(sockets)
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\uvicorn\server.py", line 76, in _serve
-    config.load()
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\uvicorn\config.py", line 434, in load
-    self.loaded_app = import_from_string(self.app)
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\uvicorn\importer.py", line 19, in import_from_string
-    module = importlib.import_module(module_str)
-  File "C:\Program Files\python\lib\importlib\__init__.py", line127, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-  File "<frozen importlib._bootstrap>", line 1014, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 991, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 975, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 671, in _load_unlocked
-  File "<frozen importlib._bootstrap_external>", line 783, in exec_module
-  File "<frozen importlib._bootstrap>", line 219, in _call_with_frames_removed
-  File "C:\code\工作流\douyinmain_四面汇聚\fastapi_app.py", line540, in <module>
-    def api_workflow_detail(code: str, request: Request, category: str | None = Query(default=None)):
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\fastapi\routing.py", line 1128, in decorator
-    self.add_api_route(
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\fastapi\routing.py", line 1067, in add_api_route
-    route = route_class(
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\fastapi\routing.py", line 686, in __init__
-    self.dependant = get_dependant(
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\fastapi\dependencies\utils.py", line 284, in get_dependant
-    endpoint_signature = get_typed_signature(call)
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\fastapi\dependencies\utils.py", line 229, in get_typed_signature
-    typed_params = [
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\fastapi\dependencies\utils.py", line 234, in <listcomp>
-    annotation=get_typed_annotation(param.annotation, globalns),
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\fastapi\dependencies\utils.py", line 245, in get_typed_annotation
-    annotation = evaluate_forwardref(annotation, globalns, globalns)
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\pydantic\_internal\_typing_extra.py", line 589, in eval_type_lenient
-    ev, _ = try_eval_type(value, globalns, localns)
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\pydantic\_internal\_typing_extra.py", line 558, in try_eval_type
-    return eval_type_backport(value, globalns, localns), True
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\pydantic\_internal\_typing_extra.py", line 609, in eval_type_backport
-    return _eval_type_backport(value, globalns, localns, type_params)
-  File "C:\Users\1\AppData\Roaming\Python\Python38\site-packages\pydantic\_internal\_typing_extra.py", line 641, in _eval_type_backport
-    raise TypeError(
-TypeError: Unable to evaluate type annotation 'str | None'. If you are making use of the new typing syntax (unions using `|` since Python 3.10 or builtins subscripting since Python 3.9), you should either replace the use of new syntax with the existing `typing` constructs or install the `eval_type_backport` package.
-PS C:\code\工作流\douyinmain_四面汇聚> 
+2026-07-26 15:33:22,606 INFO agent_started device_id=1fd87ab03b3647dda2666fb6ba82c404 site=http://localhost:5173
+2026-07-26 15:33:35,760 INFO agent_stopping device_id=1fd87ab03b3647dda2666fb6ba82c404
+2026-07-26 15:33:35,764 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
+2026-07-26 15:33:44,887 INFO agent_stopping device_id=ffac8be1f12943b4abbda2902fb3132a
+2026-07-26 15:33:44,894 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
+2026-07-26 15:34:41,974 INFO device_task_claimed job_id=ca528c4355ab4bffabc25fb0e4e0a44a workflow=OWN02
+2026-07-26 15:34:41,978 INFO draft_import_started job_id=ca528c4355ab4bffabc25fb0e4e0a44a
+2026-07-26 15:34:46,129 INFO draft_import_finished job_id=ca528c4355ab4bffabc25fb0e4e0a44a elapsed_seconds=4.157
+2026-07-26 15:34:46,131 INFO jianying_export_started job_id=ca528c4355ab4bffabc25fb0e4e0a44a
+2026-07-26 15:36:18,889 INFO jianying_export_finished job_id=ca528c4355ab4bffabc25fb0e4e0a44a returncode=1 elapsed_seconds=92.750
+2026-07-26 15:36:18,889 ERROR device_task_failed job_id=ca528c4355ab4bffabc25fb0e4e0a44a error= ȴ   ӳ    Ԫ س ʱ   ݸ忨Ƭ
+    λ   C:\Users\1\AppData\Local\Temp\_MEI128042\scripts\run_jianying_export_automation.ps1:77  ַ : 5
++     throw " ȴ   ӳ    Ԫ س ʱ  $Description"
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: ( ȴ   ӳ    Ԫ س ʱ   ݸ忨Ƭ:String) [], RuntimeException
+    + FullyQualifiedErrorId :  ȴ   ӳ    Ԫ س ʱ   ݸ忨Ƭ
+Traceback (most recent call last):
+  File "desktop_bridge\device_agent.py", line 300, in _process_task
+  File "desktop_bridge\device_agent.py", line 173, in _run_native_export
+desktop_bridge.draft_core.BridgeError:  ȴ   ӳ    Ԫ س ʱ   ݸ忨Ƭ
+    λ   C:\Users\1\AppData\Local\Temp\_MEI128042\scripts\run_jianying_export_automation.ps1:77  ַ : 5
++     throw " ȴ   ӳ    Ԫ س ʱ  $Description"
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: ( ȴ   ӳ    Ԫ س ʱ   ݸ忨Ƭ:String) [], RuntimeException
+    + FullyQualifiedErrorId :  ȴ   ӳ    Ԫ س ʱ   ݸ忨Ƭ
+2026-07-26 15:36:18,926 INFO device_task_failure_reported job_id=ca528c4355ab4bffabc25fb0e4e0a44a status=200
+2026-07-26 15:54:27,267 INFO agent_stopping device_id=ffac8be1f12943b4abbda2902fb3132a
+2026-07-26 15:54:27,278 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
+2026-07-26 15:54:44,292 INFO agent_stopping device_id=ffac8be1f12943b4abbda2902fb3132a
+2026-07-26 15:54:44,297 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
+2026-07-26 16:31:29,344 INFO agent_stopping device_id=ffac8be1f12943b4abbda2902fb3132a
+2026-07-26 16:31:29,350 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
+2026-07-26 16:31:41,470 INFO agent_stopping device_id=ffac8be1f12943b4abbda2902fb3132a
+2026-07-26 16:31:41,473 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
+2026-07-26 17:23:25,749 INFO agent_stopping device_id=ffac8be1f12943b4abbda2902fb3132a
+2026-07-26 17:23:35,779 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
+2026-07-26 17:53:41,779 WARNING agent_request_failed error=500 Server Error: Internal Server Error for url: http://localhost:5173/api/v1/render-agent/claim
+2026-07-26 18:31:21,208 WARNING agent_request_failed error=500 Server Error: Internal Server Error for url: http://localhost:5173/api/v1/render-agent/claim
+2026-07-26 22:11:48,153 WARNING agent_request_failed error=500 Server Error: Internal Server Error for url: http://localhost:5173/api/v1/render-agent/claim
+2026-07-26 22:12:51,316 INFO device_task_claimed job_id=7de89c0939564b5382eb1d799dde2890 workflow=OWN02
+2026-07-26 22:12:51,319 INFO draft_import_started job_id=7de89c0939564b5382eb1d799dde2890
+2026-07-26 22:13:06,227 INFO draft_import_finished job_id=7de89c0939564b5382eb1d799dde2890 elapsed_seconds=14.906
+2026-07-26 22:13:06,236 INFO jianying_export_started job_id=7de89c0939564b5382eb1d799dde2890
+2026-07-26 22:15:05,200 INFO jianying_export_finished job_id=7de89c0939564b5382eb1d799dde2890 returncode=1 elapsed_seconds=118.969
+2026-07-26 22:15:05,200 ERROR device_task_failed job_id=7de89c0939564b5382eb1d799dde2890 error=剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，让助手重新启动剪映并刷新本地草稿列表。
+Traceback (most recent call last):
+  File "desktop_bridge\device_agent.py", line 329, in _process_task
+  File "desktop_bridge\device_agent.py", line 188, in _run_native_export
+desktop_bridge.draft_core.BridgeError: 剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，让助手重新启动剪映并刷新本地草稿列表。
+2026-07-26 22:15:05,270 INFO device_task_failure_reported job_id=7de89c0939564b5382eb1d799dde2890 status=200
+:12:16
+任务已创建（工作流 OWN02），进入执行队列
+22:12:16
+开始执行，正在准备生成环境
+22:12:16
+执行方式：调用扣子已发布工作流生成内容
+22:12:16
+开始调用扣子工作流（workflow_id=7664842340859691042）
+22:12:16
+正在连接扣子服务（直连，最长等待 900 秒）
+22:12:47
+扣子已响应（HTTP 200，连接耗时 30.6 秒），开始接收生成结果
+22:12:50
+扣子节点开始：End
+22:12:50
+扣子节点完成：End
+22:12:50
+扣子内容生成完成（共 1 个节点）
+22:12:50
+剪映草稿 draft_key 已生成并通过校验
+22:12:50
+草稿已加入本机剪映渲染队列，等待设备领取任务
+22:12:51
+本机剪映助手已领取任务，正在导入草稿并导出视频
+22:15:05
+本机剪映导出失败：剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，让助手重新启动剪映并刷新本地草稿列表。
