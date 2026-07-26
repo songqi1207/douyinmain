@@ -468,6 +468,21 @@ class WorkflowApiTests(unittest.TestCase):
         )
         response = MagicMock(status_code=200)
         response.json.return_value = {"code": 0, "data": nested}
+        response.iter_lines.return_value = [
+            "event: Message",
+            "data: " + json.dumps(
+                {
+                    "content": nested,
+                    "content_type": "text",
+                    "node_id": "900001",
+                    "node_title": "End",
+                    "node_is_finish": True,
+                },
+                ensure_ascii=False,
+            ),
+            "event: Done",
+            "data: " + json.dumps({"debug_url": "https://example.test/debug"}),
+        ]
 
         with tempfile.TemporaryDirectory(prefix="coze-draft-key-") as temporary:
             result_dir = Path(temporary)
@@ -543,6 +558,21 @@ class WorkflowApiTests(unittest.TestCase):
                 ensure_ascii=False,
             ),
         }
+        coze_response.iter_lines.return_value = [
+            "event: Message",
+            "data: " + json.dumps(
+                {
+                    "content": coze_response.json.return_value["data"],
+                    "content_type": "text",
+                    "node_id": "900001",
+                    "node_title": "End",
+                    "node_is_finish": True,
+                },
+                ensure_ascii=False,
+            ),
+            "event: Done",
+            "data: " + json.dumps({"debug_url": "https://example.test/debug"}),
+        ]
         render_response = MagicMock(status_code=200)
         render_response.json.return_value = {
             "status": "success",

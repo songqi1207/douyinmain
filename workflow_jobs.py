@@ -620,6 +620,7 @@ def _post_coze_workflow(
     request_kwargs = {
         "headers": headers,
         "json": payload,
+        "stream": True,
         "timeout": (
             max(1, int(os.getenv("COZE_CONNECT_TIMEOUT_SECONDS") or 20)),
             max(1, int(os.getenv("COZE_WORKFLOW_TIMEOUT_SECONDS") or 900)),
@@ -691,6 +692,67 @@ def _post_coze_workflow(
         direct_session.close()
 
 
+def _read_coze_stream(response, *, job_id: str, workflow_code: str) -> Any:
+    event_name = ""
+    final_data: Any = None
+    for raw_line in response.iter_lines(decode_unicode=True):
+        if raw_line is None:
+            continue
+        line = raw_line.decode("utf-8", errors="replace") if isinstance(raw_line, bytes) else raw_line
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("event:"):
+            event_name = line[6:].strip()
+            continue
+        if not line.startswith("data:"):
+            continue
+        raw_data = line[5:].strip()
+        try:
+            event_data = json.loads(raw_data)
+        except (TypeError, ValueError):
+            logger.warning(
+                "coze_stream_invalid_event job_id=%s workflow=%s event=%s bytes=%s",
+                job_id,
+                workflow_code,
+                event_name or "-",
+                len(raw_data.encode("utf-8")),
+            )
+            continue
+        if not isinstance(event_data, dict):
+            continue
+
+        node_title = " ".join(str(event_data.get("node_title") or "-").split())[:80]
+        logger.info(
+            "coze_stream_event job_id=%s workflow=%s event=%s node_id=%s node_title=%s node_finished=%s content_type=%s",
+            job_id,
+            workflow_code,
+            event_name or "-",
+            event_data.get("node_id") or "-",
+            node_title,
+            event_data.get("node_is_finish", "-"),
+            event_data.get("content_type") or "-",
+        )
+        normalized_event = event_name.strip().lower()
+        code = event_data.get("code")
+        if normalized_event in {"error", "failed"} or code not in (None, 0):
+            message = str(
+                event_data.get("msg")
+                or event_data.get("message")
+                or event_data.get("error_message")
+                or "扣子工作流流式执行失败"
+            )
+            raise ProviderError("provider_error", message)
+        if normalized_event == "message" and "content" in event_data:
+            final_data = _decode_nested_json(event_data["content"])
+        if normalized_event in {"done", "finish", "completed"}:
+            break
+
+    if final_data is None:
+        raise ProviderError("empty_result", "扣子工作流执行完成但没有返回结果")
+    return final_data
+
+
 def _run_coze(job: dict) -> list[dict]:
     token = (os.getenv("COZE_API_TOKEN") or "").strip()
     workflow_id = published_workflow_id(job["workflow_code"])
@@ -698,7 +760,7 @@ def _run_coze(job: dict) -> list[dict]:
         raise ProviderError("provider_not_configured", "扣子工作流尚未发布或后台 Token 未配置")
     _update_job(job["id"], stage="generating", progress=35)
     response = _post_coze_workflow(
-        (os.getenv("COZE_API_BASE_URL") or "https://api.coze.cn").rstrip("/") + "/v1/workflow/run",
+        (os.getenv("COZE_API_BASE_URL") or "https://api.coze.cn").rstrip("/") + "/v1/workflow/stream_run",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         payload={"workflow_id": workflow_id, "parameters": _provider_inputs(job["inputs"], job["workflow_code"])},
         job_id=job["id"],
@@ -708,16 +770,11 @@ def _run_coze(job: dict) -> list[dict]:
         raise ProviderError("provider_rate_limited", "扣子服务繁忙，请稍后重试")
     if response.status_code >= 400:
         raise ProviderError("provider_error", f"扣子执行失败（HTTP {response.status_code}）")
-    payload = response.json()
-    if payload.get("code") not in (None, 0):
-        raise ProviderError("provider_error", str(payload.get("msg") or payload.get("message") or "扣子执行失败"))
-    logger.info(
-        "coze_payload_received job_id=%s workflow=%s api_code=%s",
-        job["id"],
-        job["workflow_code"],
-        payload.get("code", 0),
+    data = _read_coze_stream(
+        response,
+        job_id=job["id"],
+        workflow_code=job["workflow_code"],
     )
-    data = _decode_nested_json(payload.get("data"))
     if job["workflow_code"] in LOCAL_CODES:
         return _save_draft_key_result(job, data)
     workflow = get_workflow(job["workflow_code"], job["category"]) or {}
