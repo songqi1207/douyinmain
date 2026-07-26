@@ -233,6 +233,32 @@ class DraftKeyRecorderWorkflowTests(unittest.TestCase):
                     all(item["value"]["rawMeta"]["type"] in {99, 103} for item in list_inputs)
                 )
 
+    def test_cigarette_batch_recorder_preserves_string_list_schema(self):
+        profile = next(
+            item for item in PROFILES if item["run_prefix"] == "cigarette_recorded_"
+        )
+        workflow = json.loads(profile["source"].read_text(encoding="utf-8"))
+
+        report = add_draft_key_recorder(
+            workflow,
+            workflow_name=profile["workflow_name"],
+            draft_name=profile["draft_name"],
+            run_prefix=profile["run_prefix"],
+        )
+        nodes = {str(node["id"]): node for node in workflow["json"]["nodes"]}
+        recorder = nodes[report["recorder_node_id"]]
+        batch_input = next(
+            parameter
+            for parameter in recorder["data"]["inputs"]["inputParameters"]
+            if parameter["name"] == "batch_call_151678_item1"
+        )
+
+        self.assertEqual(
+            batch_input["input"]["schema"],
+            {"type": "string"},
+        )
+        self.assertEqual(batch_input["input"]["value"]["rawMeta"]["type"], 99)
+
     def test_end_returns_legacy_output_draft_id_and_draft_key(self):
         for profile in PROFILES:
             with self.subTest(source=profile["source"].name):

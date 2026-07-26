@@ -435,6 +435,28 @@ class WorkflowApiTests(unittest.TestCase):
                 self.assertEqual(raised.exception.code, "incomplete_draft_key")
                 self.assertIn(missing_id, str(raised.exception))
 
+    def test_empty_optional_cigarette_border_branch_is_accepted(self):
+        required = workflow_jobs._EXPECTED_PUBLISHED_DRAFT_CALL_IDS["OWN02"]
+        optional = workflow_jobs._OPTIONAL_PUBLISHED_DRAFT_CALL_IDS["OWN02"]
+        key = {
+            "calls": [
+                {"call_id": call_id, "tool": "test", "params": {"items": [{}]}}
+                for call_id in required
+            ],
+            "meta": {
+                "unresolved_segment_ids": [],
+                "skipped_empty_calls": [
+                    {"call_id": call_id}
+                    for call_id in optional
+                ],
+            },
+        }
+
+        workflow_jobs._validate_published_draft_completeness(
+            {"workflow_code": "OWN02"},
+            key,
+        )
+
     def test_complete_published_book_draft_accepts_two_space_watermark(self):
         expected = workflow_jobs._EXPECTED_PUBLISHED_DRAFT_CALL_IDS["OWN01"]
         calls = [

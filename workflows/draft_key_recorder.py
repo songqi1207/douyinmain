@@ -134,7 +134,7 @@ def _output_definition(
     if node is None:
         return None
     output_name = str(content.get("name"))
-    return next(
+    output = next(
         (
             output
             for output in ((node.get("data") or {}).get("outputs") or [])
@@ -142,6 +142,20 @@ def _output_definition(
         ),
         None,
     )
+    if not isinstance(output, dict):
+        return None
+
+    # Coze batch nodes store the real output type below ``output.input``
+    # instead of directly on the output declaration.  Preserve that schema
+    # when wiring the recorder code node; otherwise a list<string> is
+    # incorrectly declared as list<object> and Coze can deliver an empty
+    # batch to the recorder.
+    nested_input = output.get("input")
+    if isinstance(nested_input, dict):
+        normalized = copy.deepcopy(nested_input)
+        normalized.setdefault("name", output_name)
+        return normalized
+    return output
 
 
 def _ref_parameter(

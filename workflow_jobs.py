@@ -847,16 +847,6 @@ _EXPECTED_PUBLISHED_DRAFT_CALL_IDS = {
         "call_100598",
         "call_293522",
         "call_848424",
-        "call_501522",
-        "call_731224",
-        "call_639486",
-        "call_828956",
-        "call_884316",
-        "call_872905",
-        "call_555014",
-        "call_692446",
-        "call_835065",
-        "call_874020",
         "call_195389",
         "call_194484",
         "call_557577",
@@ -867,6 +857,25 @@ _EXPECTED_PUBLISHED_DRAFT_CALL_IDS = {
         "call_108008",
         "call_916607",
         "call_698411",
+    },
+}
+
+# The original cigarette workflow contains an optional border-decoration
+# branch. Its formatter nodes legitimately return empty values, and the known
+# good Jianying draft omits all ten operations below. The recorder preserves
+# them when the branch produces data, but completeness must not require them.
+_OPTIONAL_PUBLISHED_DRAFT_CALL_IDS = {
+    "OWN02": {
+        "call_501522",
+        "call_731224",
+        "call_639486",
+        "call_828956",
+        "call_884316",
+        "call_872905",
+        "call_555014",
+        "call_692446",
+        "call_835065",
+        "call_874020",
     },
 }
 
