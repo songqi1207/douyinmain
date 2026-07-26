@@ -566,6 +566,64 @@ class WorkflowApiTests(unittest.TestCase):
         )
         direct_session.close.assert_called_once()
 
+    def test_incomplete_owned_draft_is_generated_again_once(self):
+        first_response = MagicMock(status_code=200)
+        second_response = MagicMock(status_code=200)
+        incomplete = workflow_jobs.ProviderError(
+            "incomplete_draft_key",
+            "缺少操作节点：call_175877",
+        )
+        completed_results = [{"type": "draft", "format": "draft_key"}]
+        job = {
+            "id": "incomplete-retry-test",
+            "workflow_code": "OWN02",
+            "category": "自有工作流",
+            "inputs": {"theme": "中华"},
+        }
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "COZE_API_TOKEN": "test-token",
+                    "COZE_WORKFLOW_OWN02": "published-cigarette-id",
+                    "COZE_INCOMPLETE_DRAFT_ATTEMPTS": "2",
+                },
+            ),
+            patch.object(
+                workflow_jobs,
+                "_post_coze_workflow",
+                side_effect=[first_response, second_response],
+            ) as post_workflow,
+            patch.object(
+                workflow_jobs,
+                "_read_coze_stream",
+                side_effect=[{"draft_key": "first"}, {"draft_key": "second"}],
+            ),
+            patch.object(
+                workflow_jobs,
+                "_save_draft_key_result",
+                side_effect=[incomplete, completed_results],
+            ) as save_result,
+            patch.object(workflow_jobs, "_update_job"),
+            patch.object(workflow_jobs, "append_job_log") as append_log,
+            self.assertLogs("workflow.jobs", level="WARNING") as captured,
+        ):
+            results = _run_coze(job)
+
+        self.assertEqual(results, completed_results)
+        self.assertEqual(post_workflow.call_count, 2)
+        self.assertEqual(save_result.call_count, 2)
+        first_response.close.assert_called_once()
+        second_response.close.assert_called_once()
+        self.assertIn("coze_incomplete_draft_retry", "\n".join(captured.output))
+        self.assertTrue(
+            any(
+                "自动重新生成" in call.args[1]
+                for call in append_log.call_args_list
+            )
+        )
+
     def test_background_coze_request_retries_without_environment_proxy(self):
         proxy_error = workflow_jobs.requests.exceptions.ProxyError("proxy unavailable")
         direct_response = MagicMock(status_code=200)

@@ -895,30 +895,73 @@ def _run_coze(job: dict) -> list[dict]:
     if not token or not workflow_id:
         raise ProviderError("provider_not_configured", "扣子工作流尚未发布或后台 Token 未配置")
     _update_job(job["id"], stage="generating", progress=35)
-    append_job_log(job["id"], f"开始调用扣子工作流（workflow_id={workflow_id}）")
-    response = _post_coze_workflow(
-        (os.getenv("COZE_API_BASE_URL") or "https://api.coze.cn").rstrip("/") + "/v1/workflow/stream_run",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        payload={"workflow_id": workflow_id, "parameters": _provider_inputs(job["inputs"], job["workflow_code"])},
-        job_id=job["id"],
-        workflow_code=job["workflow_code"],
+    draft_attempts = (
+        max(1, int(os.getenv("COZE_INCOMPLETE_DRAFT_ATTEMPTS") or 2))
+        if job["workflow_code"] in LOCAL_CODES
+        else 1
     )
-    if response.status_code == 429:
-        raise ProviderError("provider_rate_limited", "扣子服务繁忙，请稍后重试")
-    if response.status_code >= 400:
-        raise ProviderError("provider_error", f"扣子执行失败（HTTP {response.status_code}）")
-    data = _read_coze_stream(
-        response,
-        job_id=job["id"],
-        workflow_code=job["workflow_code"],
-    )
-    if job["workflow_code"] in LOCAL_CODES:
-        return _save_draft_key_result(job, data)
-    workflow = get_workflow(job["workflow_code"], job["category"]) or {}
-    results = _extract_results(data, workflow.get("output_type", "draft"))
-    if not results:
-        raise ProviderError("empty_result", "工作流执行完成但没有可展示结果")
-    return results
+    provider_parameters = _provider_inputs(job["inputs"], job["workflow_code"])
+    for draft_attempt in range(1, draft_attempts + 1):
+        attempt_suffix = (
+            f"，草稿生成第 {draft_attempt}/{draft_attempts} 次"
+            if draft_attempts > 1
+            else ""
+        )
+        append_job_log(
+            job["id"],
+            f"开始调用扣子工作流（workflow_id={workflow_id}{attempt_suffix}）",
+        )
+        response = _post_coze_workflow(
+            (os.getenv("COZE_API_BASE_URL") or "https://api.coze.cn").rstrip("/") + "/v1/workflow/stream_run",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            payload={"workflow_id": workflow_id, "parameters": provider_parameters},
+            job_id=job["id"],
+            workflow_code=job["workflow_code"],
+        )
+        try:
+            if response.status_code == 429:
+                raise ProviderError("provider_rate_limited", "扣子服务繁忙，请稍后重试")
+            if response.status_code >= 400:
+                raise ProviderError("provider_error", f"扣子执行失败（HTTP {response.status_code}）")
+            data = _read_coze_stream(
+                response,
+                job_id=job["id"],
+                workflow_code=job["workflow_code"],
+            )
+        finally:
+            response.close()
+
+        if job["workflow_code"] in LOCAL_CODES:
+            try:
+                return _save_draft_key_result(job, data)
+            except ProviderError as exc:
+                if (
+                    exc.code == "incomplete_draft_key"
+                    and draft_attempt < draft_attempts
+                ):
+                    logger.warning(
+                        "coze_incomplete_draft_retry job_id=%s workflow=%s attempt=%s/%s",
+                        job["id"],
+                        job["workflow_code"],
+                        draft_attempt,
+                        draft_attempts,
+                    )
+                    append_job_log(
+                        job["id"],
+                        "扣子首次返回的草稿缺少必要内容，正在自动重新生成"
+                        f"（下一次为 {draft_attempt + 1}/{draft_attempts}）",
+                        level="warning",
+                    )
+                    continue
+                raise
+
+        workflow = get_workflow(job["workflow_code"], job["category"]) or {}
+        results = _extract_results(data, workflow.get("output_type", "draft"))
+        if not results:
+            raise ProviderError("empty_result", "工作流执行完成但没有可展示结果")
+        return results
+
+    raise ProviderError("incomplete_draft_key", "扣子重复返回不完整的草稿数据")
 
 
 def _decode_nested_json(value: Any) -> Any:
