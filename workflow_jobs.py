@@ -526,7 +526,7 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
         author = author or (os.getenv("BOOK_DEFAULT_AUTHOR") or "佚名").strip()
         try:
             image_count = max(
-                1,
+                2,
                 min(
                     int(
                         result.pop("scene_count", "")
@@ -538,9 +538,11 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
                 ),
             )
         except (TypeError, ValueError):
-            image_count = 1
+            image_count = 2
         result = {
-            "account_name": (os.getenv("BOOK_ACCOUNT_NAME") or "AI创作工坊").strip(),
+            # Two spaces intentionally keep the original workflow's invisible
+            # watermark caption alive. Do not strip this value.
+            "account_name": "  ",
             "author": author,
             "img_count": str(image_count),
             "subject": subject,
@@ -816,12 +818,118 @@ def _find_nested_field(value: Any, field: str) -> Any:
     return None
 
 
+_EXPECTED_PUBLISHED_DRAFT_CALL_IDS = {
+    "OWN01": {
+        "call_161537",
+        "call_148232",
+        "call_120409",
+        "call_121846",
+        "call_127166",
+        "call_198946",
+        "call_144998",
+        "call_169833",
+        "call_129095",
+        "call_116900",
+        "call_191365",
+        "call_300101",
+        "call_124102",
+        "call_1713008",
+        "call_143757",
+        "call_138594",
+    },
+    "OWN02": {
+        "call_990004",
+        "call_113974",
+        "call_151678",
+        "call_150084",
+        "call_166620",
+        "call_483916",
+        "call_100598",
+        "call_293522",
+        "call_848424",
+        "call_501522",
+        "call_731224",
+        "call_639486",
+        "call_828956",
+        "call_884316",
+        "call_872905",
+        "call_555014",
+        "call_692446",
+        "call_835065",
+        "call_874020",
+        "call_195389",
+        "call_194484",
+        "call_557577",
+        "call_175877",
+        "call_273408",
+        "call_1733515",
+        "call_190819",
+        "call_108008",
+        "call_916607",
+        "call_698411",
+    },
+}
+
+
+def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
+    code = str(job.get("workflow_code") or "").upper()
+    expected_ids = _EXPECTED_PUBLISHED_DRAFT_CALL_IDS.get(code)
+    if not expected_ids:
+        return
+
+    calls = draft_key.get("calls")
+    actual_ids = {
+        str(call.get("call_id") or "")
+        for call in calls
+        if isinstance(call, dict)
+    } if isinstance(calls, list) else set()
+    missing_ids = sorted(expected_ids - actual_ids)
+    meta = draft_key.get("meta") if isinstance(draft_key.get("meta"), dict) else {}
+    unresolved = [
+        str(value)
+        for value in (meta.get("unresolved_segment_ids") or [])
+        if str(value)
+    ]
+    if not missing_ids and not unresolved:
+        return
+
+    details = []
+    if missing_ids:
+        details.append("缺少操作节点：" + "、".join(missing_ids))
+    if unresolved:
+        details.append("存在未解析片段：" + "、".join(unresolved[:10]))
+    raise ProviderError(
+        "incomplete_draft_key",
+        "扣子返回的草稿数据不完整，已阻止导入；" + "；".join(details),
+    )
+
+
+def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
+    if str(job.get("workflow_code") or "").upper() != "OWN01":
+        return
+    for call in draft_key.get("calls") or []:
+        if not isinstance(call, dict) or call.get("call_id") != "call_138594":
+            continue
+        params = call.get("params") if isinstance(call.get("params"), dict) else {}
+        captions = params.get("captions")
+        if not isinstance(captions, list):
+            return
+        for caption in captions:
+            if isinstance(caption, dict):
+                # This is deliberately invisible text, not an empty value.
+                caption["text"] = "  "
+        return
+
+
 def _save_draft_key_result(job: dict, data: Any) -> list[dict]:
     draft_key = _decode_nested_json(_find_nested_field(data, "draft_key"))
     if draft_key is None and isinstance(data, dict) and isinstance(data.get("calls"), list):
         draft_key = data
     if not isinstance(draft_key, dict):
         raise ProviderError("draft_key_missing", "扣子工作流已完成，但返回结果中没有 draft_key")
+
+    _normalize_published_draft_key(job, draft_key)
+    _validate_published_draft_completeness(job, draft_key)
 
     from utils.draft_key_importer import KeyValidationError, import_draft_key
 

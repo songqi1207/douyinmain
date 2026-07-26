@@ -374,7 +374,7 @@ class WorkflowApiTests(unittest.TestCase):
             os.environ,
             {
                 "MIHE_KEY": "server-side-mihe-key",
-                "BOOK_ACCOUNT_NAME": "测试账号",
+                "BOOK_ACCOUNT_NAME": "不应显示的账号名",
                 "BOOK_DEFAULT_IMAGE_COUNT": "1",
                 "BOOK_DEFAULT_VOICE_ID": "voice-book",
                 "CIGARETTE_LEFT_TEXT": "未成年人禁止吸烟",
@@ -390,9 +390,9 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(
             book,
             {
-                "account_name": "测试账号",
+                "account_name": "  ",
                 "author": "黑塞",
-                "img_count": "1",
+                "img_count": "2",
                 "subject": "克林索尔的最后夏天",
                 "yinse": "voice-book",
                 "mihe_key": "server-side-mihe-key",
@@ -408,6 +408,68 @@ class WorkflowApiTests(unittest.TestCase):
         )
         self.assertNotIn("theme", book)
         self.assertNotIn("theme", cigarette)
+
+    def test_incomplete_published_book_and_cigarette_drafts_are_rejected(self):
+        for code, missing_id in (
+            ("OWN01", "call_191365"),
+            ("OWN02", "call_557577"),
+        ):
+            with self.subTest(code=code):
+                expected = workflow_jobs._EXPECTED_PUBLISHED_DRAFT_CALL_IDS[code]
+                key = {
+                    "kind": "jianying_draft_key",
+                    "meta": {"unresolved_segment_ids": []},
+                    "draft": {"width": 1080, "height": 1920, "name": "测试"},
+                    "calls": [
+                        {"call_id": call_id, "tool": "add_images", "params": {}}
+                        for call_id in sorted(expected - {missing_id})
+                    ],
+                }
+
+                with self.assertRaises(workflow_jobs.ProviderError) as raised:
+                    workflow_jobs._validate_published_draft_completeness(
+                        {"workflow_code": code},
+                        key,
+                    )
+
+                self.assertEqual(raised.exception.code, "incomplete_draft_key")
+                self.assertIn(missing_id, str(raised.exception))
+
+    def test_complete_published_book_draft_accepts_two_space_watermark(self):
+        expected = workflow_jobs._EXPECTED_PUBLISHED_DRAFT_CALL_IDS["OWN01"]
+        calls = [
+            {"call_id": call_id, "tool": "add_images", "params": {}}
+            for call_id in sorted(expected)
+        ]
+        watermark = next(call for call in calls if call["call_id"] == "call_138594")
+        watermark.update(
+            {
+                "tool": "add_captions",
+                "params": {
+                    "captions": [
+                        {"text": "  ", "start": 0, "end": 1_000_000}
+                    ]
+                },
+            }
+        )
+        key = {
+            "meta": {"unresolved_segment_ids": []},
+            "calls": calls,
+        }
+
+        workflow_jobs._validate_published_draft_completeness(
+            {"workflow_code": "OWN01"},
+            key,
+        )
+        watermark["params"]["captions"][0]["text"] = "被工作流改掉的水印"
+        workflow_jobs._normalize_published_draft_key(
+            {"workflow_code": "OWN01"},
+            key,
+        )
+        self.assertEqual(
+            watermark["params"]["captions"][0]["text"],
+            "  ",
+        )
 
     def test_background_coze_request_uses_direct_session_by_default(self):
         direct_response = MagicMock(status_code=200)
