@@ -113,6 +113,13 @@ export type RenderStatus = {
   message: string;
 };
 
+export type JobLogEntry = {
+  id: number;
+  level: string;
+  message: string;
+  created_at: number;
+};
+
 export type JobPage = {
   items: Job[];
   total: number;

@@ -1,6 +1,7 @@
 import type {
   AuthUser,
   Job,
+  JobLogEntry,
   JobPage,
   RegistrationApplication,
   RenderDevice,
@@ -86,6 +87,11 @@ export async function fetchJobs(params: {
 
 export async function fetchJob(jobId: string) {
   return request<{ job: Job }>(`/api/v1/jobs/${jobId}`);
+}
+
+export async function fetchJobLogs(jobId: string, afterId = 0) {
+  const query = afterId > 0 ? `?after_id=${afterId}` : "";
+  return request<{ items: JobLogEntry[] }>(`/api/v1/jobs/${jobId}/logs${query}`);
 }
 
 export async function createJob(workflowCode: string, category: string, inputs: Record<string, unknown>) {

@@ -573,6 +573,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .job-phases li.done > span { color: #8ed0a6; border-color: #365d43; background: #16251b; }
 .job-phases li.active { color: #d2aa68; }
 .job-phases li.active > span { border-color: #87673b; background: #282015; }
+.job-logs { margin-top: 12px; }
+.job-logs-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: #a09d96; font-size: 12px; cursor: pointer; }
+.job-logs-toggle:hover { color: #d7ad64; }
+.job-logs-body { max-height: 200px; overflow-y: auto; margin-top: 8px; padding: 10px 12px; border: 1px solid #302f2c; border-radius: 10px; background: #151514; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.job-log-line { display: flex; gap: 9px; font-size: 11px; line-height: 1.8; color: #b3b0a9; }
+.job-log-line time { flex-shrink: 0; color: #5f5b55; }
+.job-log-line.error span { color: #e86e63; }
+.job-log-line.warning span { color: #ddb15e; }
 .result-actions a { display: inline-flex; align-items: center; gap: 5px; }
 .result-footer { display: flex; justify-content: flex-end; padding-top: 14px; }
 .result-footer a, .section-title a { color: #d7ad64; font-size: 12px; }

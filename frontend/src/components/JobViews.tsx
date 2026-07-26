@@ -1,7 +1,9 @@
-import { Check, Circle, Download, LoaderCircle, RotateCcw, Sparkles } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Circle, Download, LoaderCircle, RotateCcw, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
-import type { Job } from "../types";
+import { fetchJobLogs } from "../api";
+import type { Job, JobLogEntry } from "../types";
 
 const STATUS_TEXT: Record<Job["status"], string> = {
   queued: "等待执行",
@@ -53,6 +55,7 @@ export function JobProgress({
         })}
       </ol>
       <p>{job.stage}</p>
+      <JobLogs key={job.id} job={job} />
       {job.error && <div className="notice error">{job.error.message}</div>}
       {job.status === "failed" && onRetry && (
         <button className="secondary-button" disabled={retrying} type="button" onClick={onRetry}>
@@ -60,6 +63,67 @@ export function JobProgress({
         </button>
       )}
     </section>
+  );
+}
+
+const ACTIVE_STATUSES = new Set<Job["status"]>(["queued", "running", "rendering"]);
+
+function formatLogTime(timestamp: number) {
+  return new Date(timestamp * 1000).toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+export function JobLogs({ job }: { job: Job }) {
+  const [logs, setLogs] = useState<JobLogEntry[]>([]);
+  const [open, setOpen] = useState(true);
+  const afterIdRef = useRef(0);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const active = ACTIVE_STATUSES.has(job.status);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+    const load = async () => {
+      try {
+        const { items } = await fetchJobLogs(job.id, afterIdRef.current);
+        if (cancelled) return;
+        if (items.length > 0) {
+          afterIdRef.current = items[items.length - 1].id;
+          setLogs((previous) => [...previous, ...items]);
+        }
+      } catch {
+        // 日志拉取失败时静默重试，不打断任务进度展示
+      }
+      if (!cancelled && active) timer = window.setTimeout(load, 3000);
+    };
+    load();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [job.id, active]);
+
+  useEffect(() => {
+    if (open && bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+  }, [logs, open]);
+
+  if (logs.length === 0) return null;
+  return (
+    <div className="job-logs">
+      <button className="job-logs-toggle" type="button" onClick={() => setOpen(!open)}>
+        {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        详细日志（{logs.length} 条）
+      </button>
+      {open && (
+        <div className="job-logs-body" ref={bodyRef}>
+          {logs.map((log) => (
+            <div className={`job-log-line ${log.level}`} key={log.id}>
+              <time>{formatLogTime(log.created_at)}</time>
+              <span>{log.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

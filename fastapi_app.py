@@ -69,6 +69,7 @@ from workflow_jobs import (
     fail_device_render_job,
     get_asset,
     get_job,
+    get_job_logs,
     get_result_path,
     job_summary,
     list_jobs,
@@ -926,6 +927,15 @@ def api_job(job_id: str, request: Request):
     if not job or job.get("user_id") != user["id"]:
         raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "任务不存在"})
     return {"job": _public_job(job)}
+
+
+@app.get("/api/v1/jobs/{job_id}/logs")
+def api_job_logs(job_id: str, request: Request, after_id: int = Query(default=0, ge=0)):
+    user = _require_user(request)
+    job = get_job(job_id)
+    if not job or job.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "任务不存在"})
+    return {"items": get_job_logs(job_id, after_id=after_id)}
 
 
 @app.post("/api/v1/vod/renders", status_code=202)

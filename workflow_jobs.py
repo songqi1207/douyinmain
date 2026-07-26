@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import logging.handlers
 import mimetypes
 import os
 import shutil
@@ -33,6 +34,20 @@ logger.propagate = False
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("WORKFLOW_DATA_DIR") or ROOT / "temp" / "workflow_app").resolve()
+LOG_DIR = Path(os.getenv("WORKFLOW_LOG_DIR") or DATA_DIR / "logs").resolve()
+
+if not any(isinstance(handler, logging.handlers.RotatingFileHandler) for handler in logger.handlers):
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        _file_handler = logging.handlers.RotatingFileHandler(
+            LOG_DIR / "workflow.log", maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+        )
+        _file_handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+        )
+        logger.addHandler(_file_handler)
+    except OSError:
+        logger.warning("workflow_log_file_unavailable dir=%s", LOG_DIR)
 UPLOAD_DIR = DATA_DIR / "uploads"
 RESULT_DIR = DATA_DIR / "results"
 DB_PATH = Path(os.getenv("WORKFLOW_DB_PATH") or DATA_DIR / "workflow.sqlite3").resolve()
@@ -100,6 +115,18 @@ def init_database():
             db.execute("ALTER TABLE jobs ADD COLUMN render_device_id TEXT")
         if "render_claimed_at" not in columns:
             db.execute("ALTER TABLE jobs ADD COLUMN render_claimed_at REAL")
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS job_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT NOT NULL,
+                level TEXT NOT NULL DEFAULT 'info',
+                message TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )
+            """
+        )
+        db.execute("CREATE INDEX IF NOT EXISTS idx_job_logs_job_id ON job_logs (job_id, id)")
         db.commit()
 
 
@@ -189,6 +216,7 @@ def create_job(
             ),
         )
         db.commit()
+    append_job_log(job_id, f"任务已创建（工作流 {workflow_code.upper()}），进入执行队列")
     return get_job(job_id)
 
 
@@ -237,6 +265,7 @@ def create_draft_key_render_job(
             ),
         )
         db.commit()
+    append_job_log(job_id, "剪映草稿导出任务已创建，进入执行队列")
     return get_job(job_id)
 
 
@@ -384,6 +413,32 @@ def _update_job(job_id: str, **changes):
         )
 
 
+def append_job_log(job_id: str, message: str, level: str = "info") -> None:
+    """Persist a user-visible per-job log line; never break the job on failure."""
+    text = " ".join(str(message or "").split())[:2000]
+    if not text:
+        return
+    try:
+        with _connect() as db:
+            db.execute(
+                "INSERT INTO job_logs (job_id, level, message, created_at) VALUES (?, ?, ?, ?)",
+                (job_id, level, text, time.time()),
+            )
+            db.commit()
+    except sqlite3.Error:
+        logger.exception("job_log_write_failed job_id=%s", job_id)
+
+
+def get_job_logs(job_id: str, after_id: int = 0, limit: int = 500) -> list[dict]:
+    with _connect() as db:
+        rows = db.execute(
+            """SELECT id, level, message, created_at FROM job_logs
+               WHERE job_id = ? AND id > ? ORDER BY id LIMIT ?""",
+            (job_id, max(0, int(after_id)), max(1, min(int(limit), 1000))),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def enqueue_job(job_id: str, background_tasks=None):
     mode = (os.getenv("WORKFLOW_QUEUE_MODE") or "inline").strip().lower()
     logger.info("job_enqueue job_id=%s queue_mode=%s", job_id, mode)
@@ -422,23 +477,30 @@ def execute_job(job_id: str):
             and bool((os.getenv("COZE_API_TOKEN") or "").strip())
             and bool(published_workflow_id(job["workflow_code"]))
         )
+        append_job_log(job_id, "开始执行，正在准备生成环境")
         if job["workflow_code"] == DRAFT_KEY_RENDER_CODE:
             logger.info("job_path job_id=%s path=draft_key_import", job_id)
+            append_job_log(job_id, "执行方式：导入已有剪映草稿 draft_key")
             results = _save_draft_key_result(job, job["inputs"])
         elif published_local:
             logger.info("job_path job_id=%s path=coze_published", job_id)
+            append_job_log(job_id, "执行方式：调用扣子已发布工作流生成内容")
             results = _run_coze(job)
         elif job["workflow_code"] in LOCAL_CODES:
             logger.info("job_path job_id=%s path=local_workflow", job_id)
+            append_job_log(job_id, "执行方式：本地模板工作流生成")
             results = _run_local_workflow(job)
         elif job["workflow_code"] in REFERENCE_TEMPLATE_CODES and build_mode == "template":
             logger.info("job_path job_id=%s path=reference_template", job_id)
+            append_job_log(job_id, "执行方式：参考模板生成")
             results = _run_reference_template(job)
         elif mode == "coze":
             logger.info("job_path job_id=%s path=coze_provider", job_id)
+            append_job_log(job_id, "执行方式：调用扣子工作流生成内容")
             results = _run_coze(job)
         else:
             logger.info("job_path job_id=%s path=demo", job_id)
+            append_job_log(job_id, "执行方式：演示模式生成")
             results = _run_demo(job)
         workflow = get_workflow(job["workflow_code"], job["category"]) or {}
         if (
@@ -472,6 +534,7 @@ def execute_job(job_id: str):
             job["workflow_code"],
             time.monotonic() - started_at,
         )
+        append_job_log(job_id, f"任务完成，总耗时 {time.monotonic() - started_at:.1f} 秒")
     except ProviderError as exc:
         _update_job(job_id, status="failed", stage="failed", progress=100, error_code=exc.code, error_message=str(exc))
         logger.warning(
@@ -481,6 +544,7 @@ def execute_job(job_id: str):
             exc.code,
             time.monotonic() - started_at,
         )
+        append_job_log(job_id, f"任务失败：{exc}（错误码 {exc.code}）", level="error")
     except Exception as exc:
         _update_job(job_id, status="failed", stage="failed", progress=100, error_code="internal_error", error_message=str(exc))
         logger.exception(
@@ -489,6 +553,7 @@ def execute_job(job_id: str):
             job["workflow_code"],
             time.monotonic() - started_at,
         )
+        append_job_log(job_id, f"任务失败：内部错误（{exc}）", level="error")
 
 
 class ProviderError(RuntimeError):
@@ -643,6 +708,11 @@ def _post_coze_workflow(
         request_kwargs["timeout"][0],
         request_kwargs["timeout"][1],
     )
+    if job_id != "-":
+        append_job_log(
+            job_id,
+            f"正在连接扣子服务（{'系统代理' if use_env_proxy else '直连'}，最长等待 {request_kwargs['timeout'][1]} 秒）",
+        )
     if use_env_proxy:
         try:
             response = requests.post(url, **request_kwargs)
@@ -672,6 +742,11 @@ def _post_coze_workflow(
             response.status_code,
             time.monotonic() - started_at,
         )
+        if job_id != "-":
+            append_job_log(
+                job_id,
+                f"扣子已响应（HTTP {response.status_code}，连接耗时 {time.monotonic() - started_at:.1f} 秒），开始接收生成结果",
+            )
         return response
     except requests.exceptions.Timeout as exc:
         logger.warning(
@@ -680,6 +755,12 @@ def _post_coze_workflow(
             workflow_code,
             time.monotonic() - started_at,
         )
+        if job_id != "-":
+            append_job_log(
+                job_id,
+                f"扣子请求超时（已等待 {time.monotonic() - started_at:.1f} 秒）",
+                level="error",
+            )
         raise ProviderError("provider_timeout", "扣子工作流执行超时，请稍后重试") from exc
     except requests.exceptions.RequestException as exc:
         logger.warning(
@@ -689,6 +770,8 @@ def _post_coze_workflow(
             type(exc).__name__,
             time.monotonic() - started_at,
         )
+        if job_id != "-":
+            append_job_log(job_id, f"无法连接扣子服务（{type(exc).__name__}）", level="error")
         raise ProviderError("provider_unavailable", "无法连接扣子服务，请检查服务器网络") from exc
     finally:
         direct_session.close()
@@ -697,6 +780,8 @@ def _post_coze_workflow(
 def _read_coze_stream(response, *, job_id: str, workflow_code: str) -> Any:
     event_name = ""
     final_data: Any = None
+    started_nodes: set = set()
+    finished_nodes: set = set()
     for raw_line in response.iter_lines(decode_unicode=True):
         if raw_line is None:
             continue
@@ -735,6 +820,18 @@ def _read_coze_stream(response, *, job_id: str, workflow_code: str) -> Any:
             event_data.get("node_is_finish", "-"),
             event_data.get("content_type") or "-",
         )
+        node_key = str(event_data.get("node_id") or node_title)
+        if node_title != "-" and node_key not in started_nodes:
+            started_nodes.add(node_key)
+            append_job_log(job_id, f"扣子节点开始：{node_title}")
+        if (
+            node_title != "-"
+            and event_data.get("node_is_finish")
+            and node_key not in finished_nodes
+        ):
+            finished_nodes.add(node_key)
+            append_job_log(job_id, f"扣子节点完成：{node_title}")
+            _update_job(job_id, progress=min(70, 35 + 5 * len(finished_nodes)))
         normalized_event = event_name.strip().lower()
         code = event_data.get("code")
         if normalized_event in {"error", "failed"} or code not in (None, 0):
@@ -744,6 +841,7 @@ def _read_coze_stream(response, *, job_id: str, workflow_code: str) -> Any:
                 or event_data.get("error_message")
                 or "扣子工作流流式执行失败"
             )
+            append_job_log(job_id, f"扣子返回错误：{message}", level="error")
             raise ProviderError("provider_error", message)
         if normalized_event == "message" and "content" in event_data:
             final_data = _decode_nested_json(event_data["content"])
@@ -751,7 +849,9 @@ def _read_coze_stream(response, *, job_id: str, workflow_code: str) -> Any:
             break
 
     if final_data is None:
+        append_job_log(job_id, "扣子流式返回结束，但没有拿到最终结果", level="error")
         raise ProviderError("empty_result", "扣子工作流执行完成但没有返回结果")
+    append_job_log(job_id, f"扣子内容生成完成（共 {len(finished_nodes)} 个节点）")
     return final_data
 
 
@@ -761,6 +861,7 @@ def _run_coze(job: dict) -> list[dict]:
     if not token or not workflow_id:
         raise ProviderError("provider_not_configured", "扣子工作流尚未发布或后台 Token 未配置")
     _update_job(job["id"], stage="generating", progress=35)
+    append_job_log(job["id"], f"开始调用扣子工作流（workflow_id={workflow_id}）")
     response = _post_coze_workflow(
         (os.getenv("COZE_API_BASE_URL") or "https://api.coze.cn").rstrip("/") + "/v1/workflow/stream_run",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
@@ -902,11 +1003,38 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
     if not missing_ids and not unresolved:
         return
 
+    skipped_titles = {
+        str(item.get("call_id") or ""): str(item.get("source_node_title") or "")
+        for item in (meta.get("skipped_empty_calls") or [])
+        if isinstance(item, dict)
+    }
     details = []
     if missing_ids:
-        details.append("缺少操作节点：" + "、".join(missing_ids))
+        labelled = [
+            f"{call_id}（扣子节点「{skipped_titles[call_id]}」输出为空）"
+            if skipped_titles.get(call_id)
+            else call_id
+            for call_id in missing_ids
+        ]
+        details.append("缺少操作节点：" + "、".join(labelled))
     if unresolved:
-        details.append("存在未解析片段：" + "、".join(unresolved[:10]))
+        details.append("存在未解析片段：" + "、".join(sorted(set(unresolved))[:10]))
+
+    RESULT_DIR.mkdir(parents=True, exist_ok=True)
+    rejected_file = RESULT_DIR / f"{code.lower()}-{job['id']}-draft-key-rejected.json"
+    try:
+        rejected_file.write_text(json.dumps(draft_key, ensure_ascii=False, indent=2), encoding="utf-8")
+        logger.warning(
+            "draft_key_rejected job_id=%s workflow=%s file=%s missing=%s unresolved=%s",
+            job["id"],
+            code,
+            rejected_file.name,
+            ",".join(missing_ids) or "-",
+            len(unresolved),
+        )
+        append_job_log(job["id"], f"被拒绝的草稿已存档：{rejected_file.name}", level="warning")
+    except OSError:
+        logger.exception("draft_key_reject_dump_failed job_id=%s", job["id"])
     raise ProviderError(
         "incomplete_draft_key",
         "扣子返回的草稿数据不完整，已阻止导入；" + "；".join(details),
@@ -958,6 +1086,7 @@ def _save_draft_key_result(job: dict, data: Any) -> list[dict]:
         job["workflow_code"],
         destination.name,
     )
+    append_job_log(job["id"], "剪映草稿 draft_key 已生成并通过校验")
     return [
         {
             "type": "draft",
@@ -1027,6 +1156,7 @@ def _render_drafts(job: dict, results: list[dict]) -> list[dict]:
         job["workflow_code"],
         sum(result["type"] == "draft" for result in results),
     )
+    append_job_log(job["id"], "草稿已提交云端渲染服务，正在生成视频")
     headers = {"Content-Type": "application/json"}
     if render_token:
         headers["Authorization"] = f"Bearer {render_token}"
@@ -1056,6 +1186,7 @@ def _render_drafts(job: dict, results: list[dict]) -> list[dict]:
         job["workflow_code"],
         response.status_code,
     )
+    append_job_log(job["id"], "渲染服务已返回结果，正在回传视频文件")
     try:
         rendered = _extract_results(response.json(), "video")
     except ValueError as exc:
@@ -1140,6 +1271,7 @@ def _queue_device_render(job: dict, results: list[dict]) -> None:
         results_json=json.dumps(results, ensure_ascii=False),
         render_claimed_at=None,
     )
+    append_job_log(job["id"], "草稿已加入本机剪映渲染队列，等待设备领取任务")
 
 
 def claim_device_render_job(device_id: str, user_id: str, lease_seconds: int = 600) -> dict | None:
@@ -1173,6 +1305,7 @@ def claim_device_render_job(device_id: str, user_id: str, lease_seconds: int = 6
         job["id"],
         device_id,
     )
+    append_job_log(job["id"], "本机剪映助手已领取任务，正在导入草稿并导出视频")
     draft_key = _load_draft_key_result(job["results"])
     if draft_key is None:
         fail_device_render_job(job["id"], device_id, "draft_key_missing", "后台任务缺少 draft_key")
@@ -1205,6 +1338,7 @@ def complete_device_render_job(job_id: str, device_id: str, result_name: str) ->
         error_code=None,
         error_message=None,
     )
+    append_job_log(job_id, "剪映导出完成，视频已回传到站点")
     return True
 
 
@@ -1229,6 +1363,7 @@ def fail_device_render_job(job_id: str, device_id: str, code: str, message: str)
         error_code=normalized_code,
         error_message=normalized_message,
     )
+    append_job_log(job_id, f"本机剪映导出失败：{normalized_message}", level="error")
     return True
 
 
