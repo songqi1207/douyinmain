@@ -35,6 +35,9 @@ from desktop_bridge.windows_integration import (
 )
 
 
+BRIDGE_VERSION = "1.2.0"
+
+
 def _settings_path() -> Path:
     base = Path(os.getenv("APPDATA") or Path.home()) / "DouyinDraftBridge"
     base.mkdir(parents=True, exist_ok=True)
@@ -65,7 +68,7 @@ class DraftBridgeApp:
         self.tk = tk
         self.ttk = ttk
         self.root = tk.Tk()
-        self.root.title("抖音工作流 · 本机剪映导出助手")
+        self.root.title(f"抖音工作流 · 本机剪映导出助手 v{BRIDGE_VERSION}")
         self.root.geometry("940x900")
         self.root.minsize(800, 760)
         self.last_report: dict = {}
@@ -169,6 +172,7 @@ class DraftBridgeApp:
         self.import_button.pack(side="left")
         self.ttk.Button(action, text="打开草稿目录", command=self.open_last_draft).pack(side="left", padx=8)
         self.ttk.Button(action, text="启动剪映", command=self.start_jianying).pack(side="left")
+        self.ttk.Button(action, text="打开运行日志", command=self.open_device_logs).pack(side="left", padx=8)
         self.progress = self.ttk.Progressbar(action, mode="indeterminate", length=180)
         self.progress.pack(side="right")
 
@@ -274,9 +278,22 @@ class DraftBridgeApp:
 
     def _set_device_status(self, message: str) -> None:
         try:
-            self.root.after(0, self.device_status_var.set, message)
+            self.root.after(0, self._apply_device_status, message)
         except Exception:
             pass
+
+    def _apply_device_status(self, message: str) -> None:
+        self.device_status_var.set(message)
+        if not message.startswith("剪映导出失败："):
+            return
+        from tkinter import messagebox
+
+        self.root.deiconify()
+        self.root.lift()
+        messagebox.showerror(
+            "剪映导出失败",
+            f"{message}\n\n详细运行日志：\n{agent_log_path()}",
+        )
 
     def start_device_agent(self) -> None:
         if self.device_agent:

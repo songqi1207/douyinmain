@@ -61,8 +61,8 @@ WORKFLOW_LOG_LEVEL=INFO
 如果停在 `coze_request_started`，检查 Coze 网络和工作流运行时间。
 如果已有 `draft_key_saved`，则问题位于剪映设备或服务器渲染阶段。
 
-本机剪映助手会另外记录领取、草稿导入、剪映导出和结果上传阶段。可在助手中
-点击“查看日志”，或直接打开：
+本机剪映助手会另外记录领取、草稿导入、剪映导出和结果上传阶段。可在主界面
+底部点击“打开运行日志”（设备区也有“查看日志”入口），或直接打开：
 
 ```text
 %APPDATA%\DouyinDraftBridge\logs\render-agent.log
