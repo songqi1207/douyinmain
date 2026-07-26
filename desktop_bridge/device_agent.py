@@ -183,23 +183,23 @@ def _run_native_export(
     ]
     for output_line in stage_lines:
         if output_line:
-            logger.debug(
+            logger.info(
                 "jianying_export_output job_id=%s %s",
                 task.get("job_id"),
                 output_line,
             )
     if completed.returncode != 0:
-        last_stage = stage_lines[-1] if stage_lines else ""
-        if "stage=draft_card_not_found" in last_stage:
+        stage_output = "\n".join(stage_lines)
+        if "stage=draft_card_not_found" in stage_output:
             raise BridgeError(
-                "剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，"
-                "让助手重新启动剪映并刷新本地草稿列表。"
+                "剪映首页没有识别到目标草稿卡片。请确认助手使用的草稿目录与"
+                "剪映“全局设置 > 草稿位置”一致；可见控件快照已写入助手日志。"
             )
-        if "stage=editor_already_open" in last_stage:
+        if "stage=editor_already_open" in stage_output:
             raise BridgeError(
                 "剪映当前停留在草稿编辑页。请返回本地草稿首页后重试任务。"
             )
-        if "stage=editor_export_button_not_found" in last_stage:
+        if "stage=editor_export_button_not_found" in stage_output:
             raise BridgeError(
                 "草稿已经打开，但没有识别到编辑页的导出按钮。"
                 "请关闭剪映弹窗并确认已进入草稿编辑页后重试。"

@@ -27,6 +27,19 @@ from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_jianying_automation_uses_full_description_controls(self):
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "run_jianying_export_automation.ps1"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("LookupById(30159)", script)
+        self.assertIn("HomePageDraftTitle:$DraftName", script)
+        self.assertIn("MainWindowTitleBarExportBtn", script)
+        self.assertIn("ExportOkBtn", script)
+        self.assertIn("ui_snapshot_finished", script)
+
     def test_renamed_helper_uses_an_independent_single_instance_lock(self):
         self.assertEqual(windows_integration.MUTEX_NAME, r"Local\AIVideoCreator.UserAgent")
 

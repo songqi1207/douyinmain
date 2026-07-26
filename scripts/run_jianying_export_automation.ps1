@@ -46,6 +46,7 @@ Write-Stage "automation_started" "timeout_seconds=$TimeoutSeconds"
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
+$fullDescriptionProperty = [System.Windows.Automation.AutomationProperty]::LookupById(30159)
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -56,6 +57,17 @@ public static class JianyingNative {
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
 }
 "@
+
+function Get-FullDescription($Element) {
+    try {
+        $value = $Element.GetCurrentPropertyValue($fullDescriptionProperty)
+        if ($value -and $value -ne [System.Windows.Automation.AutomationElement]::NotSupported) {
+            return [string]$value
+        }
+    }
+    catch {}
+    return ""
+}
 
 function Get-JianyingProcess {
     Get-Process | Where-Object {
@@ -104,6 +116,29 @@ function Wait-Element([int]$ProcessId, [scriptblock]$Selector, [int]$Seconds, [s
         Start-Sleep -Milliseconds 500
     }
     throw "等待剪映界面元素超时：$Description"
+}
+
+function Write-VisibleElementSnapshot([int]$ProcessId) {
+    $written = 0
+    foreach ($element in (Get-VisibleElements $ProcessId)) {
+        $name = ([string]$element.Current.Name).Replace("`r", " ").Replace("`n", " ").Trim()
+        $description = (Get-FullDescription $element).Replace("`r", " ").Replace("`n", " ").Trim()
+        if (-not $name -and -not $description) {
+            continue
+        }
+        if ($name.Length -gt 120) {
+            $name = $name.Substring(0, 120)
+        }
+        if ($description.Length -gt 180) {
+            $description = $description.Substring(0, 180)
+        }
+        Write-Stage "ui_element" "type=$($element.Current.ControlType.ProgrammaticName) name=$name description=$description"
+        $written += 1
+        if ($written -ge 80) {
+            break
+        }
+    }
+    Write-Stage "ui_snapshot_finished" "elements=$written"
 }
 
 function Invoke-Element($Element, [switch]$DoubleClick) {
@@ -176,7 +211,8 @@ Write-Stage "preparing_draft_home"
 [System.Windows.Forms.SendKeys]::SendWait("{ESC}")
 Start-Sleep -Milliseconds 500
 $openEditorExport = Get-VisibleElements $process.Id | Where-Object {
-    $_.Current.Name -match '^\s*(导出|Export)\s*$' -and
+    ($_.Current.Name -match '^\s*(导出|Export)\s*$' -or
+        (Get-FullDescription $_) -match 'MainWindowTitleBarExportBtn') -and
     $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)'
 } | Select-Object -First 1
 if ($openEditorExport) {
@@ -197,24 +233,40 @@ Write-Stage "draft_home_refreshed"
 Start-Sleep -Seconds 3
 
 $draftPattern = [regex]::Escape($DraftName)
+$draftDescription = "HomePageDraftTitle:$DraftName"
 Write-Stage "waiting_for_draft_card"
 try {
     $draft = Wait-Element $process.Id {
-        $_.Current.Name -match $draftPattern -and
-        $_.Current.ControlType.ProgrammaticName -notmatch 'Edit'
+        ((Get-FullDescription $_) -eq $draftDescription) -or
+        ($_.Current.Name -match $draftPattern -and
+            $_.Current.ControlType.ProgrammaticName -notmatch 'Edit')
     } ([Math]::Min(90, $TimeoutSeconds)) "草稿卡片“$DraftName”"
 }
 catch {
     Write-Stage "draft_card_not_found"
+    Write-VisibleElementSnapshot $process.Id
     throw
 }
-Invoke-Element $draft -DoubleClick
+$draftFullDescription = Get-FullDescription $draft
+if ($draftFullDescription -eq $draftDescription) {
+    $draftParent = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($draft)
+    if ($draftParent) {
+        Invoke-Element $draftParent
+    }
+    else {
+        Invoke-Element $draft
+    }
+}
+else {
+    Invoke-Element $draft -DoubleClick
+}
 Write-Stage "draft_card_opened"
 
 Write-Stage "waiting_for_editor_export_button"
 try {
     $exportButton = Wait-Element $process.Id {
-        $_.Current.Name -match '^\s*(导出|Export)\s*$' -and
+        ($_.Current.Name -match '^\s*(导出|Export)\s*$' -or
+            (Get-FullDescription $_) -match 'MainWindowTitleBarExportBtn') -and
         $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)'
     } ([Math]::Min(120, $TimeoutSeconds)) "编辑页导出按钮"
 }
@@ -230,10 +282,10 @@ $edits = @(Get-VisibleElements $process.Id | Where-Object {
     $_.Current.ControlType.ProgrammaticName -match 'Edit'
 })
 $nameEdit = $edits | Where-Object {
-    ($_.Current.Name + " " + $_.Current.AutomationId) -match '(作品名称|文件名称|视频名称|标题|file.?name|title|name)'
+    ($_.Current.Name + " " + $_.Current.AutomationId + " " + (Get-FullDescription $_)) -match '(作品名称|文件名称|视频名称|标题|file.?name|title|name|ExportName)'
 } | Select-Object -First 1
 $pathEdit = $edits | Where-Object {
-    ($_.Current.Name + " " + $_.Current.AutomationId) -match '(保存至|保存位置|输出|路径|目录|文件夹|location|folder|path)'
+    ($_.Current.Name + " " + $_.Current.AutomationId + " " + (Get-FullDescription $_)) -match '(保存至|保存位置|输出|路径|目录|文件夹|location|folder|path|ExportPath)'
 } | Select-Object -First 1
 Write-Stage "export_dialog_ready" "editable_fields=$($edits.Count)"
 
@@ -279,7 +331,8 @@ else {
 }
 
 $confirm = Get-VisibleElements $process.Id | Where-Object {
-    $_.Current.Name -match '^\s*(导出|Export)\s*$' -and
+    ($_.Current.Name -match '^\s*(导出|Export)\s*$' -or
+        (Get-FullDescription $_) -match 'ExportOkBtn') -and
     $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)'
 } | Select-Object -Last 1
 if (-not $confirm) {
