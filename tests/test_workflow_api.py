@@ -1,4 +1,5 @@
 import hashlib
+import inspect
 import json
 import os
 import tempfile
@@ -30,6 +31,18 @@ from workflow_registry import get_workflow
 
 
 class WorkflowApiTests(unittest.TestCase):
+    def test_fastapi_endpoint_parameters_avoid_python_310_union_syntax(self):
+        for route in app.routes:
+            endpoint = getattr(route, "endpoint", None)
+            if endpoint is None:
+                continue
+            for parameter in inspect.signature(endpoint).parameters.values():
+                self.assertNotIn(
+                    " | ",
+                    str(parameter.annotation),
+                    f"{endpoint.__name__}.{parameter.name} is not compatible with Python 3.8",
+                )
+
     def test_helper_download_is_versioned_and_never_cached(self):
         with tempfile.TemporaryDirectory(prefix="helper-download-") as temporary:
             root = Path(temporary)

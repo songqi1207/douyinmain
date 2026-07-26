@@ -9,6 +9,7 @@ import time
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
 import requests
 from dotenv import load_dotenv
@@ -537,7 +538,7 @@ def api_workflows(
 
 
 @app.get("/api/v1/workflows/{code}")
-def api_workflow_detail(code: str, request: Request, category: str | None = Query(default=None)):
+def api_workflow_detail(code: str, request: Request, category: Optional[str] = Query(default=None)):
     workflow = get_workflow(code, category)
     if not workflow:
         raise HTTPException(status_code=404, detail={"code": "workflow_not_found", "message": "工作流不存在"})
