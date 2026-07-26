@@ -147,6 +147,8 @@ def _run_native_export(
         str(output_path),
         "-JianyingExe",
         str(executable),
+        "-LogPath",
+        str(agent_log_path()),
         "-TimeoutSeconds",
         str(int(os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800)),
     ]
@@ -168,7 +170,34 @@ def _run_native_export(
         completed.returncode,
         time.monotonic() - export_started_at,
     )
+    stage_lines = [
+        line.strip()
+        for line in (completed.stdout or "").splitlines()
+        if "jianying_automation_stage" in line
+    ]
+    for output_line in stage_lines:
+        if output_line:
+            logger.debug(
+                "jianying_export_output job_id=%s %s",
+                task.get("job_id"),
+                output_line,
+            )
     if completed.returncode != 0:
+        last_stage = stage_lines[-1] if stage_lines else ""
+        if "stage=draft_card_not_found" in last_stage:
+            raise BridgeError(
+                "剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，"
+                "让助手重新启动剪映并刷新本地草稿列表。"
+            )
+        if "stage=editor_already_open" in last_stage:
+            raise BridgeError(
+                "剪映当前停留在草稿编辑页。请返回本地草稿首页后重试任务。"
+            )
+        if "stage=editor_export_button_not_found" in last_stage:
+            raise BridgeError(
+                "草稿已经打开，但没有识别到编辑页的导出按钮。"
+                "请关闭剪映弹窗并确认已进入草稿编辑页后重试。"
+            )
         message = (completed.stderr or completed.stdout or "剪映自动导出失败").strip()
         raise BridgeError(message[-2000:])
     if not output_path.is_file() or output_path.stat().st_size <= 0:

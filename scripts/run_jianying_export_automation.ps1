@@ -5,14 +5,43 @@
     [string]$OutputPath,
     [Parameter(Mandatory = $true)]
     [string]$JianyingExe,
+    [string]$LogPath = "",
     [int]$TimeoutSeconds = 1800
 )
 
 $ErrorActionPreference = "Stop"
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = $utf8
+[Console]::OutputEncoding = $utf8
 $OutputPath = [System.IO.Path]::GetFullPath($OutputPath)
 $outputDirectory = [System.IO.Path]::GetDirectoryName($OutputPath)
 $outputName = [System.IO.Path]::GetFileNameWithoutExtension($OutputPath)
 [System.IO.Directory]::CreateDirectory($outputDirectory) | Out-Null
+
+function Write-Stage([string]$Stage, [string]$Details = "") {
+    $suffix = if ($Details) { " $Details" } else { "" }
+    $message = "jianying_automation_stage stage=$Stage$suffix"
+    Write-Output $message
+    if ($LogPath) {
+        try {
+            $resolvedLogPath = [System.IO.Path]::GetFullPath($LogPath)
+            [System.IO.Directory]::CreateDirectory(
+                [System.IO.Path]::GetDirectoryName($resolvedLogPath)
+            ) | Out-Null
+            $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss,fff")
+            [System.IO.File]::AppendAllText(
+                $resolvedLogPath,
+                "$timestamp INFO $message$([Environment]::NewLine)",
+                $utf8
+            )
+        }
+        catch {
+            # Logging must never interrupt a user's video export.
+        }
+    }
+}
+
+Write-Stage "automation_started" "timeout_seconds=$TimeoutSeconds"
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -121,7 +150,11 @@ if (-not (Test-Path -LiteralPath $JianyingExe -PathType Leaf)) {
 
 $process = Get-JianyingProcess
 if (-not $process) {
+    Write-Stage "starting_jianying"
     Start-Process -FilePath $JianyingExe -WorkingDirectory ([System.IO.Path]::GetDirectoryName($JianyingExe))
+}
+else {
+    Write-Stage "using_existing_jianying" "process_id=$($process.Id)"
 }
 
 $deadline = (Get-Date).AddSeconds([Math]::Min(60, $TimeoutSeconds))
@@ -130,25 +163,67 @@ while (-not $process -and (Get-Date) -lt $deadline) {
     $process = Get-JianyingProcess
 }
 if (-not $process) {
+    Write-Stage "failed" "reason=jianying_start_timeout"
     throw "剪映启动超时"
 }
 
+Write-Stage "jianying_window_ready" "process_id=$($process.Id)"
 [JianyingNative]::ShowWindow($process.MainWindowHandle, 9) | Out-Null
 [JianyingNative]::SetForegroundWindow($process.MainWindowHandle) | Out-Null
 Start-Sleep -Seconds 2
 
-$draftPattern = [regex]::Escape($DraftName)
-$draft = Wait-Element $process.Id {
-    $_.Current.Name -match $draftPattern -and
-    $_.Current.ControlType.ProgrammaticName -notmatch 'Edit'
-} ([Math]::Min(90, $TimeoutSeconds)) "草稿卡片“$DraftName”"
-Invoke-Element $draft -DoubleClick
-
-$exportButton = Wait-Element $process.Id {
+Write-Stage "preparing_draft_home"
+[System.Windows.Forms.SendKeys]::SendWait("{ESC}")
+Start-Sleep -Milliseconds 500
+$openEditorExport = Get-VisibleElements $process.Id | Where-Object {
     $_.Current.Name -match '^\s*(导出|Export)\s*$' -and
     $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)'
-} ([Math]::Min(120, $TimeoutSeconds)) "编辑页导出按钮"
+} | Select-Object -First 1
+if ($openEditorExport) {
+    Write-Stage "editor_already_open"
+    throw "剪映当前停留在草稿编辑页，请先返回本地草稿首页后重试"
+}
+$localDrafts = Get-VisibleElements $process.Id | Where-Object {
+    $_.Current.Name -match '^\s*(本地草稿|草稿|Local drafts?)\s*$' -and
+    $_.Current.ControlType.ProgrammaticName -match '(Button|Text|TabItem|Custom)'
+} | Select-Object -First 1
+if ($localDrafts) {
+    Invoke-Element $localDrafts
+    Write-Stage "local_drafts_selected"
+    Start-Sleep -Seconds 1
+}
+[System.Windows.Forms.SendKeys]::SendWait("{F5}")
+Write-Stage "draft_home_refreshed"
+Start-Sleep -Seconds 3
+
+$draftPattern = [regex]::Escape($DraftName)
+Write-Stage "waiting_for_draft_card"
+try {
+    $draft = Wait-Element $process.Id {
+        $_.Current.Name -match $draftPattern -and
+        $_.Current.ControlType.ProgrammaticName -notmatch 'Edit'
+    } ([Math]::Min(90, $TimeoutSeconds)) "草稿卡片“$DraftName”"
+}
+catch {
+    Write-Stage "draft_card_not_found"
+    throw
+}
+Invoke-Element $draft -DoubleClick
+Write-Stage "draft_card_opened"
+
+Write-Stage "waiting_for_editor_export_button"
+try {
+    $exportButton = Wait-Element $process.Id {
+        $_.Current.Name -match '^\s*(导出|Export)\s*$' -and
+        $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)'
+    } ([Math]::Min(120, $TimeoutSeconds)) "编辑页导出按钮"
+}
+catch {
+    Write-Stage "editor_export_button_not_found"
+    throw
+}
 Invoke-Element $exportButton
+Write-Stage "export_dialog_opening"
 Start-Sleep -Seconds 2
 
 $edits = @(Get-VisibleElements $process.Id | Where-Object {
@@ -160,6 +235,7 @@ $nameEdit = $edits | Where-Object {
 $pathEdit = $edits | Where-Object {
     ($_.Current.Name + " " + $_.Current.AutomationId) -match '(保存至|保存位置|输出|路径|目录|文件夹|location|folder|path)'
 } | Select-Object -First 1
+Write-Stage "export_dialog_ready" "editable_fields=$($edits.Count)"
 
 if (-not $nameEdit) {
     # In some Jianying builds the only editable field in the export dialog is
@@ -174,11 +250,13 @@ if (-not $nameEdit) {
 if (-not (Set-ElementValue $nameEdit $outputName)) {
     throw "无法填写剪映导出作品名称"
 }
+Write-Stage "output_name_set"
 
 if ($pathEdit) {
     if (-not (Set-ElementValue $pathEdit $outputDirectory)) {
         throw "无法填写剪映导出目录"
     }
+    Write-Stage "output_directory_set" "mode=field"
 }
 else {
     $browse = Get-VisibleElements $process.Id | Where-Object {
@@ -197,6 +275,7 @@ else {
     Start-Sleep -Seconds 1
     [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
     Start-Sleep -Seconds 1
+    Write-Stage "output_directory_set" "mode=folder_dialog"
 }
 
 $confirm = Get-VisibleElements $process.Id | Where-Object {
@@ -207,16 +286,24 @@ if (-not $confirm) {
     throw "没有找到剪映导出确认按钮"
 }
 Invoke-Element $confirm
+Write-Stage "export_confirmed"
 
 $fileDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
 $lastSize = -1L
 $stable = 0
+$lastProgressLog = (Get-Date).AddSeconds(-15)
+Write-Stage "waiting_for_output_file"
 while ((Get-Date) -lt $fileDeadline) {
     if (Test-Path -LiteralPath $OutputPath -PathType Leaf) {
         $size = (Get-Item -LiteralPath $OutputPath).Length
+        if ((Get-Date) -ge $lastProgressLog.AddSeconds(15)) {
+            Write-Stage "output_file_growing" "size_bytes=$size"
+            $lastProgressLog = Get-Date
+        }
         if ($size -gt 0 -and $size -eq $lastSize) {
             $stable += 1
             if ($stable -ge 3) {
+                Write-Stage "export_completed" "size_bytes=$size"
                 [pscustomobject]@{
                     status = "success"
                     draft_name = $DraftName
@@ -233,4 +320,5 @@ while ((Get-Date) -lt $fileDeadline) {
     }
     Start-Sleep -Seconds 1
 }
+Write-Stage "failed" "reason=output_file_timeout"
 throw "剪映导出超时，未生成目标 MP4：$OutputPath"
