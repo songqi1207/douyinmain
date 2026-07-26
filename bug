@@ -1,0 +1,94 @@
+shutdown complete.
+INFO:     Finished server process [12996]
+PS C:\code\工作流\douyinmain_四面汇聚> python -m uvicorn fastapi_app:app --host 0.0.0.0 --port 8000
+[dy] 书籍/百科爬虫：终端可见 logger crawlers.*；更细设 CRAWLER_LOG_LEVEL=DEBUG。 网页「搜索书籍」会在结果里带 _fetch_trace（或设 CRAWLER_API_TRACE=1）。
+[mihe] MIHE_KEY 已配置（长度 36）。旧版下载的工作流文件里仍可能嵌有旧 Key。
+[cdn] CDN_TOKEN 未配置。本地生成的工作流封面会指向 http://<本机>/api/cover/...，如 Coze 云端无法回访本机（非公网/未设 PUBLIC_BASE_URL），剪映草稿会因下载封面失败而报错。 推荐：在 .env 或环境变量里配 CDN_TOKEN（boltp.com 的 API Token）。
+[dy] 若刚改了 workflows/god/builder.py 但生成的 txt 仍无 last_img_end：请确认在此目录运行的是当前代码；Docker 部署需执行 docker compose build --no-cache && docker compose up -d。
+INFO:     Started server process [21180]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:63799 - "GET /api/v1/draft-key-renders/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63801 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63802 - "GET /api/v1/draft-key-renders/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63803 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63144 - "GET /api/v1/draft-key-renders/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50768 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61642 - "GET /api/v1/draft-key-renders/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61643 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63798 - "GET /api/v1/workflows?category=%E8%87%AA%E6%9C%89%E5%B7%A5%E4%BD%9C%E6%B5%81&q=&sort=newest&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51840 - "GET /api/v1/draft-key-renders/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51842 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49683 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64601 - "GET /api/v1/draft-key-renders/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59740 - "GET /api/v1/workflows?category=%E8%87%AA%E6%9C%89%E5%B7%A5%E4%BD%9C%E6%B5%81&q=&sort=newest&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58350 - "GET /api/v1/jobs/a43a2e9533de472ba550b779cc4ed6dd HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58349 - "GET /api/v1/jobs?page=1&page_size=4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55012 - "GET /api/v1/jobs?page=1&page_size=4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59741 - "GET /api/v1/workflows?category=%E8%87%AA%E6%9C%89%E5%B7%A5%E4%BD%9C%E6%B5%81&q=&sort=newest&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61600 - "GET /api/v1/workflows?category=%E8%87%AA%E6%9C%89%E5%B7%A5%E4%BD%9C%E6%B5%81&q=&sort=newest&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49353 - "GET /api/v1/workflows?category=%E8%87%AA%E6%9C%89%E5%B7%A5%E4%BD%9C%E6%B5%81&q=&sort=newest&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57192 - "GET /api/v1/workflows?category=%E8%87%AA%E6%9C%89%E5%B7%A5%E4%BD%9C%E6%B5%81&q=&sort=newest&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63800 - "GET /api/v1/site-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51841 - "GET /api/v1/site-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56338 - "GET /api/v1/site-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63463 - "GET /api/v1/site-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58587 - "GET /api/v1/site-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49661 - "GET /api/v1/site-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50141 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:55260 - "POST /api/v1/render-agent/heartbeat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62015 - "GET /api/v1/draft-key-renders/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62018 - "GET /api/v1/draft-key-renders/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62017 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62019 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61327 - "GET /api/v1/jobs/a43a2e9533de472ba550b779cc4ed6dd HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61326 - "GET /api/v1/jobs?page=1&page_size=4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56544 - "GET /api/v1/jobs?page=1&page_size=4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62014 - "GET /api/v1/workflows?category=%E8%87%AA%E6%9C%89%E5%B7%A5%E4%BD%9C%E6%B5%81&q=&sort=newest&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62016 - "GET /api/v1/site-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49173 - "GET /api/v1/workflows?category=%E8%87%AA%E6%9C%89%E5%B7%A5%E4%BD%9C%E6%B5%81&q=&sort=newest&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62299 - "GET /api/v1/site-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62301 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:62303 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+2026-07-26 14:28:58,912 INFO workflow.jobs job_enqueue job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 queue_mode=inline
+INFO:     127.0.0.1:49358 - "POST /api/v1/jobs HTTP/1.1" 202 Accepted
+2026-07-26 14:28:58,937 INFO workflow.jobs job_state job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 status=running stage=preparing progress=10
+2026-07-26 14:28:58,942 INFO workflow.jobs job_started job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 workflow=OWN01 category=自有工作流 provider_mode=demo build_mode=template
+2026-07-26 14:28:58,948 INFO workflow.jobs job_path job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 path=coze_published
+2026-07-26 14:28:58,961 INFO workflow.jobs job_state job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 status=- stage=generating progress=35
+2026-07-26 14:28:58,966 INFO workflow.jobs coze_request_started job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 workflow=OWN01 transport=direct connect_timeout=20 read_timeout=900
+INFO:     127.0.0.1:63943 - "GET /api/v1/jobs?page=1&page_size=4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51300 - "GET /api/v1/jobs/1ad9c83df82f4e19a8d9a7f91b9d4e76 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52759 - "GET /api/v1/jobs?page=1&page_size=4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52761 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:52224 - "GET /api/v1/jobs/1ad9c83df82f4e19a8d9a7f91b9d4e76 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52226 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:52271 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:63597 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:53664 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:60731 - "POST /api/v1/render-agent/heartbeat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60944 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:55982 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+2026-07-26 14:29:29,026 INFO workflow.jobs coze_request_finished job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 workflow=OWN01 transport=direct status=200 elapsed_seconds=30.047
+2026-07-26 14:29:29,031 INFO workflow.jobs coze_stream_event job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 workflow=OWN01 event=Message node_id=900001 node_title=End node_finished=True content_type=text
+2026-07-26 14:29:29,032 INFO workflow.jobs coze_stream_event job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 workflow=OWN01 event=Done node_id=- node_title=- node_finished=- content_type=-
+2026-07-26 14:29:29,052 INFO workflow.jobs job_state job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 status=- stage=draft_key_ready progress=75
+2026-07-26 14:29:29,054 INFO workflow.jobs draft_key_saved job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 workflow=OWN01 file=own01-1ad9c83df82f4e19a8d9a7f91b9d4e76-draft-key.json
+2026-07-26 14:29:29,154 INFO workflow.jobs job_render_route job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 route=device device_id=5f904fbcc756446a884aa10bfd6c02d0
+2026-07-26 14:29:29,165 INFO workflow.jobs job_state job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 status=rendering stage=waiting_for_device progress=78
+INFO:     127.0.0.1:51696 - "POST /api/v1/render-agent/claim HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55632 - "POST /api/v1/render-agent/heartbeat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61427 - "POST /api/v1/render-agent/heartbeat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64281 - "POST /api/v1/render-agent/heartbeat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52761 - "POST /api/v1/render-agent/heartbeat HTTP/1.1" 200 OK
+2026-07-26 14:31:38,508 INFO workflow.jobs job_state job_id=1ad9c83df82f4e19a8d9a7f91b9d4e76 status=failed stage=failed progress=100
+INFO:     127.0.0.1:58068 - "POST /api/v1/render-agent/jobs/1ad9c83df82f4e19a8d9a7f91b9d4e76/fail HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58070 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:52367 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:58581 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:60353 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:60359 - "POST /api/v1/render-agent/heartbeat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59156 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:58307 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:56152 - "POST /api/v1/render-agent/claim HTTP/1.1" 204 No Content
