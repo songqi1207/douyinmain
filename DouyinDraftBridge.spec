@@ -11,14 +11,13 @@ a = Analysis(
     binaries=[],
     datas=[
         (str(root / "utils" / "data" / "jianying_meta.json"), "utils/data"),
-        (str(root / "scripts" / "run_mihe_sync_automation.ps1"), "scripts"),
         (str(root / "scripts" / "run_jianying_export_automation.ps1"), "scripts"),
     ],
     hiddenimports=["PIL.Image", "requests"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=["desktop_bridge.core", "desktop_bridge.mihe_direct"],
     noarchive=False,
     optimize=0,
 )

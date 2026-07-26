@@ -15,7 +15,7 @@ from typing import Callable
 
 import requests
 
-from desktop_bridge.core import BridgeError, import_draft_payload
+from desktop_bridge.draft_core import BridgeError, import_draft_payload
 
 
 StatusCallback = Callable[[str], None]
