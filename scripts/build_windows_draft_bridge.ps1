@@ -3,9 +3,9 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repoRoot
 
 python -m pip install --disable-pip-version-check "pyinstaller==6.15.0"
-python -m PyInstaller --noconfirm --clean DouyinDraftBridge.spec
+python -m PyInstaller --noconfirm --clean AIVideoCreator.spec
 
-$exe = Join-Path $repoRoot "dist\DouyinDraftBridge.exe"
+$exe = Join-Path $repoRoot "dist\AIVideoCreator.exe"
 if (-not (Test-Path -LiteralPath $exe)) {
     throw "Build completed without expected executable: $exe"
 }

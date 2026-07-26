@@ -12,7 +12,7 @@
 
 ```text
 前端 JSON → God 本地草稿版 Coze 工作流 → draft_key JSON
-          → DouyinDraftBridge.exe → 本地剪映草稿 → 剪映打开与导出
+          → AIVideoCreator.exe → 本地剪映草稿 → 剪映打开与导出
 ```
 
 桥接器提供两种模式：
@@ -33,7 +33,7 @@ SHA256，官方文件变化时会拒绝运行，必须先更新桥接器中的�
 生成文件：
 
 ```text
-dist\DouyinDraftBridge.exe
+dist\AIVideoCreator.exe
 ```
 
 1. 双击运行 EXE。

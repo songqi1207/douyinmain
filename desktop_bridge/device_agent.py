@@ -16,6 +16,7 @@ from typing import Callable
 import requests
 
 from desktop_bridge.draft_core import BridgeError, import_draft_payload
+from desktop_bridge.paths import app_data_dir
 
 
 StatusCallback = Callable[[str], None]
@@ -24,12 +25,7 @@ logger.addHandler(logging.NullHandler())
 
 
 def agent_log_path() -> Path:
-    return (
-        Path(os.getenv("APPDATA") or Path.home())
-        / "DouyinDraftBridge"
-        / "logs"
-        / "render-agent.log"
-    ).resolve()
+    return (app_data_dir() / "logs" / "render-agent.log").resolve()
 
 
 def _configure_agent_logging() -> None:
@@ -203,9 +199,7 @@ class DeviceAgent:
         self._heartbeat_thread: threading.Thread | None = None
         self._session = requests.Session()
         self._session.headers.update({"Authorization": f"Bearer {self.device_token}"})
-        self.output_dir = (
-            Path(os.getenv("APPDATA") or Path.home()) / "DouyinDraftBridge" / "output"
-        ).resolve()
+        self.output_dir = (app_data_dir() / "output").resolve()
 
     @property
     def running(self) -> bool:

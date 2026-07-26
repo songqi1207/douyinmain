@@ -13,28 +13,25 @@ import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from desktop_bridge.helper_metadata import HELPER_BINARY_NAME, HELPER_PRODUCT_NAME
+from desktop_bridge.paths import app_data_dir
+
 
 PROTOCOL_SCHEME = "douyin-draft"
 MUTEX_NAME = "Local\\DouyinDraftBridge.UserAgent"
 _mutex_handle = None
 
 
-def app_data_dir() -> Path:
-    root = Path(os.getenv("APPDATA") or Path.home()) / "DouyinDraftBridge"
-    root.mkdir(parents=True, exist_ok=True)
-    return root.resolve()
-
-
 def install_dir() -> Path:
     root = Path(os.getenv("LOCALAPPDATA") or os.getenv("APPDATA") or Path.home())
-    target = root / "DouyinDraftBridge"
+    target = root / "AIVideoCreator"
     target.mkdir(parents=True, exist_ok=True)
     return target.resolve()
 
 
 def _installed_target(source: Path) -> Path:
     digest = hashlib.sha256(source.read_bytes()).hexdigest()[:12]
-    return install_dir() / f"DouyinDraftBridge-{digest}.exe"
+    return install_dir() / f"{Path(HELPER_BINARY_NAME).stem}-{digest}.exe"
 
 
 def _register_windows_integration(executable: Path) -> None:
@@ -44,7 +41,7 @@ def _register_windows_integration(executable: Path) -> None:
 
     command = f'"{executable}"'
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{PROTOCOL_SCHEME}") as key:
-        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "URL:抖音工作流剪映导出助手")
+        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f"URL:{HELPER_PRODUCT_NAME}")
         winreg.SetValueEx(key, "URL Protocol", 0, winreg.REG_SZ, "")
     with winreg.CreateKey(
         winreg.HKEY_CURRENT_USER,
@@ -60,9 +57,13 @@ def _register_windows_integration(executable: Path) -> None:
         winreg.HKEY_CURRENT_USER,
         r"Software\Microsoft\Windows\CurrentVersion\Run",
     ) as key:
+        try:
+            winreg.DeleteValue(key, "DouyinDraftBridge")
+        except FileNotFoundError:
+            pass
         winreg.SetValueEx(
             key,
-            "DouyinDraftBridge",
+            "AIVideoCreator",
             0,
             winreg.REG_SZ,
             f"{command} --background",

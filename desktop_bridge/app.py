@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Tkinter UI and CLI entrypoint for DouyinDraftBridge."""
+"""Tkinter UI and CLI entrypoint for AI Video Creator."""
 
 from __future__ import annotations
 
@@ -21,6 +21,8 @@ from desktop_bridge.draft_core import (
     open_directory,
 )
 from desktop_bridge.device_agent import DeviceAgent, agent_log_path, pair_with_site
+from desktop_bridge.helper_metadata import HELPER_PRODUCT_NAME, HELPER_VERSION
+from desktop_bridge.paths import app_data_dir
 from desktop_bridge.windows_integration import (
     acquire_single_instance,
     consume_wake_signal,
@@ -30,13 +32,8 @@ from desktop_bridge.windows_integration import (
 )
 
 
-BRIDGE_VERSION = "1.3.0"
-
-
 def _settings_path() -> Path:
-    base = Path(os.getenv("APPDATA") or Path.home()) / "DouyinDraftBridge"
-    base.mkdir(parents=True, exist_ok=True)
-    return base / "settings.json"
+    return app_data_dir() / "settings.json"
 
 
 def _load_settings() -> dict:
@@ -63,7 +60,7 @@ class DraftBridgeApp:
         self.tk = tk
         self.ttk = ttk
         self.root = tk.Tk()
-        self.root.title(f"抖音工作流 · 本机剪映导出助手 v{BRIDGE_VERSION}")
+        self.root.title(f"{HELPER_PRODUCT_NAME} v{HELPER_VERSION}")
         self.root.geometry("940x900")
         self.root.minsize(800, 760)
         self.last_report: dict = {}

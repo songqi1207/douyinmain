@@ -1,5 +1,6 @@
-import os
+import hashlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,6 +30,23 @@ from workflow_registry import get_workflow
 
 
 class WorkflowApiTests(unittest.TestCase):
+    def test_helper_download_is_versioned_and_never_cached(self):
+        with tempfile.TemporaryDirectory(prefix="helper-download-") as temporary:
+            root = Path(temporary)
+            executable = root / "dist" / "AIVideoCreator.exe"
+            executable.parent.mkdir()
+            executable.write_bytes(b"MZ-versioned-helper")
+            with patch.object(fastapi_app, "ROOT", root):
+                response = fastapi_app.api_download_draft_bridge()
+            self.assertEqual(Path(response.path), executable)
+            self.assertIn("AI-Video-Creator-v1.3.1.exe", response.headers["content-disposition"])
+            self.assertIn("no-store", response.headers["cache-control"])
+            self.assertEqual(response.headers["x-helper-version"], "1.3.1")
+            self.assertEqual(
+                response.headers["x-content-sha256"],
+                hashlib.sha256(executable.read_bytes()).hexdigest(),
+            )
+
     @classmethod
     def setUpClass(cls):
         cls.admin_client = TestClient(app)

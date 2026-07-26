@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from desktop_bridge.helper_metadata import HELPER_BINARY_NAME
+
 
 root = Path(SPECPATH)
 
@@ -29,7 +31,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="DouyinDraftBridge",
+    name=Path(HELPER_BINARY_NAME).stem,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

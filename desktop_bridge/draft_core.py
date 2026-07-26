@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import utils.draft_key_importer as draft_importer
+from desktop_bridge.paths import app_data_dir
 from utils.draft_key_importer import AssetDownloadError, KeyValidationError
 
 
@@ -91,11 +92,7 @@ def _configure_frozen_state() -> None:
     configured = os.getenv("DRAFT_BRIDGE_STATE_DIR", "").strip()
     if not configured and not getattr(sys, "frozen", False):
         return
-    base = (
-        Path(configured).expanduser()
-        if configured
-        else Path(os.getenv("APPDATA") or Path.home()) / "DouyinDraftBridge" / "data"
-    )
+    base = Path(configured).expanduser() if configured else app_data_dir() / "data"
     base.mkdir(parents=True, exist_ok=True)
     draft_importer._CACHE_DIR = base / "draft_key_cache"
     draft_importer._REGISTRY_PATH = base / "draft_key_imports.json"

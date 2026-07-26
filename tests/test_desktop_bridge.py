@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -19,11 +20,29 @@ from desktop_bridge.core import (
     import_mihe_server_draft,
 )
 from desktop_bridge.device_agent import normalize_site_url, pair_with_site
+from desktop_bridge.paths import app_data_dir
 import desktop_bridge.windows_integration as windows_integration
 from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_new_product_data_directory_migrates_existing_pairing_settings(self):
+        with tempfile.TemporaryDirectory(prefix="helper-data-migration-") as temporary:
+            root = Path(temporary)
+            legacy = root / "DouyinDraftBridge"
+            legacy.mkdir()
+            (legacy / "settings.json").write_text(
+                json.dumps({"device_id": "paired-device"}),
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"APPDATA": str(root)}):
+                current = app_data_dir()
+            self.assertEqual(current.name, "AIVideoCreator")
+            self.assertEqual(
+                json.loads((current / "settings.json").read_text(encoding="utf-8"))["device_id"],
+                "paired-device",
+            )
+
     def test_pairs_outbound_device_agent_without_local_server(self):
         response = MagicMock(status_code=200)
         response.json.return_value = {

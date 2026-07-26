@@ -21,6 +21,12 @@ from starlette.middleware.wsgi import WSGIMiddleware
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 from business_workflows import find_preview_asset, find_workflow_downloads
+from desktop_bridge.helper_metadata import (
+    HELPER_BINARY_NAME,
+    HELPER_DOWNLOAD_NAME,
+    HELPER_PRODUCT_NAME,
+    HELPER_VERSION,
+)
 from device_rendering import (
     authenticate_device,
     create_pairing_code,
@@ -641,16 +647,23 @@ def api_job_result(filename: str):
 
 @app.get("/api/v1/downloads/draft-bridge")
 def api_download_draft_bridge():
-    executable = ROOT / "dist" / "DouyinDraftBridge.exe"
+    executable = ROOT / "dist" / HELPER_BINARY_NAME
     if not executable.is_file():
         raise HTTPException(
             status_code=404,
-            detail={"code": "bridge_not_built", "message": "Windows 本机剪映助手尚未打包"},
+            detail={"code": "bridge_not_built", "message": f"{HELPER_PRODUCT_NAME}尚未打包"},
         )
     return FileResponse(
         executable,
         media_type="application/vnd.microsoft.portable-executable",
-        filename="DouyinDraftBridge.exe",
+        filename=HELPER_DOWNLOAD_NAME,
+        headers={
+            "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "X-Helper-Version": HELPER_VERSION,
+            "X-Content-SHA256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+        },
     )
 
 

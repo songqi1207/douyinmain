@@ -65,7 +65,7 @@ WORKFLOW_LOG_LEVEL=INFO
 底部点击“打开运行日志”（设备区也有“查看日志”入口），或直接打开：
 
 ```text
-%APPDATA%\DouyinDraftBridge\logs\render-agent.log
+%APPDATA%\AIVideoCreator\logs\render-agent.log
 ```
 
 日志按 2 MB 轮换并保留 3 份，不记录设备令牌或 `draft_key` 内容。
