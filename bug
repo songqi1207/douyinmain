@@ -1,61 +1,50 @@
-2026-07-26 15:33:22,606 INFO agent_started device_id=1fd87ab03b3647dda2666fb6ba82c404 site=http://localhost:5173
-2026-07-26 15:33:35,760 INFO agent_stopping device_id=1fd87ab03b3647dda2666fb6ba82c404
-2026-07-26 15:33:35,764 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
-2026-07-26 15:33:44,887 INFO agent_stopping device_id=ffac8be1f12943b4abbda2902fb3132a
-2026-07-26 15:33:44,894 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
-2026-07-26 15:34:41,974 INFO device_task_claimed job_id=ca528c4355ab4bffabc25fb0e4e0a44a workflow=OWN02
-2026-07-26 15:34:41,978 INFO draft_import_started job_id=ca528c4355ab4bffabc25fb0e4e0a44a
-2026-07-26 15:34:46,129 INFO draft_import_finished job_id=ca528c4355ab4bffabc25fb0e4e0a44a elapsed_seconds=4.157
-2026-07-26 15:34:46,131 INFO jianying_export_started job_id=ca528c4355ab4bffabc25fb0e4e0a44a
-2026-07-26 15:36:18,889 INFO jianying_export_finished job_id=ca528c4355ab4bffabc25fb0e4e0a44a returncode=1 elapsed_seconds=92.750
-2026-07-26 15:36:18,889 ERROR device_task_failed job_id=ca528c4355ab4bffabc25fb0e4e0a44a error= ȴ   ӳ    Ԫ س ʱ   ݸ忨Ƭ
-    λ   C:\Users\1\AppData\Local\Temp\_MEI128042\scripts\run_jianying_export_automation.ps1:77  ַ : 5
-+     throw " ȴ   ӳ    Ԫ س ʱ  $Description"
-+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : OperationStopped: ( ȴ   ӳ    Ԫ س ʱ   ݸ忨Ƭ:String) [], RuntimeException
-    + FullyQualifiedErrorId :  ȴ   ӳ    Ԫ س ʱ   ݸ忨Ƭ
+2026-07-27 16:03:09,201 INFO agent_stopping device_id=310fe708296f4cb9ac91a19789254ef5
+2026-07-27 16:04:20,258 INFO agent_started version=1.3.9 device_id=310fe708296f4cb9ac91a19789254ef5 site=http://localhost:5173
+2026-07-27 16:04:40,754 INFO device_task_claimed job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 workflow=OWN02
+2026-07-27 16:04:40,759 INFO draft_import_started job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8
+2026-07-27 16:04:44,102 INFO draft_import_finished job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 draft_id=CB374D45-9026-47F3-A460-42441C571B0A draft_dir=C:\Users\1\AppData\Local\JianyingPro\User Data\Projects\com.lveditor.draft\CB374D45-9026-47F3-A460-42441C571B0A tracks=22 segments=81 warnings=0 elapsed_seconds=3.344
+2026-07-27 16:04:44,105 INFO jianying_export_started job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8
+2026-07-27 16:05:05,195 INFO jianying_export_finished job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 returncode=1 elapsed_seconds=21.078
+2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=automation_started timeout_seconds=1800
+2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=jianying_version_detected version=1.0.0.000000
+2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=starting_jianying accessibility=forced
+2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=jianying_window_ready process_id=22992 class=HomePage_QMLTYPE_183
+2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=preparing_draft_home
+2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=draft_home_refreshed
+2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=ui_tree_probed elements=1 started_by_helper=True version=1.0.0.000000
+2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=ui_element type=ControlType.Window class=HomePage_QMLTYPE_183 name=剪映专业版 description=
+2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=ui_snapshot_finished elements=1
+2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=ui_tree_unavailable action=use_supported_jianying version=1.0.0.000000
+2026-07-27 16:05:05,195 INFO jianying_uia2_fallback_started job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8
+2026-07-27 16:05:05,223 INFO jianying_uia2_stage job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 stage=uia2_started draft_name=CB374D45-9026-47F3-A460-42441C571B0A
+2026-07-27 16:05:06,350 INFO jianying_uia2_stage job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 stage=uia2_home_ready class=HomePage_QMLTYPE_183
+2026-07-27 16:05:21,352 WARNING jianying_uia2_fallback_failed job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 error=UIA2 没有找到草稿卡片“CB374D45-9026-47F3-A460-42441C571B0A”
+2026-07-27 16:05:21,352 ERROR device_task_failed job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 error=剪映 UIA2 自动导出失败：UIA2 没有找到草稿卡片“CB374D45-9026-47F3-A460-42441C571B0A”
 Traceback (most recent call last):
-  File "desktop_bridge\device_agent.py", line 300, in _process_task
-  File "desktop_bridge\device_agent.py", line 173, in _run_native_export
-desktop_bridge.draft_core.BridgeError:  ȴ   ӳ    Ԫ س ʱ   ݸ忨Ƭ
-    λ   C:\Users\1\AppData\Local\Temp\_MEI128042\scripts\run_jianying_export_automation.ps1:77  ַ : 5
-+     throw " ȴ   ӳ    Ԫ س ʱ  $Description"
-+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : OperationStopped: ( ȴ   ӳ    Ԫ س ʱ   ݸ忨Ƭ:String) [], RuntimeException
-    + FullyQualifiedErrorId :  ȴ   ӳ    Ԫ س ʱ   ݸ忨Ƭ
-2026-07-26 15:36:18,926 INFO device_task_failure_reported job_id=ca528c4355ab4bffabc25fb0e4e0a44a status=200
-2026-07-26 15:54:27,267 INFO agent_stopping device_id=ffac8be1f12943b4abbda2902fb3132a
-2026-07-26 15:54:27,278 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
-2026-07-26 15:54:44,292 INFO agent_stopping device_id=ffac8be1f12943b4abbda2902fb3132a
-2026-07-26 15:54:44,297 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
-2026-07-26 16:31:29,344 INFO agent_stopping device_id=ffac8be1f12943b4abbda2902fb3132a
-2026-07-26 16:31:29,350 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
-2026-07-26 16:31:41,470 INFO agent_stopping device_id=ffac8be1f12943b4abbda2902fb3132a
-2026-07-26 16:31:41,473 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
-2026-07-26 17:23:25,749 INFO agent_stopping device_id=ffac8be1f12943b4abbda2902fb3132a
-2026-07-26 17:23:35,779 INFO agent_started device_id=ffac8be1f12943b4abbda2902fb3132a site=http://localhost:5173
-2026-07-26 17:53:41,779 WARNING agent_request_failed error=500 Server Error: Internal Server Error for url: http://localhost:5173/api/v1/render-agent/claim
-2026-07-26 18:31:21,208 WARNING agent_request_failed error=500 Server Error: Internal Server Error for url: http://localhost:5173/api/v1/render-agent/claim
-2026-07-26 22:11:48,153 WARNING agent_request_failed error=500 Server Error: Internal Server Error for url: http://localhost:5173/api/v1/render-agent/claim
-2026-07-26 22:12:51,316 INFO device_task_claimed job_id=7de89c0939564b5382eb1d799dde2890 workflow=OWN02
-2026-07-26 22:12:51,319 INFO draft_import_started job_id=7de89c0939564b5382eb1d799dde2890
-2026-07-26 22:13:06,227 INFO draft_import_finished job_id=7de89c0939564b5382eb1d799dde2890 elapsed_seconds=14.906
-2026-07-26 22:13:06,236 INFO jianying_export_started job_id=7de89c0939564b5382eb1d799dde2890
-2026-07-26 22:15:05,200 INFO jianying_export_finished job_id=7de89c0939564b5382eb1d799dde2890 returncode=1 elapsed_seconds=118.969
-2026-07-26 22:15:05,200 ERROR device_task_failed job_id=7de89c0939564b5382eb1d799dde2890 error=剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，让助手重新启动剪映并刷新本地草稿列表。
+  File "desktop_bridge\device_agent.py", line 219, in _run_native_export
+  File "desktop_bridge\jianying_uia_export.py", line 131, in export_draft_uia
+desktop_bridge.jianying_uia_export.JianyingUIAError: UIA2 没有找到草稿卡片“CB374D45-9026-47F3-A460-42441C571B0A”
+
+The above exception was the direct cause of the following exception:
+
 Traceback (most recent call last):
-  File "desktop_bridge\device_agent.py", line 329, in _process_task
-  File "desktop_bridge\device_agent.py", line 188, in _run_native_export
-desktop_bridge.draft_core.BridgeError: 剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，让助手重新启动剪映并刷新本地草稿列表。
-2026-07-26 22:15:05,270 INFO device_task_failure_reported job_id=7de89c0939564b5382eb1d799dde2890 status=200
-2026-07-26 23:31:34,646 INFO device_task_claimed job_id=d34ac0c84bdb4f07a5c39e856b58e031 workflow=OWN02
-2026-07-26 23:31:34,648 INFO draft_import_started job_id=d34ac0c84bdb4f07a5c39e856b58e031
-2026-07-26 23:31:38,713 INFO draft_import_finished job_id=d34ac0c84bdb4f07a5c39e856b58e031 elapsed_seconds=4.063
-2026-07-26 23:31:38,725 INFO jianying_export_started job_id=d34ac0c84bdb4f07a5c39e856b58e031
-2026-07-26 23:33:16,039 INFO jianying_export_finished job_id=d34ac0c84bdb4f07a5c39e856b58e031 returncode=1 elapsed_seconds=97.312
-2026-07-26 23:33:16,039 ERROR device_task_failed job_id=d34ac0c84bdb4f07a5c39e856b58e031 error=剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，让助手重新启动剪映并刷新本地草稿列表。
-Traceback (most recent call last):
-  File "desktop_bridge\device_agent.py", line 329, in _process_task
-  File "desktop_bridge\device_agent.py", line 188, in _run_native_export
-desktop_bridge.draft_core.BridgeError: 剪映没有显示刚导入的草稿。请完全退出剪映后重试任务，让助手重新启动剪映并刷新本地草稿列表。
-2026-07-26 23:33:16,154 INFO device_task_failure_reported job_id=d34ac0c84bdb4f07a5c39e856b58e031 status=200
+  File "desktop_bridge\device_agent.py", line 401, in _process_task
+  File "desktop_bridge\device_agent.py", line 239, in _run_native_export
+desktop_bridge.draft_core.BridgeError: 剪映 UIA2 自动导出失败：UIA2 没有找到草稿卡片“CB374D45-9026-47F3-A460-42441C571B0A”
+2026-07-27 16:05:21,416 INFO device_task_failure_reported job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 status=200
+2026-07-27 16:05:21,481 INFO device_task_claimed job_id=2350fcf8815f4ab088faab4e17df0cea workflow=OWN02
+2026-07-27 16:05:21,551 INFO draft_import_started job_id=2350fcf8815f4ab088faab4e17df0cea
+2026-07-27 16:05:35,328 INFO draft_import_finished job_id=2350fcf8815f4ab088faab4e17df0cea draft_id=28B96CA9-9337-4912-8E74-15FC60874D47 draft_dir=C:\Users\1\AppData\Local\JianyingPro\User Data\Projects\com.lveditor.draft\28B96CA9-9337-4912-8E74-15FC60874D47 tracks=22 segments=91 warnings=0 elapsed_seconds=13.843
+2026-07-27 16:05:35,331 INFO jianying_export_started job_id=2350fcf8815f4ab088faab4e17df0cea
+2026-07-27 16:05:50,197 INFO jianying_export_finished job_id=2350fcf8815f4ab088faab4e17df0cea returncode=1 elapsed_seconds=14.875
+2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=automation_started timeout_seconds=1800
+2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=jianying_version_detected version=1.0.0.000000
+2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=using_existing_jianying process_id=22992
+2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=jianying_window_ready process_id=22992 class=HomePage_QMLTYPE_183
+2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=preparing_draft_home
+2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=draft_home_refreshed
+2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=ui_tree_probed elements=0 started_by_helper=False version=1.0.0.000000
+2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=ui_snapshot_finished elements=0
+2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=ui_tree_unavailable action=restart_with_helper version=1.0.0.000000
+2026-07-27 16:05:50,197 INFO jianying_uia2_fallback_started job_id=2350fcf8815f4ab088faab4e17df0cea
+2026-07-27 16:05:50,198 INFO jianying_uia2_stage job_id=2350fcf8815f4ab088faab4e17df0cea stage=uia2_started draft_name=28B96CA9-9337-4912-8E74-15FC60874D47
