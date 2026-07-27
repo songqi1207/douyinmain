@@ -618,7 +618,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .device-hero-status p { margin: 0; color: #807b72; font-size: 11px; }
 .device-hero-status button { display: inline-flex; align-items: center; gap: 6px; border: 0; color: #a99c88; background: transparent; cursor: pointer; font-size: 11px; }
 .device-hero-status button svg { width: 14px; }
-.device-onboarding { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 18px 0; }
+.device-onboarding { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 18px 0; }
 .device-onboarding article { position: relative; min-height: 270px; display: flex; align-items: flex-start; flex-direction: column; padding: 23px; border: 1px solid #37342e; border-radius: 15px; background: #191816; }
 .device-onboarding em { position: absolute; right: 18px; top: 16px; color: #6e5736; font-style: normal; font-size: 11px; }
 .device-onboarding article > span { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 13px; color: #d1a25c; background: #292116; }

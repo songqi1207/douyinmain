@@ -118,12 +118,21 @@ export function DevicesPage() {
           <article>
             <em>01</em>
             <span><Download /></span>
-            <h2>下载 AI 视频创作助手</h2>
-            <p>下载 Windows 助手并双击运行。当前版本 v1.3.9，会自动替换旧版并兼容剪映 QML 控件。</p>
-            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.3.9">下载 v1.3.9</a>
+            <h2>安装兼容版剪映</h2>
+            <p>自动导出使用剪映专业版 5.9.0.11632。安装包来自字节官方 CDN，并已核对数字签名和 SHA-256。</p>
+            <a className="secondary-button" href="/api/v1/downloads/jianying-compatible">
+              <Download />下载剪映 5.9
+            </a>
           </article>
           <article>
             <em>02</em>
+            <span><Download /></span>
+            <h2>下载 AI 视频创作助手</h2>
+            <p>下载 Windows 助手并双击运行。当前版本 v1.3.9，会自动替换旧版并连接兼容版剪映。</p>
+            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.3.9">下载 v1.3.9</a>
+          </article>
+          <article>
+            <em>03</em>
             <span><Link2 /></span>
             <h2>生成配对码</h2>
             <p>配对码约十分钟有效，只能使用一次，不会暴露你的登录信息。</p>
@@ -132,7 +141,7 @@ export function DevicesPage() {
             </button>
           </article>
           <article>
-            <em>03</em>
+            <em>04</em>
             <span><Laptop /></span>
             <h2>启动并保持在线</h2>
             <p>网页会在生成时自动唤醒助手；也可以现在手动启动并检查连接。</p>

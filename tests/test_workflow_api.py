@@ -60,6 +60,22 @@ class WorkflowApiTests(unittest.TestCase):
                 hashlib.sha256(executable.read_bytes()).hexdigest(),
             )
 
+    def test_compatible_jianying_download_uses_verified_official_cdn(self):
+        response = fastapi_app.api_download_compatible_jianying()
+
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(
+            response.headers["location"],
+            "https://lf3-package.vlabstatic.com/obj/faceu-packages/"
+            "Jianying_5_9_0_11632_jianyingpro_0_creatortool.exe",
+        )
+        self.assertEqual(response.headers["x-jianying-version"], "5.9.0.11632")
+        self.assertEqual(
+            response.headers["x-content-sha256"],
+            "C0919B9A6D499FB8659DE3D314D25B10"
+            "C7892F9072CB3AD00BEF62A89D13E399",
+        )
+
     @classmethod
     def setUpClass(cls):
         cls.admin_client = TestClient(app)

@@ -88,6 +88,16 @@ from utils.volcengine_vod_renderer import (
 
 
 ROOT = Path(__file__).resolve().parent
+JIANYING_COMPAT_VERSION = "5.9.0.11632"
+JIANYING_COMPAT_DOWNLOAD_URL = (
+    os.getenv("JIANYING_COMPAT_DOWNLOAD_URL") or
+    "https://lf3-package.vlabstatic.com/obj/faceu-packages/"
+    "Jianying_5_9_0_11632_jianyingpro_0_creatortool.exe"
+).strip()
+JIANYING_COMPAT_SHA256 = (
+    "C0919B9A6D499FB8659DE3D314D25B10"
+    "C7892F9072CB3AD00BEF62A89D13E399"
+)
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 SESSION_COOKIE = "workflow_session"
 
@@ -665,6 +675,19 @@ def api_download_draft_bridge():
             "Expires": "0",
             "X-Helper-Version": HELPER_VERSION,
             "X-Content-SHA256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+        },
+    )
+
+
+@app.get("/api/v1/downloads/jianying-compatible")
+def api_download_compatible_jianying():
+    return RedirectResponse(
+        JIANYING_COMPAT_DOWNLOAD_URL,
+        status_code=307,
+        headers={
+            "Cache-Control": "no-store",
+            "X-Jianying-Version": JIANYING_COMPAT_VERSION,
+            "X-Content-SHA256": JIANYING_COMPAT_SHA256,
         },
     )
 
