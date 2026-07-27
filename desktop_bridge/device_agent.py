@@ -90,6 +90,84 @@ def _resource_path(relative: str) -> Path:
     return (Path(__file__).resolve().parents[1] / relative).resolve()
 
 
+def _run_pyjianying_export(
+    draft_name: str,
+    output_path: Path,
+    executable: Path,
+    timeout: int,
+    job_id: str,
+) -> Path:
+    """Export through pyJianYingDraft before using our compatibility drivers."""
+    try:
+        from pyJianYingDraft import JianyingController
+    except ImportError as exc:
+        raise BridgeError("助手缺少 pyJianYingDraft 导出组件") from exc
+
+    controller = None
+    last_error: Exception | None = None
+    try:
+        controller = JianyingController()
+    except Exception as exc:
+        last_error = exc
+
+    if controller is None:
+        logger.info(
+            "pyjianying_starting_jianying job_id=%s executable=%s",
+            job_id,
+            executable,
+        )
+        subprocess.Popen(
+            [str(executable), "--force-renderer-accessibility"],
+            cwd=str(executable.parent),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        deadline = time.monotonic() + int(
+            os.getenv("DEVICE_JIANYING_START_TIMEOUT_SECONDS") or 60
+        )
+        while time.monotonic() < deadline:
+            try:
+                controller = JianyingController()
+                break
+            except Exception as exc:
+                last_error = exc
+                time.sleep(1)
+
+    if controller is None:
+        raise BridgeError(f"pyJianYingDraft 没有找到剪映窗口：{last_error}")
+
+    logger.info(
+        "pyjianying_export_started job_id=%s draft_name=%s timeout_seconds=%s",
+        job_id,
+        draft_name,
+        timeout,
+    )
+    started_at = time.monotonic()
+    controller.export_draft(
+        draft_name,
+        str(output_path),
+        timeout=timeout,
+    )
+    if not output_path.is_file() or output_path.stat().st_size <= 0:
+        raise BridgeError("pyJianYingDraft 已完成操作，但没有生成有效的 MP4 文件")
+    logger.info(
+        "pyjianying_export_finished job_id=%s size_bytes=%s elapsed_seconds=%.3f",
+        job_id,
+        output_path.stat().st_size,
+        time.monotonic() - started_at,
+    )
+    try:
+        import ctypes
+
+        controller.get_window()
+        controller.app.SetTopmost(False)
+        handle = int(getattr(controller.app, "NativeWindowHandle", 0) or 0)
+        if handle:
+            ctypes.windll.user32.ShowWindow(handle, 6)
+    except Exception:
+        pass
+    return output_path
+
+
 def _run_native_export(
     task: dict,
     draft_root: str,
@@ -133,13 +211,36 @@ def _run_native_export(
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = (output_dir / f"{task['job_id']}.mp4").resolve()
     automation = _resource_path("scripts/run_jianying_export_automation.ps1")
-    if not automation.is_file():
-        raise BridgeError(f"剪映自动导出脚本不存在：{automation}")
     if output_path.exists():
         output_path.unlink()
 
     if progress:
         progress(f"正在用剪映专业版导出“{draft_name}”…")
+    export_timeout = int(os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800)
+    job_id = str(task.get("job_id") or "-")
+    if progress:
+        progress("正在使用 pyJianYingDraft 导出视频…")
+    try:
+        return _run_pyjianying_export(
+            draft_name,
+            output_path,
+            executable,
+            export_timeout,
+            job_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "pyjianying_export_failed job_id=%s fallback=compatibility_driver error=%s",
+            job_id,
+            exc,
+        )
+        if output_path.exists():
+            output_path.unlink()
+        if progress:
+            progress("pyJianYingDraft 未能完成导出，正在切换兼容模式…")
+
+    if not automation.is_file():
+        raise BridgeError(f"剪映自动导出脚本不存在：{automation}")
     command = [
         "powershell.exe",
         "-NoProfile",
@@ -156,7 +257,7 @@ def _run_native_export(
         "-LogPath",
         str(agent_log_path()),
         "-TimeoutSeconds",
-        str(int(os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800)),
+        str(export_timeout),
     ]
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     export_started_at = time.monotonic()
@@ -167,7 +268,7 @@ def _run_native_export(
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=int(os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800) + 60,
+        timeout=export_timeout + 60,
         creationflags=flags,
     )
     logger.info(

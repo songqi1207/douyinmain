@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from desktop_bridge.helper_metadata import HELPER_BINARY_NAME
+from PyInstaller.utils.hooks import collect_all
 
 
 root = Path(SPECPATH)
@@ -30,6 +31,10 @@ if missing_tk_paths:
         + ", ".join(missing_tk_paths)
     )
 
+pyjianying_datas, pyjianying_binaries, pyjianying_hiddenimports = collect_all(
+    "pyJianYingDraft"
+)
+
 a = Analysis(
     [str(root / "desktop_bridge_main.py")],
     pathex=[str(root)],
@@ -37,13 +42,13 @@ a = Analysis(
         (str(tkinter_binary), "."),
         (str(tcl_binary), "."),
         (str(tk_binary), "."),
-    ],
+    ] + pyjianying_binaries,
     datas=[
         (str(root / "utils" / "data" / "jianying_meta.json"), "utils/data"),
         (str(root / "scripts" / "run_jianying_export_automation.ps1"), "scripts"),
         (str(tcl_data), "_tcl_data"),
         (str(tk_data), "_tk_data"),
-    ],
+    ] + pyjianying_datas,
     hiddenimports=[
         "PIL.Image",
         "requests",
@@ -57,7 +62,7 @@ a = Analysis(
         "tkinter.messagebox",
         "tkinter.scrolledtext",
         "tkinter.ttk",
-    ],
+    ] + pyjianying_hiddenimports,
     hookspath=[str(root / "pyinstaller_hooks")],
     hooksconfig={},
     runtime_hooks=[],

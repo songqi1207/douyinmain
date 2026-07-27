@@ -23,6 +23,7 @@ from desktop_bridge.core import (
 )
 from desktop_bridge.device_agent import (
     _run_native_export,
+    _run_pyjianying_export,
     normalize_site_url,
     pair_with_site,
 )
@@ -38,6 +39,85 @@ class DesktopBridgeTests(unittest.TestCase):
 
         self.assertLess(source.index("self.root.withdraw()"), source.index("self._build_ui()"))
 
+    @patch("pyJianYingDraft.JianyingController")
+    def test_pyjianyingdraft_controller_exports_requested_draft(
+        self,
+        controller_type,
+    ):
+        with tempfile.TemporaryDirectory(prefix="pyjianying-controller-test-") as temporary:
+            root = Path(temporary)
+            executable = root / "JianyingPro.exe"
+            output_path = root / "result.mp4"
+            executable.write_bytes(b"exe")
+            controller = controller_type.return_value
+
+            def write_export(_name, destination, **_kwargs):
+                Path(destination).write_bytes(b"mp4")
+
+            controller.export_draft.side_effect = write_export
+
+            result = _run_pyjianying_export(
+                "DRAFT-ID",
+                output_path,
+                executable,
+                900,
+                "job-id",
+            )
+
+            self.assertEqual(result.read_bytes(), b"mp4")
+            controller.export_draft.assert_called_once_with(
+                "DRAFT-ID",
+                str(output_path),
+                timeout=900,
+            )
+
+    @patch("desktop_bridge.device_agent.subprocess.run")
+    @patch("desktop_bridge.device_agent._run_pyjianying_export")
+    @patch("desktop_bridge.device_agent.import_draft_payload")
+    def test_native_export_uses_pyjianyingdraft_before_compatibility_driver(
+        self,
+        import_payload,
+        run_pyjianying,
+        run_compatibility_driver,
+    ):
+        with tempfile.TemporaryDirectory(prefix="pyjianying-primary-test-") as temporary:
+            root = Path(temporary)
+            draft_root = root / "drafts"
+            output_root = root / "output"
+            executable = root / "JianyingPro.exe"
+            draft_root.mkdir()
+            executable.write_bytes(b"exe")
+            import_payload.return_value = {
+                "draft_id": "DRAFT-ID",
+                "draft_name": "DRAFT-ID",
+                "draft_dir": str(draft_root / "DRAFT-ID"),
+                "track_count": 2,
+                "segment_count": 3,
+                "warnings": [],
+            }
+
+            def write_primary_result(_name, output_path, *_args):
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"mp4")
+                return output_path
+
+            run_pyjianying.side_effect = write_primary_result
+
+            result = _run_native_export(
+                {"job_id": "job-id", "draft_key": {"calls": []}},
+                str(draft_root),
+                str(executable),
+                output_root,
+            )
+
+            self.assertEqual(result.read_bytes(), b"mp4")
+            run_pyjianying.assert_called_once()
+            run_compatibility_driver.assert_not_called()
+
+    @patch(
+        "desktop_bridge.device_agent._run_pyjianying_export",
+        side_effect=BridgeError("primary failed"),
+    )
     @patch("desktop_bridge.jianying_uia_export.export_draft_uia")
     @patch("desktop_bridge.device_agent.subprocess.run")
     @patch("desktop_bridge.device_agent.import_draft_payload")
@@ -46,6 +126,7 @@ class DesktopBridgeTests(unittest.TestCase):
         import_payload,
         run_legacy_export,
         export_uia2,
+        run_pyjianying,
     ):
         with tempfile.TemporaryDirectory(prefix="uia2-fallback-test-") as temporary:
             root = Path(temporary)
@@ -87,6 +168,7 @@ class DesktopBridgeTests(unittest.TestCase):
             )
 
             self.assertEqual(result.read_bytes(), b"mp4")
+            run_pyjianying.assert_called_once()
             export_uia2.assert_called_once()
 
     def test_jianying_automation_uses_full_description_controls(self):

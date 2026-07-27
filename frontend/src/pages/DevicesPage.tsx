@@ -128,8 +128,8 @@ export function DevicesPage() {
             <em>02</em>
             <span><Download /></span>
             <h2>下载 AI 视频创作助手</h2>
-            <p>下载后双击一次即可。当前版本 v1.4.0，安装完成后会静默驻留并随 Windows 自动启动。</p>
-            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.4.0">下载 v1.4.0</a>
+            <p>下载后双击一次即可。当前版本 v1.4.1，优先使用 pyJianYingDraft 导出，并在后台静默驻留。</p>
+            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.4.1">下载 v1.4.1</a>
           </article>
           <article>
             <em>03</em>

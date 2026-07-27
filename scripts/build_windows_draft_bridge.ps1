@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repoRoot
 
-python -m pip install --disable-pip-version-check "pyinstaller==6.15.0" "uiautomation==2.0.29"
+python -m pip install --disable-pip-version-check "pyinstaller==6.15.0" "uiautomation==2.0.29" "pyJianYingDraft==0.3.0"
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to install Windows helper build dependencies (exit code $LASTEXITCODE)"
 }
