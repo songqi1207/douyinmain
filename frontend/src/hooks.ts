@@ -16,16 +16,28 @@ export function useJobPolling(
   useEffect(() => {
     if (!job || TERMINAL.has(job.status)) return;
     let active = true;
-    const timer = window.setTimeout(() => {
-      fetchJob(job.id)
-        .then(({ job: next }) => active && setJob(next))
-        .catch((error: Error) => active && onError?.(error.message));
-    }, 2000);
+    let timer: number | undefined;
+    const jobId = job.id;
+    const poll = async () => {
+      try {
+        const { job: next } = await fetchJob(jobId);
+        if (!active) return;
+        setJob(next);
+        if (!TERMINAL.has(next.status)) {
+          timer = window.setTimeout(poll, 2000);
+        }
+      } catch (error) {
+        if (!active) return;
+        onError?.((error as Error).message);
+        timer = window.setTimeout(poll, 4000);
+      }
+    };
+    timer = window.setTimeout(poll, 2000);
     return () => {
       active = false;
-      window.clearTimeout(timer);
+      if (timer) window.clearTimeout(timer);
     };
-  }, [job?.id, job?.status, job?.updated_at]);
+  }, [job?.id]);
 
   return { job, setJob };
 }

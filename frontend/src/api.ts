@@ -82,16 +82,16 @@ export async function fetchJobs(params: {
   });
   if (params.status && params.status !== "all") query.set("status", params.status);
   if (params.workflowCode) query.set("workflow_code", params.workflowCode);
-  return request<JobPage>(`/api/v1/jobs?${query}`);
+  return request<JobPage>(`/api/v1/jobs?${query}`, { cache: "no-store" });
 }
 
 export async function fetchJob(jobId: string) {
-  return request<{ job: Job }>(`/api/v1/jobs/${jobId}`);
+  return request<{ job: Job }>(`/api/v1/jobs/${jobId}`, { cache: "no-store" });
 }
 
 export async function fetchJobLogs(jobId: string, afterId = 0) {
   const query = afterId > 0 ? `?after_id=${afterId}` : "";
-  return request<{ items: JobLogEntry[] }>(`/api/v1/jobs/${jobId}/logs${query}`);
+  return request<{ items: JobLogEntry[] }>(`/api/v1/jobs/${jobId}/logs${query}`, { cache: "no-store" });
 }
 
 export async function createJob(workflowCode: string, category: string, inputs: Record<string, unknown>) {
