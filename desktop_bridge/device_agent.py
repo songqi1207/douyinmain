@@ -190,6 +190,18 @@ def _run_native_export(
             )
     if completed.returncode != 0:
         stage_output = "\n".join(stage_lines)
+        if "stage=ui_tree_unavailable" in stage_output:
+            if "action=restart_with_helper" in stage_output:
+                raise BridgeError(
+                    "剪映已打开，但没有向助手开放内部控件。请完全退出剪映（包括后台进程）"
+                    "后重试，让助手使用可访问性模式重新启动剪映；不要让剪映和助手一个"
+                    "“以管理员身份运行”、另一个普通运行。"
+                )
+            raise BridgeError(
+                "剪映没有向助手开放内部控件，无法自动点击草稿和导出按钮。"
+                "当前剪映 7+ 版本可能隐藏了自动化控件；请改用剪映专业版 5.9，"
+                "或确认剪映与助手使用相同的运行权限。"
+            )
         if "stage=draft_card_not_found" in stage_output:
             raise BridgeError(
                 "剪映首页没有识别到目标草稿卡片。请确认助手使用的草稿目录与"

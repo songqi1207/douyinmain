@@ -70,9 +70,22 @@ function Get-FullDescription($Element) {
 }
 
 function Get-JianyingProcess {
-    Get-Process | Where-Object {
+    $candidates = @(Get-Process | Where-Object {
         $_.ProcessName -match '^(JianyingPro|CapCut)$' -and $_.MainWindowHandle -ne 0
-    } | Sort-Object StartTime | Select-Object -Last 1
+    })
+    $preferred = @($candidates | Where-Object {
+        try {
+            $window = [System.Windows.Automation.AutomationElement]::FromHandle($_.MainWindowHandle)
+            $window -and $window.Current.ClassName -match '(HomePage|MainWindow)'
+        }
+        catch {
+            $false
+        }
+    })
+    if ($preferred.Count -gt 0) {
+        return $preferred | Sort-Object StartTime | Select-Object -Last 1
+    }
+    return $candidates | Sort-Object StartTime | Select-Object -Last 1
 }
 
 function Get-ProcessRoots([int]$ProcessId) {
@@ -132,7 +145,7 @@ function Write-VisibleElementSnapshot([int]$ProcessId) {
         if ($description.Length -gt 180) {
             $description = $description.Substring(0, 180)
         }
-        Write-Stage "ui_element" "type=$($element.Current.ControlType.ProgrammaticName) name=$name description=$description"
+        Write-Stage "ui_element" "type=$($element.Current.ControlType.ProgrammaticName) class=$($element.Current.ClassName) name=$name description=$description"
         $written += 1
         if ($written -ge 80) {
             break
@@ -183,10 +196,18 @@ if (-not (Test-Path -LiteralPath $JianyingExe -PathType Leaf)) {
     throw "剪映程序不存在：$JianyingExe"
 }
 
+$jianyingVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($JianyingExe).FileVersion
+$jianyingVersion = ([string]$jianyingVersion).Replace(" ", "_")
+$startedJianying = $false
+Write-Stage "jianying_version_detected" "version=$jianyingVersion"
 $process = Get-JianyingProcess
 if (-not $process) {
-    Write-Stage "starting_jianying"
-    Start-Process -FilePath $JianyingExe -WorkingDirectory ([System.IO.Path]::GetDirectoryName($JianyingExe))
+    Write-Stage "starting_jianying" "accessibility=forced"
+    Start-Process `
+        -FilePath $JianyingExe `
+        -ArgumentList @("--force-renderer-accessibility", "--enable-accessibility") `
+        -WorkingDirectory ([System.IO.Path]::GetDirectoryName($JianyingExe))
+    $startedJianying = $true
 }
 else {
     Write-Stage "using_existing_jianying" "process_id=$($process.Id)"
@@ -202,7 +223,14 @@ if (-not $process) {
     throw "剪映启动超时"
 }
 
-Write-Stage "jianying_window_ready" "process_id=$($process.Id)"
+try {
+    $windowElement = [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
+    $windowClass = [string]$windowElement.Current.ClassName
+}
+catch {
+    $windowClass = ""
+}
+Write-Stage "jianying_window_ready" "process_id=$($process.Id) class=$windowClass"
 [JianyingNative]::ShowWindow($process.MainWindowHandle, 9) | Out-Null
 [JianyingNative]::SetForegroundWindow($process.MainWindowHandle) | Out-Null
 Start-Sleep -Seconds 2
@@ -231,6 +259,23 @@ if ($localDrafts) {
 [System.Windows.Forms.SendKeys]::SendWait("{F5}")
 Write-Stage "draft_home_refreshed"
 Start-Sleep -Seconds 3
+
+$treeDeadline = (Get-Date).AddSeconds(8)
+$treeElements = @()
+while ((Get-Date) -lt $treeDeadline) {
+    $treeElements = @(Get-VisibleElements $process.Id)
+    if ($treeElements.Count -gt 1) {
+        break
+    }
+    Start-Sleep -Milliseconds 500
+}
+Write-Stage "ui_tree_probed" "elements=$($treeElements.Count) started_by_helper=$startedJianying version=$jianyingVersion"
+if ($treeElements.Count -le 1) {
+    Write-VisibleElementSnapshot $process.Id
+    $action = if ($startedJianying) { "use_supported_jianying" } else { "restart_with_helper" }
+    Write-Stage "ui_tree_unavailable" "action=$action version=$jianyingVersion"
+    throw "剪映未向 Windows UI Automation 开放内部控件（版本：$jianyingVersion）"
+}
 
 $draftPattern = [regex]::Escape($DraftName)
 $draftDescription = "HomePageDraftTitle:$DraftName"

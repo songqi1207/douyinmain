@@ -39,6 +39,8 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn("MainWindowTitleBarExportBtn", script)
         self.assertIn("ExportOkBtn", script)
         self.assertIn("ui_snapshot_finished", script)
+        self.assertIn("--force-renderer-accessibility", script)
+        self.assertIn("ui_tree_unavailable", script)
 
     def test_renamed_helper_uses_an_independent_single_instance_lock(self):
         self.assertEqual(windows_integration.MUTEX_NAME, r"Local\AIVideoCreator.UserAgent")
