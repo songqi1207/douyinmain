@@ -321,6 +321,45 @@ def _run_native_export(
                 task.get("job_id"),
                 output_line,
             )
+    stage_output = "\n".join(stage_lines)
+    if (
+        completed.returncode != 0
+        and "stage=ui_tree_unavailable action=restart_with_helper" in stage_output
+    ):
+        logger.info(
+            "jianying_accessibility_restart_started job_id=%s",
+            task.get("job_id"),
+        )
+        if progress:
+            progress("剪映未开放内部控件，正在完整重启剪映后重试…")
+        restart_started_at = time.monotonic()
+        completed = subprocess.run(
+            [*command, "-RestartExisting"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=export_timeout + 60,
+            creationflags=flags,
+        )
+        logger.info(
+            "jianying_accessibility_restart_finished job_id=%s returncode=%s elapsed_seconds=%.3f",
+            task.get("job_id"),
+            completed.returncode,
+            time.monotonic() - restart_started_at,
+        )
+        stage_lines = [
+            line.strip()
+            for line in (completed.stdout or "").splitlines()
+            if "jianying_automation_stage" in line
+        ]
+        for output_line in stage_lines:
+            if output_line:
+                logger.info(
+                    "jianying_restart_output job_id=%s %s",
+                    task.get("job_id"),
+                    output_line,
+                )
     if completed.returncode != 0:
         stage_output = "\n".join(stage_lines)
         uia2_markers = (

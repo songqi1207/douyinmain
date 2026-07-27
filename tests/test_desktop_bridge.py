@@ -165,14 +165,24 @@ class DesktopBridgeTests(unittest.TestCase):
                 "segment_count": 3,
                 "warnings": [],
             }
-            run_legacy_export.return_value = MagicMock(
-                returncode=1,
-                stdout=(
-                    "jianying_automation_stage "
-                    "stage=ui_tree_unavailable action=use_supported_jianying"
+            run_legacy_export.side_effect = [
+                MagicMock(
+                    returncode=1,
+                    stdout=(
+                        "jianying_automation_stage "
+                        "stage=ui_tree_unavailable action=restart_with_helper"
+                    ),
+                    stderr="",
                 ),
-                stderr="",
-            )
+                MagicMock(
+                    returncode=1,
+                    stdout=(
+                        "jianying_automation_stage "
+                        "stage=ui_tree_unavailable action=use_supported_jianying"
+                    ),
+                    stderr="",
+                ),
+            ]
 
             def write_uia2_result(_name, output_path, **_kwargs):
                 target = Path(output_path)
@@ -191,6 +201,11 @@ class DesktopBridgeTests(unittest.TestCase):
 
             self.assertEqual(result.read_bytes(), b"mp4")
             run_pyjianying.assert_called_once()
+            self.assertEqual(run_legacy_export.call_count, 2)
+            self.assertIn(
+                "-RestartExisting",
+                run_legacy_export.call_args_list[1].args[0],
+            )
             export_uia2.assert_called_once()
 
     def test_jianying_automation_uses_full_description_controls(self):
@@ -207,6 +222,7 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn("ui_snapshot_finished", script)
         self.assertIn("--force-renderer-accessibility", script)
         self.assertIn("ui_tree_unavailable", script)
+        self.assertIn('Write-Stage "restarting_existing_jianying"', script)
         self.assertIn('Write-Stage "jianying_minimized"', script)
 
     def test_renamed_helper_uses_an_independent_single_instance_lock(self):

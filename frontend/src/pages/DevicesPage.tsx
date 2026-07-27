@@ -128,8 +128,8 @@ export function DevicesPage() {
             <em>02</em>
             <span><Download /></span>
             <h2>下载 AI 视频创作助手</h2>
-            <p>下载后双击一次即可。当前版本 v1.4.2，会等待剪映加载新草稿后再调用 pyJianYingDraft 导出。</p>
-            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.4.2">下载 v1.4.2</a>
+            <p>下载后双击一次即可。当前版本 v1.4.3，控件不可见时会自动重启剪映并恢复导出。</p>
+            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.4.3">下载 v1.4.3</a>
           </article>
           <article>
             <em>03</em>

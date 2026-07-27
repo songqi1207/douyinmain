@@ -6,7 +6,8 @@
     [Parameter(Mandatory = $true)]
     [string]$JianyingExe,
     [string]$LogPath = "",
-    [int]$TimeoutSeconds = 1800
+    [int]$TimeoutSeconds = 1800,
+    [switch]$RestartExisting
 )
 
 $ErrorActionPreference = "Stop"
@@ -201,6 +202,27 @@ $jianyingVersion = ([string]$jianyingVersion).Replace(" ", "_")
 $startedJianying = $false
 Write-Stage "jianying_version_detected" "version=$jianyingVersion"
 $process = Get-JianyingProcess
+if ($RestartExisting -and $process) {
+    Write-Stage "restarting_existing_jianying" "process_id=$($process.Id)"
+    try {
+        $process.CloseMainWindow() | Out-Null
+        $closeDeadline = (Get-Date).AddSeconds(8)
+        while (-not $process.HasExited -and (Get-Date) -lt $closeDeadline) {
+            Start-Sleep -Milliseconds 250
+            $process.Refresh()
+        }
+    }
+    catch {}
+    foreach ($remaining in @(Get-Process -Name "JianyingPro", "CapCut" -ErrorAction SilentlyContinue)) {
+        try {
+            Stop-Process -Id $remaining.Id -Force -ErrorAction Stop
+        }
+        catch {}
+    }
+    Start-Sleep -Seconds 2
+    $process = $null
+    Write-Stage "existing_jianying_stopped"
+}
 if (-not $process) {
     Write-Stage "starting_jianying" "accessibility=forced"
     Start-Process `
