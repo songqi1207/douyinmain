@@ -20,13 +20,68 @@ from desktop_bridge.core import (
     import_draft_payload,
     import_mihe_server_draft,
 )
-from desktop_bridge.device_agent import normalize_site_url, pair_with_site
+from desktop_bridge.device_agent import (
+    _run_native_export,
+    normalize_site_url,
+    pair_with_site,
+)
 from desktop_bridge.paths import app_data_dir
 import desktop_bridge.windows_integration as windows_integration
 from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    @patch("desktop_bridge.jianying_uia_export.export_draft_uia")
+    @patch("desktop_bridge.device_agent.subprocess.run")
+    @patch("desktop_bridge.device_agent.import_draft_payload")
+    def test_hidden_qml_controls_fall_back_to_uia2(
+        self,
+        import_payload,
+        run_legacy_export,
+        export_uia2,
+    ):
+        with tempfile.TemporaryDirectory(prefix="uia2-fallback-test-") as temporary:
+            root = Path(temporary)
+            draft_root = root / "drafts"
+            output_root = root / "output"
+            executable = root / "JianyingPro.exe"
+            draft_root.mkdir()
+            executable.write_bytes(b"exe")
+            import_payload.return_value = {
+                "draft_id": "DRAFT-ID",
+                "draft_name": "DRAFT-ID",
+                "draft_dir": str(draft_root / "DRAFT-ID"),
+                "track_count": 2,
+                "segment_count": 3,
+                "warnings": [],
+            }
+            run_legacy_export.return_value = MagicMock(
+                returncode=1,
+                stdout=(
+                    "jianying_automation_stage "
+                    "stage=ui_tree_unavailable action=use_supported_jianying"
+                ),
+                stderr="",
+            )
+
+            def write_uia2_result(_name, output_path, **_kwargs):
+                target = Path(output_path)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"mp4")
+                return target
+
+            export_uia2.side_effect = write_uia2_result
+
+            result = _run_native_export(
+                {"job_id": "job-id", "draft_key": {"calls": []}},
+                str(draft_root),
+                str(executable),
+                output_root,
+            )
+
+            self.assertEqual(result.read_bytes(), b"mp4")
+            export_uia2.assert_called_once()
+
     def test_jianying_automation_uses_full_description_controls(self):
         script = (
             Path(__file__).resolve().parents[1]

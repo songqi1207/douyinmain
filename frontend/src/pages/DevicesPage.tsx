@@ -119,8 +119,8 @@ export function DevicesPage() {
             <em>01</em>
             <span><Download /></span>
             <h2>下载 AI 视频创作助手</h2>
-            <p>下载 Windows 助手并双击运行。当前版本 v1.3.8，会自动替换旧版；自动导出推荐剪映专业版 5.9。</p>
-            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.3.8">下载 v1.3.8</a>
+            <p>下载 Windows 助手并双击运行。当前版本 v1.3.9，会自动替换旧版并兼容剪映 QML 控件。</p>
+            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.3.9">下载 v1.3.9</a>
           </article>
           <article>
             <em>02</em>

@@ -190,6 +190,55 @@ def _run_native_export(
             )
     if completed.returncode != 0:
         stage_output = "\n".join(stage_lines)
+        uia2_markers = (
+            "stage=ui_tree_unavailable",
+            "stage=draft_card_not_found",
+            "stage=editor_export_button_not_found",
+        )
+        if any(marker in stage_output for marker in uia2_markers):
+            from desktop_bridge.jianying_uia_export import (
+                JianyingUIAError,
+                export_draft_uia,
+            )
+
+            logger.info(
+                "jianying_uia2_fallback_started job_id=%s",
+                task.get("job_id"),
+            )
+
+            def log_uia2_stage(stage_name: str, details: str = "") -> None:
+                suffix = f" {details}" if details else ""
+                logger.info(
+                    "jianying_uia2_stage job_id=%s stage=%s%s",
+                    task.get("job_id"),
+                    stage_name,
+                    suffix,
+                )
+
+            try:
+                result = export_draft_uia(
+                    draft_name,
+                    output_path,
+                    timeout=int(
+                        os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800
+                    ),
+                    stage=log_uia2_stage,
+                )
+                logger.info(
+                    "jianying_uia2_fallback_finished job_id=%s size_bytes=%s",
+                    task.get("job_id"),
+                    result.stat().st_size,
+                )
+                return result
+            except JianyingUIAError as exc:
+                logger.warning(
+                    "jianying_uia2_fallback_failed job_id=%s error=%s",
+                    task.get("job_id"),
+                    exc,
+                )
+                raise BridgeError(
+                    f"剪映 UIA2 自动导出失败：{exc}"
+                ) from exc
         if "stage=ui_tree_unavailable" in stage_output:
             if "action=restart_with_helper" in stage_output:
                 raise BridgeError(

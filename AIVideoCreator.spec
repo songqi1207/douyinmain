@@ -47,6 +47,10 @@ a = Analysis(
     hiddenimports=[
         "PIL.Image",
         "requests",
+        "uiautomation",
+        "comtypes",
+        "comtypes.client",
+        "comtypes.gen",
         "_tkinter",
         "tkinter",
         "tkinter.filedialog",
