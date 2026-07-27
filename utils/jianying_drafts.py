@@ -53,6 +53,89 @@ def _normalize_caption_text(value: Any) -> str:
     text = re.sub(r"\\+t", "\t", text)
     return text.strip()
 
+
+def _caption_text_units(value: str) -> float:
+    """Estimate rendered width using one unit for ASCII and two for wide glyphs."""
+    total = 0.0
+    for char in value:
+        if char == "\t":
+            total += 4.0
+        elif char.isspace():
+            total += 0.55
+        elif ord(char) < 128:
+            total += 1.0
+        else:
+            total += 2.0
+    return total
+
+
+def _wrap_caption_text(value: str, *, max_units: int) -> str:
+    """Hard-wrap long English caption lines so JianYing cannot draw off-canvas."""
+    text = str(value or "")
+    limit = max(8, int(max_units))
+    wrapped_lines: list[str] = []
+    break_after = set("-‐‑–—/\\,.;:!?，。；：！？、")
+
+    for source_line in text.split("\n"):
+        # Keep Chinese-only template labels unchanged. JianYing already handles
+        # CJK line feeding, while its handling of long Latin runs is unreliable.
+        if not re.search(r"[A-Za-z]", source_line):
+            wrapped_lines.append(source_line)
+            continue
+
+        remaining = source_line.strip()
+        if not remaining:
+            wrapped_lines.append("")
+            continue
+        while _caption_text_units(remaining) > limit:
+            width = 0.0
+            hard_cut = 0
+            preferred_cut = 0
+            for index, char in enumerate(remaining):
+                width += _caption_text_units(char)
+                if width > limit:
+                    break
+                hard_cut = index + 1
+                if char.isspace() or char in break_after:
+                    preferred_cut = index + 1
+
+            if hard_cut <= 0:
+                hard_cut = 1
+            # Do not create a very short first line just because an early space
+            # happened to be the last available word boundary.
+            cut = preferred_cut if preferred_cut >= max(1, hard_cut // 2) else hard_cut
+            line = remaining[:cut].rstrip()
+            if not line:
+                line = remaining[:hard_cut]
+                cut = hard_cut
+            wrapped_lines.append(line)
+            remaining = remaining[cut:].lstrip()
+        wrapped_lines.append(remaining)
+    return "\n".join(wrapped_lines)
+
+
+def _caption_safe_line_units(
+    *,
+    canvas_width: int,
+    font_size: float,
+    scale_x: float,
+    transform_x: float,
+) -> int:
+    # 26 Latin glyphs fit the 82% safe area of a 1080-wide portrait canvas at
+    # JianYing's common size 15. Scale proportionally for other layouts/styles.
+    width_factor = max(0.4, 1.0 - min(1.0, abs(transform_x)) * 0.65)
+    units = (
+        26.0
+        * max(1, canvas_width)
+        / 1080.0
+        * 15.0
+        / max(1.0, font_size)
+        / max(0.25, abs(scale_x))
+        * width_factor
+    )
+    return max(8, min(72, int(units)))
+
+
 # Mihe's add_captions accepts the workflow-facing name "华文行楷" but writes
 # JianYing's actual resource "毛笔行楷" into the resulting draft.
 _FONT_ALIASES = {"华文行楷": "毛笔行楷"}
@@ -992,7 +1075,7 @@ def _build_text_material(
         "line_spacing": 0.02 + line_spacing * 0.05,
         "line_feed": 1,
         "line_max_width": 0.82,
-        "force_apply_line_max_width": False,
+        "force_apply_line_max_width": True,
         "check_flag": check_flag,
         "global_alpha": 1.0,
         "font_name": canonical_font_name,
@@ -1513,6 +1596,7 @@ def append_captions(
     material_letter_spacing = float(letter_spacing if letter_spacing not in (None, "") else 0)
     material_line_spacing = float(line_spacing if line_spacing not in (None, "") else 0)
     material_alignment = int(float(alignment if alignment not in (None, "") else 1))
+    canvas_width = int((draft.get("canvas_config") or {}).get("width") or 1080)
 
     for info in captions or []:
         if not isinstance(info, dict):
@@ -1522,6 +1606,20 @@ def append_captions(
         )
         if not text:
             continue
+        item_font_size = float(
+            info.get("font_size", material_font_size) or material_font_size
+        )
+        item_scale_x = float(info.get("scale_x", clip_scale_x) or clip_scale_x)
+        item_transform_x = float(info.get("transform_x", clip_x) or clip_x)
+        text = _wrap_caption_text(
+            text,
+            max_units=_caption_safe_line_units(
+                canvas_width=canvas_width,
+                font_size=item_font_size,
+                scale_x=item_scale_x,
+                transform_x=item_transform_x,
+            ),
+        )
         start_us = _duration_to_us(info.get("start"))
         end_us = _target_end_us(info)
         if end_us <= start_us:
@@ -1531,7 +1629,7 @@ def append_captions(
 
         material = _build_text_material(
             text=text,
-            font_size=float(info.get("font_size", material_font_size) or material_font_size),
+            font_size=item_font_size,
             text_color=str(info.get("text_color") or text_color or "#FFFFFF"),
             border_color=str(info.get("border_color") or border_color or ""),
             line_spacing=float(info.get("line_spacing", material_line_spacing) or material_line_spacing),
@@ -1550,11 +1648,11 @@ def append_captions(
                 "vertical": bool(info.get("flip_vertical", flip_vertical or False)),
             },
             "scale": {
-                "x": float(info.get("scale_x", clip_scale_x) or clip_scale_x),
+                "x": item_scale_x,
                 "y": float(info.get("scale_y", clip_scale_y) or clip_scale_y),
             },
             "transform": {
-                "x": float(info.get("transform_x", clip_x) or clip_x),
+                "x": item_transform_x,
                 "y": float(info.get("transform_y", clip_y) or clip_y),
             },
         }

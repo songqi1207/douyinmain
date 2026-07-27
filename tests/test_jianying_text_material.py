@@ -7,8 +7,10 @@ from unittest.mock import patch
 
 from utils.jianying_drafts import (
     _build_text_material,
+    _caption_text_units,
     _normalize_caption_text,
     _resolve_text_animation,
+    _wrap_caption_text,
     append_captions,
     create_draft,
 )
@@ -21,6 +23,36 @@ class JianyingTextMaterialTests(unittest.TestCase):
         self.assertEqual(_normalize_caption_text(r"《三国演义》\n\n罗贯中著"), expected)
         self.assertEqual(_normalize_caption_text(r"《三国演义》\\n\\n罗贯中著"), expected)
         self.assertEqual(_normalize_caption_text(expected), expected)
+
+    def test_long_english_caption_wraps_at_words_and_inside_long_words(self):
+        wrapped = _wrap_caption_text(
+            "A long English caption should remain inside the current video frame",
+            max_units=18,
+        )
+        unbroken = _wrap_caption_text(
+            "SUPERCALIFRAGILISTICEXPIALIDOCIOUS",
+            max_units=12,
+        )
+
+        self.assertIn("\n", wrapped)
+        self.assertIn("\n", unbroken)
+        self.assertTrue(
+            all(_caption_text_units(line) <= 18 for line in wrapped.splitlines())
+        )
+        self.assertTrue(
+            all(_caption_text_units(line) <= 12 for line in unbroken.splitlines())
+        )
+
+    def test_chinese_only_caption_and_existing_line_breaks_are_preserved(self):
+        self.assertEqual(
+            _wrap_caption_text("吸烟有害身体健康", max_units=8),
+            "吸烟有害身体健康",
+        )
+        wrapped = _wrap_caption_text(
+            "First English line\nSecond English line",
+            max_units=40,
+        )
+        self.assertEqual(wrapped, "First English line\nSecond English line")
 
     def test_huawen_xingkai_uses_mihe_maobi_xingkai_resource(self):
         material = _build_text_material(
@@ -39,6 +71,7 @@ class JianyingTextMaterialTests(unittest.TestCase):
         self.assertEqual(style["font"]["id"], "6912033793700270606")
         self.assertEqual(style["font"]["path"], "毛笔行楷.ttf")
         self.assertEqual(len(style["strokes"]), 1)
+        self.assertTrue(material["force_apply_line_max_width"])
 
     def test_style_text_preserves_supported_overrides(self):
         material = _build_text_material(
@@ -55,6 +88,25 @@ class JianyingTextMaterialTests(unittest.TestCase):
         style = json.loads(material["content"])["styles"][0]
         self.assertTrue(style["bold"])
         self.assertTrue(style["italic"])
+
+    def test_text_material_enforces_safe_line_width(self):
+        material = _build_text_material(
+            text=(
+                "The green mountains are faintly seen and the waters "
+                "stretch far beyond the edge of the current picture."
+            ),
+            font_size=14,
+            text_color="#ffffff",
+            border_color="#000000",
+            line_spacing=0,
+            alignment=1,
+            font_name="",
+        )
+
+        self.assertEqual(material["type"], "text")
+        self.assertEqual(material["line_feed"], 1)
+        self.assertLessEqual(material["line_max_width"], 0.82)
+        self.assertTrue(material["force_apply_line_max_width"])
 
     def test_chuyunlong_uses_resource_from_god_draft(self):
         material = _build_text_material(
@@ -121,6 +173,42 @@ class JianyingTextMaterialTests(unittest.TestCase):
             self.assertEqual(
                 [segment["extra_material_refs"][-1] for segment in text_track["segments"]],
                 [row["id"] for row in animation_materials],
+            )
+
+    def test_append_captions_wraps_long_english_inside_portrait_canvas(self):
+        with tempfile.TemporaryDirectory() as draft_root, patch.dict(
+            os.environ, {"JIANYING_DRAFT_ROOT": draft_root}
+        ):
+            created = create_draft(1080, 1920, "英文字幕换行测试")
+            append_captions(
+                created["draft_id"],
+                [
+                    {
+                        "text": (
+                            "我多想和你漫步在那青山绿水间\n"
+                            "How I wish to stroll with you among the green "
+                            "mountains and clear waters."
+                        ),
+                        "start": 0,
+                        "end": 1_000_000,
+                        "font_size": 9,
+                    }
+                ],
+            )
+
+            draft = json.loads(
+                (Path(created["draft_dir"]) / "draft_content.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            material = draft["materials"]["texts"][0]
+            text = json.loads(material["content"])["text"]
+            english_lines = text.splitlines()[1:]
+
+            self.assertEqual(material["type"], "text")
+            self.assertGreaterEqual(len(english_lines), 2)
+            self.assertTrue(
+                all(_caption_text_units(line) <= 43 for line in english_lines)
             )
 
 
