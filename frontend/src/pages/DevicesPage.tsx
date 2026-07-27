@@ -128,8 +128,8 @@ export function DevicesPage() {
             <em>02</em>
             <span><Download /></span>
             <h2>下载 AI 视频创作助手</h2>
-            <p>下载后双击一次即可。当前版本 v1.4.3，控件不可见时会自动重启剪映并恢复导出。</p>
-            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.4.3">下载 v1.4.3</a>
+            <p>下载后双击一次即可。当前版本 v1.4.4，启动时会强制开启剪映完整的可访问控件。</p>
+            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.4.4">下载 v1.4.4</a>
           </article>
           <article>
             <em>03</em>

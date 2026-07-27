@@ -117,7 +117,11 @@ def _run_pyjianying_export(
             executable,
         )
         subprocess.Popen(
-            [str(executable), "--force-renderer-accessibility"],
+            [
+                str(executable),
+                "--force-renderer-accessibility",
+                "--enable-accessibility",
+            ],
             cwd=str(executable.parent),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )

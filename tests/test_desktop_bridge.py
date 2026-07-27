@@ -93,6 +93,49 @@ class DesktopBridgeTests(unittest.TestCase):
                 timeout=900,
             )
 
+    @patch("desktop_bridge.device_agent.time.sleep")
+    @patch("desktop_bridge.device_agent.subprocess.Popen")
+    @patch("pyJianYingDraft.JianyingController")
+    def test_pyjianyingdraft_launch_enables_full_accessibility(
+        self,
+        controller_type,
+        popen,
+        _sleep,
+    ):
+        with tempfile.TemporaryDirectory(prefix="pyjianying-launch-test-") as temporary:
+            root = Path(temporary)
+            executable = root / "JianyingPro.exe"
+            output_path = root / "result.mp4"
+            executable.write_bytes(b"exe")
+            controller = MagicMock()
+            controller_type.side_effect = [
+                RuntimeError("window not ready"),
+                controller,
+            ]
+
+            def write_export(_name, destination, **_kwargs):
+                Path(destination).write_bytes(b"mp4")
+
+            controller.export_draft.side_effect = write_export
+
+            result = _run_pyjianying_export(
+                "DRAFT-ID",
+                output_path,
+                executable,
+                900,
+                "job-id",
+            )
+
+            self.assertEqual(result.read_bytes(), b"mp4")
+            self.assertEqual(
+                popen.call_args.args[0],
+                [
+                    str(executable),
+                    "--force-renderer-accessibility",
+                    "--enable-accessibility",
+                ],
+            )
+
     @patch("desktop_bridge.device_agent.subprocess.run")
     @patch("desktop_bridge.device_agent._run_pyjianying_export")
     @patch("desktop_bridge.device_agent.import_draft_payload")
