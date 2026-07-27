@@ -142,11 +142,43 @@ def _run_pyjianying_export(
         timeout,
     )
     started_at = time.monotonic()
-    controller.export_draft(
-        draft_name,
-        str(output_path),
-        timeout=timeout,
+    draft_wait_deadline = time.monotonic() + int(
+        os.getenv("DEVICE_JIANYING_DRAFT_WAIT_SECONDS") or 150
     )
+    retry_interval = max(
+        0.0,
+        float(os.getenv("DEVICE_JIANYING_DRAFT_RETRY_SECONDS") or 3),
+    )
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            controller.export_draft(
+                draft_name,
+                str(output_path),
+                timeout=timeout,
+            )
+            break
+        except Exception as exc:
+            if exc.__class__.__name__ != "DraftNotFound":
+                raise
+            remaining = draft_wait_deadline - time.monotonic()
+            if remaining <= 0:
+                logger.warning(
+                    "pyjianying_draft_wait_timeout job_id=%s draft_name=%s attempts=%s",
+                    job_id,
+                    draft_name,
+                    attempt,
+                )
+                raise
+            logger.info(
+                "pyjianying_waiting_for_draft job_id=%s draft_name=%s attempt=%s remaining_seconds=%.1f",
+                job_id,
+                draft_name,
+                attempt,
+                remaining,
+            )
+            time.sleep(min(retry_interval, remaining))
     if not output_path.is_file() or output_path.stat().st_size <= 0:
         raise BridgeError("pyJianYingDraft 已完成操作，但没有生成有效的 MP4 文件")
     logger.info(

@@ -51,21 +51,43 @@ class DesktopBridgeTests(unittest.TestCase):
             executable.write_bytes(b"exe")
             controller = controller_type.return_value
 
+            class DraftNotFound(Exception):
+                pass
+
             def write_export(_name, destination, **_kwargs):
                 Path(destination).write_bytes(b"mp4")
 
-            controller.export_draft.side_effect = write_export
+            side_effect_items = [
+                DraftNotFound("draft list is still loading"),
+                None,
+            ]
 
-            result = _run_pyjianying_export(
-                "DRAFT-ID",
-                output_path,
-                executable,
-                900,
-                "job-id",
-            )
+            def export_with_retry(*args, **kwargs):
+                outcome = side_effect_items.pop(0)
+                if isinstance(outcome, Exception):
+                    raise outcome
+                write_export(*args, **kwargs)
+
+            controller.export_draft.side_effect = export_with_retry
+
+            with patch.dict(
+                os.environ,
+                {
+                    "DEVICE_JIANYING_DRAFT_WAIT_SECONDS": "10",
+                    "DEVICE_JIANYING_DRAFT_RETRY_SECONDS": "0",
+                },
+            ):
+                result = _run_pyjianying_export(
+                    "DRAFT-ID",
+                    output_path,
+                    executable,
+                    900,
+                    "job-id",
+                )
 
             self.assertEqual(result.read_bytes(), b"mp4")
-            controller.export_draft.assert_called_once_with(
+            self.assertEqual(controller.export_draft.call_count, 2)
+            controller.export_draft.assert_called_with(
                 "DRAFT-ID",
                 str(output_path),
                 timeout=900,
