@@ -1,50 +1,85 @@
-2026-07-27 16:03:09,201 INFO agent_stopping device_id=310fe708296f4cb9ac91a19789254ef5
-2026-07-27 16:04:20,258 INFO agent_started version=1.3.9 device_id=310fe708296f4cb9ac91a19789254ef5 site=http://localhost:5173
-2026-07-27 16:04:40,754 INFO device_task_claimed job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 workflow=OWN02
-2026-07-27 16:04:40,759 INFO draft_import_started job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8
-2026-07-27 16:04:44,102 INFO draft_import_finished job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 draft_id=CB374D45-9026-47F3-A460-42441C571B0A draft_dir=C:\Users\1\AppData\Local\JianyingPro\User Data\Projects\com.lveditor.draft\CB374D45-9026-47F3-A460-42441C571B0A tracks=22 segments=81 warnings=0 elapsed_seconds=3.344
-2026-07-27 16:04:44,105 INFO jianying_export_started job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8
-2026-07-27 16:05:05,195 INFO jianying_export_finished job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 returncode=1 elapsed_seconds=21.078
-2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=automation_started timeout_seconds=1800
-2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=jianying_version_detected version=1.0.0.000000
-2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=starting_jianying accessibility=forced
-2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=jianying_window_ready process_id=22992 class=HomePage_QMLTYPE_183
-2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=preparing_draft_home
-2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=draft_home_refreshed
-2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=ui_tree_probed elements=1 started_by_helper=True version=1.0.0.000000
-2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=ui_element type=ControlType.Window class=HomePage_QMLTYPE_183 name=剪映专业版 description=
-2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=ui_snapshot_finished elements=1
-2026-07-27 16:05:05,195 INFO jianying_export_output job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 jianying_automation_stage stage=ui_tree_unavailable action=use_supported_jianying version=1.0.0.000000
-2026-07-27 16:05:05,195 INFO jianying_uia2_fallback_started job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8
-2026-07-27 16:05:05,223 INFO jianying_uia2_stage job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 stage=uia2_started draft_name=CB374D45-9026-47F3-A460-42441C571B0A
-2026-07-27 16:05:06,350 INFO jianying_uia2_stage job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 stage=uia2_home_ready class=HomePage_QMLTYPE_183
-2026-07-27 16:05:21,352 WARNING jianying_uia2_fallback_failed job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 error=UIA2 没有找到草稿卡片“CB374D45-9026-47F3-A460-42441C571B0A”
-2026-07-27 16:05:21,352 ERROR device_task_failed job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 error=剪映 UIA2 自动导出失败：UIA2 没有找到草稿卡片“CB374D45-9026-47F3-A460-42441C571B0A”
+2026-07-27 16:06:07,722 WARNING jianying_uia2_fallback_failed job_id=2350fcf8815f4ab088faab4e17df0cea error=等待剪映窗口状态超时：需要 home，当前 unknown
+2026-07-27 16:06:07,722 ERROR device_task_failed job_id=2350fcf8815f4ab088faab4e17df0cea error=剪映 UIA2 自动导出失败：等待剪映窗口状态超时：需要 home，当前 unknown
 Traceback (most recent call last):
   File "desktop_bridge\device_agent.py", line 219, in _run_native_export
-  File "desktop_bridge\jianying_uia_export.py", line 131, in export_draft_uia
-desktop_bridge.jianying_uia_export.JianyingUIAError: UIA2 没有找到草稿卡片“CB374D45-9026-47F3-A460-42441C571B0A”
+  File "desktop_bridge\jianying_uia_export.py", line 118, in export_draft_uia
+  File "desktop_bridge\jianying_uia_export.py", line 95, in _wait_for_window
+desktop_bridge.jianying_uia_export.JianyingUIAError: 等待剪映窗口状态超时：需要 home，当前 unknown
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
   File "desktop_bridge\device_agent.py", line 401, in _process_task
   File "desktop_bridge\device_agent.py", line 239, in _run_native_export
-desktop_bridge.draft_core.BridgeError: 剪映 UIA2 自动导出失败：UIA2 没有找到草稿卡片“CB374D45-9026-47F3-A460-42441C571B0A”
-2026-07-27 16:05:21,416 INFO device_task_failure_reported job_id=875ed4cc3efa4c5e9febbe62ad3d3dc8 status=200
-2026-07-27 16:05:21,481 INFO device_task_claimed job_id=2350fcf8815f4ab088faab4e17df0cea workflow=OWN02
-2026-07-27 16:05:21,551 INFO draft_import_started job_id=2350fcf8815f4ab088faab4e17df0cea
-2026-07-27 16:05:35,328 INFO draft_import_finished job_id=2350fcf8815f4ab088faab4e17df0cea draft_id=28B96CA9-9337-4912-8E74-15FC60874D47 draft_dir=C:\Users\1\AppData\Local\JianyingPro\User Data\Projects\com.lveditor.draft\28B96CA9-9337-4912-8E74-15FC60874D47 tracks=22 segments=91 warnings=0 elapsed_seconds=13.843
-2026-07-27 16:05:35,331 INFO jianying_export_started job_id=2350fcf8815f4ab088faab4e17df0cea
-2026-07-27 16:05:50,197 INFO jianying_export_finished job_id=2350fcf8815f4ab088faab4e17df0cea returncode=1 elapsed_seconds=14.875
-2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=automation_started timeout_seconds=1800
-2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=jianying_version_detected version=1.0.0.000000
-2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=using_existing_jianying process_id=22992
-2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=jianying_window_ready process_id=22992 class=HomePage_QMLTYPE_183
-2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=preparing_draft_home
-2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=draft_home_refreshed
-2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=ui_tree_probed elements=0 started_by_helper=False version=1.0.0.000000
-2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=ui_snapshot_finished elements=0
-2026-07-27 16:05:50,197 INFO jianying_export_output job_id=2350fcf8815f4ab088faab4e17df0cea jianying_automation_stage stage=ui_tree_unavailable action=restart_with_helper version=1.0.0.000000
-2026-07-27 16:05:50,197 INFO jianying_uia2_fallback_started job_id=2350fcf8815f4ab088faab4e17df0cea
-2026-07-27 16:05:50,198 INFO jianying_uia2_stage job_id=2350fcf8815f4ab088faab4e17df0cea stage=uia2_started draft_name=28B96CA9-9337-4912-8E74-15FC60874D47
+desktop_bridge.draft_core.BridgeError: 剪映 UIA2 自动导出失败：等待剪映窗口状态超时：需要 home，当前 unknown
+2026-07-27 16:06:07,799 INFO device_task_failure_reported job_id=2350fcf8815f4ab088faab4e17df0cea status=200
+2026-07-27 17:12:18,131 INFO agent_stopping device_id=310fe708296f4cb9ac91a19789254ef5
+2026-07-27 17:12:46,944 INFO agent_started version=1.3.9 device_id=310fe708296f4cb9ac91a19789254ef5 site=http://localhost:5173
+2026-07-27 17:13:48,411 INFO agent_stopping device_id=310fe708296f4cb9ac91a19789254ef5
+2026-07-27 17:13:48,420 INFO agent_started version=1.3.9 device_id=0154c1ee12ad4c11a646f4450ad0dc9b site=http://localhost:5173
+2026-07-27 17:14:45,343 INFO device_task_claimed job_id=ce4424adb9be44ce9b56cc95f0700faa workflow=OWN02
+2026-07-27 17:14:45,344 INFO draft_import_started job_id=ce4424adb9be44ce9b56cc95f0700faa
+2026-07-27 17:14:49,860 INFO draft_import_finished job_id=ce4424adb9be44ce9b56cc95f0700faa draft_id=ADEC76B2-3A5B-4114-8459-6F7A7FAE1C81 draft_dir=C:\Users\1\AppData\Local\JianyingPro\User Data\Projects\com.lveditor.draft\ADEC76B2-3A5B-4114-8459-6F7A7FAE1C81 tracks=22 segments=75 warnings=0 elapsed_seconds=4.515
+2026-07-27 17:14:49,865 INFO jianying_export_started job_id=ce4424adb9be44ce9b56cc95f0700faa
+2026-07-27 17:16:29,683 INFO jianying_export_finished job_id=ce4424adb9be44ce9b56cc95f0700faa returncode=1 elapsed_seconds=99.829
+2026-07-27 17:16:29,683 INFO jianying_export_output job_id=ce4424adb9be44ce9b56cc95f0700faa jianying_automation_stage stage=automation_started timeout_seconds=1800
+2026-07-27 17:16:29,683 INFO jianying_export_output job_id=ce4424adb9be44ce9b56cc95f0700faa jianying_automation_stage stage=jianying_version_detected version=1.0.0.000000
+2026-07-27 17:16:29,683 INFO jianying_export_output job_id=ce4424adb9be44ce9b56cc95f0700faa jianying_automation_stage stage=starting_jianying accessibility=forced
+2026-07-27 17:16:29,683 INFO jianying_export_output job_id=ce4424adb9be44ce9b56cc95f0700faa jianying_automation_stage stage=jianying_window_ready process_id=32716 class=HomePage_QMLTYPE_111
+2026-07-27 17:16:29,683 INFO jianying_export_output job_id=ce4424adb9be44ce9b56cc95f0700faa jianying_automation_stage stage=preparing_draft_home
+2026-07-27 17:16:29,683 INFO jianying_export_output job_id=ce4424adb9be44ce9b56cc95f0700faa jianying_automation_stage stage=draft_home_refreshed
+2026-07-27 17:16:29,683 INFO jianying_export_output job_id=ce4424adb9be44ce9b56cc95f0700faa jianying_automation_stage stage=ui_tree_probed elements=86 started_by_helper=True version=1.0.0.000000
+2026-07-27 17:16:29,683 INFO jianying_export_output job_id=ce4424adb9be44ce9b56cc95f0700faa jianying_automation_stage stage=waiting_for_draft_card
+2026-07-27 17:16:29,683 INFO jianying_export_output job_id=ce4424adb9be44ce9b56cc95f0700faa jianying_automation_stage stage=draft_card_not_found
+2026-07-27 17:16:29,683 INFO jianying_export_output job_id=ce4424adb9be44ce9b56cc95f0700faa jianying_automation_stage stage=ui_element type=ControlType.Window class=HomePage_QMLTYPE_111 name=剪映专业版 description=
+2026-07-27 17:16:29,683 INFO jianying_export_output job_id=ce4424adb9be44ce9b56cc95f0700faa jianying_automation_stage stage=ui_snapshot_finished elements=1
+2026-07-27 17:16:29,684 INFO jianying_uia2_fallback_started job_id=ce4424adb9be44ce9b56cc95f0700faa
+2026-07-27 17:16:29,781 INFO jianying_uia2_stage job_id=ce4424adb9be44ce9b56cc95f0700faa stage=uia2_started draft_name=ADEC76B2-3A5B-4114-8459-6F7A7FAE1C81
+2026-07-27 17:16:31,046 INFO jianying_uia2_stage job_id=ce4424adb9be44ce9b56cc95f0700faa stage=uia2_home_ready class=HomePage_QMLTYPE_111
+2026-07-27 17:16:31,623 INFO jianying_uia2_stage job_id=ce4424adb9be44ce9b56cc95f0700faa stage=uia2_draft_opened
+2026-07-27 17:16:36,313 INFO jianying_uia2_stage job_id=ce4424adb9be44ce9b56cc95f0700faa stage=uia2_export_dialog_opening
+2026-07-27 17:16:36,525 INFO jianying_uia2_stage job_id=ce4424adb9be44ce9b56cc95f0700faa stage=uia2_export_path_ready path=C:\Users\1\Downloads\ADEC76B2-3A5B-4114-8459-6F7A7FAE1C81.mp4
+2026-07-27 17:16:37,236 INFO jianying_uia2_stage job_id=ce4424adb9be44ce9b56cc95f0700faa stage=uia2_export_confirmed
+2026-07-27 17:19:19,802 INFO jianying_uia2_stage job_id=ce4424adb9be44ce9b56cc95f0700faa stage=uia2_success_dialog_closed
+2026-07-27 17:19:23,007 INFO jianying_uia2_stage job_id=ce4424adb9be44ce9b56cc95f0700faa stage=uia2_export_completed size_bytes=76166145
+2026-07-27 17:19:23,008 INFO jianying_uia2_fallback_finished job_id=ce4424adb9be44ce9b56cc95f0700faa size_bytes=76166145
+2026-07-27 17:19:24,351 INFO device_task_completed job_id=ce4424adb9be44ce9b56cc95f0700faa
+2026-07-27 19:23:19,822 INFO agent_stopping device_id=0154c1ee12ad4c11a646f4450ad0dc9b
+2026-07-27 19:24:10,170 INFO agent_started version=1.4.1 device_id=0154c1ee12ad4c11a646f4450ad0dc9b site=http://localhost:5173
+2026-07-27 19:24:15,448 INFO agent_stopping device_id=0154c1ee12ad4c11a646f4450ad0dc9b
+2026-07-27 19:24:15,464 INFO agent_started version=1.4.1 device_id=0154c1ee12ad4c11a646f4450ad0dc9b site=http://localhost:5173
+2026-07-27 19:27:27,696 INFO device_task_claimed job_id=643a583cee874953b1ab086eb4a61789 workflow=OWN02
+2026-07-27 19:27:27,699 INFO draft_import_started job_id=643a583cee874953b1ab086eb4a61789
+2026-07-27 19:27:32,226 INFO draft_import_finished job_id=643a583cee874953b1ab086eb4a61789 draft_id=DC54A185-2F2A-4363-B424-0B3CDE075377 draft_dir=C:\Users\1\AppData\Local\JianyingPro\User Data\Projects\com.lveditor.draft\DC54A185-2F2A-4363-B424-0B3CDE075377 tracks=22 segments=77 warnings=0 elapsed_seconds=4.531
+2026-07-27 19:27:36,285 INFO pyjianying_starting_jianying job_id=643a583cee874953b1ab086eb4a61789 executable=C:\Users\1\AppData\Local\JianyingPro\Apps\JianyingPro.exe
+2026-07-27 19:27:48,308 INFO pyjianying_export_started job_id=643a583cee874953b1ab086eb4a61789 draft_name=DC54A185-2F2A-4363-B424-0B3CDE075377 timeout_seconds=1800
+2026-07-27 19:27:49,838 WARNING pyjianying_export_failed job_id=643a583cee874953b1ab086eb4a61789 fallback=compatibility_driver error=未找到名为DC54A185-2F2A-4363-B424-0B3CDE075377的剪映草稿
+2026-07-27 19:27:49,842 INFO jianying_export_started job_id=643a583cee874953b1ab086eb4a61789
+2026-07-27 19:28:04,474 INFO jianying_export_finished job_id=643a583cee874953b1ab086eb4a61789 returncode=1 elapsed_seconds=14.625
+2026-07-27 19:28:04,475 INFO jianying_export_output job_id=643a583cee874953b1ab086eb4a61789 jianying_automation_stage stage=automation_started timeout_seconds=1800
+2026-07-27 19:28:04,475 INFO jianying_export_output job_id=643a583cee874953b1ab086eb4a61789 jianying_automation_stage stage=jianying_version_detected version=1.0.0.000000
+2026-07-27 19:28:04,475 INFO jianying_export_output job_id=643a583cee874953b1ab086eb4a61789 jianying_automation_stage stage=using_existing_jianying process_id=47032
+2026-07-27 19:28:04,475 INFO jianying_export_output job_id=643a583cee874953b1ab086eb4a61789 jianying_automation_stage stage=jianying_window_ready process_id=47032 class=HomePage_QMLTYPE_158
+2026-07-27 19:28:04,475 INFO jianying_export_output job_id=643a583cee874953b1ab086eb4a61789 jianying_automation_stage stage=preparing_draft_home
+2026-07-27 19:28:04,475 INFO jianying_export_output job_id=643a583cee874953b1ab086eb4a61789 jianying_automation_stage stage=draft_home_refreshed
+2026-07-27 19:28:04,475 INFO jianying_export_output job_id=643a583cee874953b1ab086eb4a61789 jianying_automation_stage stage=ui_tree_probed elements=1 started_by_helper=False version=1.0.0.000000
+2026-07-27 19:28:04,475 INFO jianying_export_output job_id=643a583cee874953b1ab086eb4a61789 jianying_automation_stage stage=ui_element type=ControlType.Window class=HomePage_QMLTYPE_158 name=剪映专业版 description=
+2026-07-27 19:28:04,475 INFO jianying_export_output job_id=643a583cee874953b1ab086eb4a61789 jianying_automation_stage stage=ui_snapshot_finished elements=1
+2026-07-27 19:28:04,475 INFO jianying_export_output job_id=643a583cee874953b1ab086eb4a61789 jianying_automation_stage stage=ui_tree_unavailable action=restart_with_helper version=1.0.0.000000
+2026-07-27 19:28:04,476 INFO jianying_uia2_fallback_started job_id=643a583cee874953b1ab086eb4a61789
+2026-07-27 19:28:04,477 INFO jianying_uia2_stage job_id=643a583cee874953b1ab086eb4a61789 stage=uia2_started draft_name=DC54A185-2F2A-4363-B424-0B3CDE075377
+2026-07-27 19:28:05,490 INFO jianying_uia2_stage job_id=643a583cee874953b1ab086eb4a61789 stage=uia2_home_ready class=HomePage_QMLTYPE_158
+2026-07-27 19:28:20,502 WARNING jianying_uia2_fallback_failed job_id=643a583cee874953b1ab086eb4a61789 error=UIA2 没有找到草稿卡片“DC54A185-2F2A-4363-B424-0B3CDE075377”
+2026-07-27 19:28:20,502 ERROR device_task_failed job_id=643a583cee874953b1ab086eb4a61789 error=剪映 UIA2 自动导出失败：UIA2 没有找到草稿卡片“DC54A185-2F2A-4363-B424-0B3CDE075377”
+Traceback (most recent call last):
+  File "desktop_bridge\device_agent.py", line 320, in _run_native_export
+  File "desktop_bridge\jianying_uia_export.py", line 131, in export_draft_uia
+desktop_bridge.jianying_uia_export.JianyingUIAError: UIA2 没有找到草稿卡片“DC54A185-2F2A-4363-B424-0B3CDE075377”
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "desktop_bridge\device_agent.py", line 502, in _process_task
+  File "desktop_bridge\device_agent.py", line 340, in _run_native_export
+desktop_bridge.draft_core.BridgeError: 剪映 UIA2 自动导出失败：UIA2 没有找到草稿卡片“DC54A185-2F2A-4363-B424-0B3CDE075377”
+2026-07-27 19:28:20,565 INFO device_task_failure_reported job_id=643a583cee874953b1ab086eb4a61789 status=200
