@@ -59,7 +59,7 @@ export function DevicesPage() {
     try {
       const next = await createRenderDevicePairingCode();
       setPairing(next);
-      setMessage("配对码已生成，请在 Windows 助手中输入");
+      wakeHelper(next.code);
     } catch (nextError) {
       const apiError = nextError as ApiError;
       if (apiError.code === "password_change_required") navigate("/account/security");
@@ -69,15 +69,15 @@ export function DevicesPage() {
     }
   }
 
-  function wakeHelper() {
+  function wakeHelper(pairingCode = pairing?.code) {
     const query = new URLSearchParams({ site: window.location.origin });
-    if (pairing) query.set("code", pairing.code);
+    if (pairingCode) query.set("code", pairingCode);
     const launcher = document.createElement("iframe");
     launcher.style.display = "none";
     launcher.src = `douyin-draft://wake?${query.toString()}`;
     document.body.appendChild(launcher);
     window.setTimeout(() => launcher.remove(), 1500);
-    setMessage("已尝试唤醒助手，正在等待设备上线");
+    setMessage(pairingCode ? "正在后台唤醒并连接助手" : "已尝试唤醒助手，正在等待设备上线");
   }
 
   async function copyPairing() {
@@ -109,7 +109,7 @@ export function DevicesPage() {
           <span>{status.configured ? <Check /> : <Laptop />}</span>
           <div>
             <strong>{status.message}</strong>
-            <p>{status.device_online ? "你的电脑已准备好接收视频任务。" : status.central_configured ? "当前使用服务端视频渲染。" : "完成下方三步，即可从首页一键生成视频。"}</p>
+            <p>{status.device_online ? "你的电脑已准备好接收视频任务。" : status.central_configured ? "当前使用服务端视频渲染。" : "完成下方四步，即可从首页一键生成视频。"}</p>
           </div>
           <button type="button" onClick={() => void refresh()}><RefreshCw />刷新状态</button>
         </div>
@@ -128,24 +128,24 @@ export function DevicesPage() {
             <em>02</em>
             <span><Download /></span>
             <h2>下载 AI 视频创作助手</h2>
-            <p>下载 Windows 助手并双击运行。当前版本 v1.3.9，会自动替换旧版并连接兼容版剪映。</p>
-            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.3.9">下载 v1.3.9</a>
+            <p>下载后双击一次即可。当前版本 v1.4.0，安装完成后会静默驻留并随 Windows 自动启动。</p>
+            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.4.0">下载 v1.4.0</a>
           </article>
           <article>
             <em>03</em>
             <span><Link2 /></span>
-            <h2>生成配对码</h2>
-            <p>配对码约十分钟有效，只能使用一次，不会暴露你的登录信息。</p>
+            <h2>一键连接助手</h2>
+            <p>网页会生成一次性配对信息并在后台唤醒助手，无需复制或在助手窗口中确认。</p>
             <button className="secondary-button" disabled={busy} type="button" onClick={() => void createPairing()}>
-              {busy ? <LoaderCircle className="spin" /> : <Link2 />}{busy ? "正在生成" : "生成配对码"}
+              {busy ? <LoaderCircle className="spin" /> : <Link2 />}{busy ? "正在连接" : "连接助手"}
             </button>
           </article>
           <article>
             <em>04</em>
             <span><Laptop /></span>
             <h2>启动并保持在线</h2>
-            <p>网页会在生成时自动唤醒助手；也可以现在手动启动并检查连接。</p>
-            <button className="secondary-button" type="button" onClick={wakeHelper}><Laptop />唤醒助手</button>
+            <p>助手会静默常驻；只有剪映原生渲染阶段会短暂打开剪映，完成后自动最小化。</p>
+            <button className="secondary-button" type="button" onClick={() => wakeHelper()}><Laptop />唤醒助手</button>
           </article>
         </section>
 

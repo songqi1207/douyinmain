@@ -123,8 +123,9 @@ def install_for_current_user(arguments: list[str]) -> bool:
             os.replace(temporary, target)
         _register_windows_integration(target)
         _stop_other_installed_helpers(target)
+        relaunch_arguments = list(arguments) or ["--background"]
         subprocess.Popen(
-            [str(target), *arguments],
+            [str(target), *relaunch_arguments],
             cwd=str(target.parent),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )

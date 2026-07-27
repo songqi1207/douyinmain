@@ -207,5 +207,17 @@ def export_draft_uia(
         shutil.move(str(source), str(target))
     if not target.is_file() or target.stat().st_size <= 0:
         raise JianyingUIAError("UIA2 导出结束，但任务 MP4 文件无效")
+    try:
+        import ctypes
+
+        current_window, _state = _get_window(auto)
+        current_window.SetTopmost(False)
+        handle = int(getattr(current_window, "NativeWindowHandle", 0) or 0)
+        if handle:
+            ctypes.windll.user32.ShowWindow(handle, 6)
+            _emit(stage, "uia2_jianying_minimized")
+    except Exception:
+        # Export succeeded; restoring the desktop is best-effort only.
+        pass
     _emit(stage, "uia2_export_completed", f"size_bytes={target.stat().st_size}")
     return target

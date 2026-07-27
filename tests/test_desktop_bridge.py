@@ -1,5 +1,6 @@
 import hashlib
 import base64
+import inspect
 import json
 import os
 import shutil
@@ -26,11 +27,17 @@ from desktop_bridge.device_agent import (
     pair_with_site,
 )
 from desktop_bridge.paths import app_data_dir
+from desktop_bridge.app import DraftBridgeApp
 import desktop_bridge.windows_integration as windows_integration
 from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_background_start_hides_window_before_building_widgets(self):
+        source = inspect.getsource(DraftBridgeApp.__init__)
+
+        self.assertLess(source.index("self.root.withdraw()"), source.index("self._build_ui()"))
+
     @patch("desktop_bridge.jianying_uia_export.export_draft_uia")
     @patch("desktop_bridge.device_agent.subprocess.run")
     @patch("desktop_bridge.device_agent.import_draft_payload")
@@ -96,6 +103,7 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn("ui_snapshot_finished", script)
         self.assertIn("--force-renderer-accessibility", script)
         self.assertIn("ui_tree_unavailable", script)
+        self.assertIn('Write-Stage "jianying_minimized"', script)
 
     def test_renamed_helper_uses_an_independent_single_instance_lock(self):
         self.assertEqual(windows_integration.MUTEX_NAME, r"Local\AIVideoCreator.UserAgent")
@@ -158,13 +166,46 @@ class DesktopBridgeTests(unittest.TestCase):
                 patch.object(windows_integration, "_stop_other_installed_helpers") as stop_old,
                 patch.object(windows_integration.subprocess, "Popen", return_value=process) as popen,
             ):
-                relaunched = windows_integration.install_for_current_user(["--background"])
+                relaunched = windows_integration.install_for_current_user([])
             self.assertTrue(relaunched)
             target = register.call_args.args[0]
             self.assertTrue(target.is_file())
             self.assertEqual(target.read_bytes(), source.read_bytes())
             stop_old.assert_called_once_with(target)
             self.assertEqual(popen.call_args.args[0], [str(target), "--background"])
+
+    def test_browser_wake_pairs_in_background_without_confirmation_window(self):
+        bridge = object.__new__(DraftBridgeApp)
+        bridge.settings = {}
+        bridge.background_mode = False
+        bridge.hide_after_pairing = False
+        bridge.site_url_var = MagicMock()
+        bridge.pairing_code_var = MagicMock()
+        bridge.device_status_var = MagicMock()
+        bridge.root = MagicMock()
+        bridge.start_pairing = MagicMock()
+
+        bridge._handle_protocol_url(
+            "douyin-draft://wake?"
+            "site=https%3A%2F%2Fvideo.example.test&code=ABCD2345"
+        )
+
+        self.assertTrue(bridge.background_mode)
+        self.assertTrue(bridge.hide_after_pairing)
+        bridge.root.withdraw.assert_called_once()
+        bridge.root.deiconify.assert_not_called()
+        bridge.start_pairing.assert_called_once()
+
+    def test_background_render_failure_stays_hidden(self):
+        bridge = object.__new__(DraftBridgeApp)
+        bridge.background_mode = True
+        bridge.device_status_var = MagicMock()
+        bridge.root = MagicMock()
+
+        bridge._apply_device_status("剪映导出失败：测试错误")
+
+        bridge.device_status_var.set.assert_called_once()
+        bridge.root.deiconify.assert_not_called()
 
     def test_helper_upgrade_stops_only_older_installed_helper_builds(self):
         with tempfile.TemporaryDirectory(prefix="bridge-upgrade-test-") as temporary:

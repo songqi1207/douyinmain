@@ -60,6 +60,10 @@ class DraftBridgeApp:
         self.tk = tk
         self.ttk = ttk
         self.root = tk.Tk()
+        if start_hidden:
+            # Hide before widgets are constructed so Windows startup/browser
+            # wake does not flash a blank Tk window on the user's desktop.
+            self.root.withdraw()
         self.root.title(f"{HELPER_PRODUCT_NAME} v{HELPER_VERSION}")
         self.root.geometry("940x900")
         self.root.minsize(800, 760)
@@ -67,6 +71,7 @@ class DraftBridgeApp:
         self.settings = _load_settings()
         self.device_agent: DeviceAgent | None = None
         self.hide_after_pairing = False
+        self.background_mode = bool(start_hidden)
 
         roots = detect_draft_roots()
         executables = detect_jianying_executables()
@@ -86,8 +91,6 @@ class DraftBridgeApp:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         if self.settings.get("device_token") and self.settings.get("device_id"):
             self.root.after(400, self.start_device_agent)
-        if start_hidden:
-            self.root.withdraw()
         if protocol_url:
             self.root.after(250, self._handle_protocol_url, protocol_url)
         self.root.after(800, self._poll_wake_signal)
@@ -209,6 +212,9 @@ class DraftBridgeApp:
         options = parse_protocol_url(protocol_url)
         if not options:
             return
+        action = str(options.get("action") or "")
+        if action == "wake":
+            self.background_mode = True
         site_url = str(options.get("site_url") or "")
         pairing_code = str(options.get("pairing_code") or "")
         if site_url:
@@ -219,7 +225,12 @@ class DraftBridgeApp:
         )
         if needs_pairing:
             self.pairing_code_var.set(pairing_code)
-            self.hide_after_pairing = options.get("action") == "wake"
+            self.hide_after_pairing = action == "wake"
+            if action == "wake":
+                self.device_status_var.set("网页已发起配对，正在后台连接…")
+                self.root.withdraw()
+                self.start_pairing()
+                return
             self.device_status_var.set("网页已填入配对信息，请确认网站地址后点击“配对并保持在线”")
             self.root.deiconify()
             self.root.lift()
@@ -227,7 +238,8 @@ class DraftBridgeApp:
             return
         if self.settings.get("device_token"):
             self.start_device_agent()
-        if options.get("action") == "open" or not self.settings.get("device_token"):
+        if action == "open" or not self.settings.get("device_token"):
+            self.background_mode = False
             self.root.deiconify()
             self.root.lift()
             self.root.focus_force()
@@ -261,6 +273,8 @@ class DraftBridgeApp:
     def _apply_device_status(self, message: str) -> None:
         self.device_status_var.set(message)
         if not message.startswith("剪映导出失败："):
+            return
+        if self.background_mode:
             return
         from tkinter import messagebox
 

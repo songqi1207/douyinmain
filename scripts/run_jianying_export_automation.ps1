@@ -401,6 +401,8 @@ while ((Get-Date) -lt $fileDeadline) {
         if ($size -gt 0 -and $size -eq $lastSize) {
             $stable += 1
             if ($stable -ge 3) {
+                [JianyingNative]::ShowWindow($process.MainWindowHandle, 6) | Out-Null
+                Write-Stage "jianying_minimized"
                 Write-Stage "export_completed" "size_bytes=$size"
                 [pscustomobject]@{
                     status = "success"
