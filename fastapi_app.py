@@ -1,4 +1,4 @@
-"""FastAPI entrypoint for the React workflow center and legacy Flask tools."""
+"""FastAPI entrypoint for the React workflow center."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from fastapi import BackgroundTasks, Body, FastAPI, File, HTTPException, Query, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.wsgi import WSGIMiddleware
 
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
@@ -78,7 +77,7 @@ from workflow_jobs import (
 from workflow_registry import category_summary, get_workflow, list_workflows
 from utils.draft_key_importer import KeyValidationError
 from utils.email_delivery import EmailConfigurationError, email_delivery_status, send_registration_approved
-from utils.local_media_generation import list_system_voices, synthesize_speech
+from utils.local_media_generation import generated_file_path, list_system_voices, synthesize_speech
 from utils.volcengine_vod_renderer import (
     VodConfigurationError,
     VodRenderError,
@@ -120,8 +119,24 @@ def _spa_index() -> FileResponse | HTMLResponse:
     index = FRONTEND_DIST / "index.html"
     if index.is_file():
         return FileResponse(index, media_type="text/html")
-    fallback = ROOT / "templates" / "business.html"
-    return HTMLResponse(fallback.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        """
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>工作流中心</title>
+</head>
+<body style="margin:0;background:#111;color:#f5f5f5;font-family:system-ui,'Microsoft YaHei',sans-serif;display:grid;min-height:100vh;place-items:center">
+  <main style="max-width:560px;padding:32px;line-height:1.7">
+    <h1 style="margin:0 0 12px">前端资源未构建</h1>
+    <p>请在部署镜像中执行 <code>npm ci && npm run build</code>，或使用仓库 Dockerfile 构建。</p>
+  </main>
+</body>
+</html>
+        """.strip()
+    )
 
 
 def _request_user(request: Request) -> dict | None:
@@ -270,11 +285,6 @@ def business_redirect(request: Request):
 @app.get("/business/{path:path}", response_class=HTMLResponse, include_in_schema=False)
 def business_spa_route(path: str):
     return _spa_index()
-
-
-@app.get("/workflows", response_class=HTMLResponse, include_in_schema=False)
-def legacy_workflow_catalog_page():
-    return HTMLResponse((ROOT / "templates" / "workflows.html").read_text(encoding="utf-8"))
 
 
 # ----------------------------- API v1 ---------------------------------
@@ -509,7 +519,7 @@ def api_tts(request: Request, payload: dict = Body(default_factory=dict)):
     try:
         result = synthesize_speech(
             text,
-            f"{public_base}/legacy",
+            public_base,
             voice_id=voice_id,
             speed_ratio=payload.get("speed_ratio"),
         )
@@ -653,6 +663,16 @@ def api_asset_content(asset_id: str):
     if not asset:
         raise HTTPException(status_code=404, detail={"code": "asset_not_found", "message": "素材不存在"})
     return FileResponse(asset["path"], media_type=asset["mime_type"])
+
+
+@app.get("/api/generated/{kind}/{filename}")
+def api_generated_media(kind: str, filename: str):
+    if kind not in {"audio", "image"}:
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "generated media not found"})
+    path = generated_file_path(kind, filename)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail={"code": "not_found", "message": "generated media not found"})
+    return FileResponse(path)
 
 
 @app.get("/api/v1/job-results/{filename}")
@@ -1177,20 +1197,6 @@ def legacy_image_categories():
         count = len(IMAGE_WORKFLOWS) if kind == "全部" else sum(w["kind"] == kind for w in IMAGE_WORKFLOWS)
         result.append({**item, "count": count})
     return {"categories": result}
-
-
-@app.get("/api/workflows")
-def legacy_image_workflows():
-    return {"total": len(IMAGE_WORKFLOWS), "workflows": IMAGE_WORKFLOWS}
-
-
-# Existing Flask tools remain available during migration.
-try:
-    from app import create_app as create_flask_app
-
-    app.mount("/legacy", WSGIMiddleware(create_flask_app()))
-except Exception as exc:  # pragma: no cover - startup remains useful for the React/API surface
-    print(f"[legacy] Flask compatibility mount unavailable: {exc}")
 
 
 if __name__ == "__main__":

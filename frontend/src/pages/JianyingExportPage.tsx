@@ -1,4 +1,4 @@
-import { FileJson, FlaskConical, Laptop, LoaderCircle, Sparkles, UploadCloud } from "lucide-react";
+import { FileJson, Laptop, LoaderCircle, Sparkles, UploadCloud } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
@@ -175,7 +175,7 @@ export function JianyingExportPage() {
           <section className="generator-panel">
             <div className="section-title"><span>提交 draft_key</span><small>支持标准 JSON 和扣子嵌套输出</small></div>
             <form onSubmit={(event) => void submit(event)}>
-              <button className="secondary-button draft-key-sample-button" type="button" onClick={fillSampleDraftKey}><FlaskConical />填入测试 draft_key</button>
+              <button className="secondary-button draft-key-sample-button" type="button" onClick={fillSampleDraftKey}><FileJson />填入测试 draft_key</button>
               <label className="draft-key-upload"><span><UploadCloud />选择 JSON 文件</span><input type="file" accept=".json,application/json" onChange={(event) => void loadFile(event.target.files?.[0])} /><small>{fileName || "最大 5MB，文件只提交到本站后台"}</small></label>
               <label className="form-field"><span>JSON 内容</span><textarea className="draft-key-textarea" value={draftText} onChange={(event) => { setDraftText(event.target.value); setFileName(""); }} placeholder={'{"kind":"jianying_draft_key","draft":{...},"calls":[...]}'}/></label>
               {error && <div className="notice error">{error}</div>}

@@ -1,6 +1,7 @@
 .git
 .gitignore
 __pycache__/
+.pytest_cache/
 *.pyc
 *.pyo
 *.pyd
@@ -13,3 +14,8 @@ env/
 terminals/
 agent-transcripts/
 assets/
+build/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo

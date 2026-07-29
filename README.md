@@ -1,49 +1,26 @@
----
-title: Coze Audio Tools
-emoji: hammer_and_wrench
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-app_port: 7860
-pinned: false
----
+# AIVideoCreator Workflow Center
 
-# Coze Audio Tools
+FastAPI + React workflow center for generating draft keys, queuing local Jianying exports, and serving helper downloads.
 
-Self-hosted utility service for Coze plugin deployment.
-
-## Endpoints
-
-- `GET /api/openapi/coze_audio_tools.json`
-- `POST /api/tools/get_audio_duration`
-
-## Example
+## Local Development
 
 ```bash
-curl -X POST "https://<your-space>.hf.space/api/tools/get_audio_duration" \
-  -H "Content-Type: application/json" \
-  -d "{\"mp3_url\":\"https://example.com/test.mp3\"}"
+python -m uvicorn fastapi_app:app --host 127.0.0.1 --port 8000
 ```
-
-## Response
-
-```json
-{
-  "success": true,
-  "duration": 12.34,
-  "message": "ok"
-}
-```
-
-## Coze Import
-
-Import this OpenAPI URL into Coze:
-
-`https://<your-space>.hf.space/api/openapi/coze_audio_tools.json`
-
-## Deploy to Hugging Face Spaces
 
 ```bash
-python -m pip install huggingface_hub
-python scripts/publish_hf_space.py --repo-id <username>/<space-name> --token <hf_token>
+cd frontend
+npm ci
+npm run dev
 ```
+
+Open `http://localhost:5173/business/`.
+
+## Docker
+
+```bash
+docker compose build --no-cache
+docker compose up -d
+```
+
+The Dockerfile builds the React frontend first, then starts `fastapi_app:app` with Uvicorn.
