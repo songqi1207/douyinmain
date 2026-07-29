@@ -55,6 +55,23 @@ def _emit(callback: StageCallback | None, stage: str, details: str = "") -> None
         callback(stage, details)
 
 
+def _minimize_jianying_window(control: object, stage: StageCallback | None, reason: str) -> None:
+    try:
+        control.SetTopmost(False)  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
+        import ctypes
+
+        handle = int(getattr(control, "NativeWindowHandle", 0) or 0)
+        if handle:
+            ctypes.windll.user32.ShowWindow(handle, 6)
+            _emit(stage, "uia2_jianying_minimized", f"reason={reason}")
+    except Exception:
+        # Export has already been triggered; restoring the desktop is best-effort.
+        pass
+
+
 def _get_window(auto):
     state = {"value": ""}
 
@@ -115,38 +132,60 @@ def export_draft_uia(
     target.parent.mkdir(parents=True, exist_ok=True)
     _emit(stage, "uia2_started", f"draft_name={draft_name}")
 
-    window = _wait_for_window(auto, "home", 15)
-    window.SetActive()
-    window.SetTopmost()
-    _emit(stage, "uia2_home_ready", f"class={window.ClassName}")
+    try:
+        current_window, current_state = _get_window(auto)
+    except JianyingUIAError:
+        current_window, current_state = _wait_for_window(auto, "home", 15), "home"
 
-    draft_title = window.TextControl(
-        searchDepth=8,
-        Compare=_description_matcher(
-            f"HomePageDraftTitle:{draft_name}",
-            exact=True,
-        ),
-    )
-    if not draft_title.Exists(15, 0.25):
-        raise JianyingUIAError(f"UIA2 没有找到草稿卡片“{draft_name}”")
-    draft_button = draft_title.GetParentControl()
-    if draft_button is None:
-        draft_button = draft_title
-    draft_button.Click(simulateMove=False)
-    _emit(stage, "uia2_draft_opened")
+    if current_state == "home":
+        window = current_window
+        window.SetActive()
+        window.SetTopmost()
+        _emit(stage, "uia2_home_ready", f"class={window.ClassName}")
 
-    editor = _wait_for_window(auto, "edit", 120)
-    editor.SetActive()
-    export_button = editor.TextControl(
-        searchDepth=8,
-        Compare=_description_matcher("MainWindowTitleBarExportBtn"),
-    )
-    if not export_button.Exists(10, 0.25):
-        raise JianyingUIAError("UIA2 没有找到编辑页导出按钮")
-    export_button.Click(simulateMove=False)
-    _emit(stage, "uia2_export_dialog_opening")
+        draft_title = window.TextControl(
+            searchDepth=8,
+            Compare=_description_matcher(
+                f"HomePageDraftTitle:{draft_name}",
+                exact=True,
+            ),
+        )
+        if not draft_title.Exists(15, 0.25):
+            raise JianyingUIAError(f"UIA2 没有找到草稿卡片“{draft_name}”")
+        draft_button = draft_title.GetParentControl()
+        if draft_button is None:
+            draft_button = draft_title
+        draft_button.Click(simulateMove=False)
+        _emit(stage, "uia2_draft_opened")
+        editor = _wait_for_window(auto, "edit", 120)
+    elif current_state == "edit":
+        editor = current_window
+        _emit(stage, "uia2_editor_reused", f"class={editor.ClassName}")
+    elif current_state == "pre_export":
+        export_window = current_window
+        _emit(stage, "uia2_export_dialog_reused")
+    else:
+        raise JianyingUIAError(f"UIA2 不支持的剪映窗口状态：{current_state or 'unknown'}")
 
-    export_window = _wait_for_window(auto, "pre_export", 30)
+    if current_state != "pre_export":
+        editor.SetActive()
+        editor.SetTopmost()
+        export_button = editor.TextControl(
+            searchDepth=8,
+            Compare=_description_matcher("MainWindowTitleBarExportBtn"),
+        )
+        if export_button.Exists(10, 0.25):
+            export_button.Click(simulateMove=False)
+        else:
+            try:
+                import uiautomation as auto_module
+
+                auto_module.SendKeys("{Ctrl}e")
+            except Exception as exc:
+                raise JianyingUIAError("UIA2 没有找到编辑页导出按钮") from exc
+            _emit(stage, "uia2_export_shortcut", "key=ctrl+e")
+        _emit(stage, "uia2_export_dialog_opening")
+        export_window = _wait_for_window(auto, "pre_export", 30)
     path_label = export_window.TextControl(
         searchDepth=8,
         Compare=_description_matcher("ExportPath"),
@@ -167,6 +206,7 @@ def export_draft_uia(
         raise JianyingUIAError("UIA2 没有找到导出确认按钮")
     confirm.Click(simulateMove=False)
     _emit(stage, "uia2_export_confirmed")
+    _minimize_jianying_window(export_window, stage, "export_wait")
 
     deadline = time.monotonic() + max(30, int(timeout))
     last_size = -1
@@ -208,16 +248,9 @@ def export_draft_uia(
     if not target.is_file() or target.stat().st_size <= 0:
         raise JianyingUIAError("UIA2 导出结束，但任务 MP4 文件无效")
     try:
-        import ctypes
-
         current_window, _state = _get_window(auto)
-        current_window.SetTopmost(False)
-        handle = int(getattr(current_window, "NativeWindowHandle", 0) or 0)
-        if handle:
-            ctypes.windll.user32.ShowWindow(handle, 6)
-            _emit(stage, "uia2_jianying_minimized")
+        _minimize_jianying_window(current_window, stage, "completed")
     except Exception:
-        # Export succeeded; restoring the desktop is best-effort only.
         pass
     _emit(stage, "uia2_export_completed", f"size_bytes={target.stat().st_size}")
     return target

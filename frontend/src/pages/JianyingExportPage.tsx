@@ -1,6 +1,6 @@
-import { FileJson, Laptop, LoaderCircle, Sparkles, UploadCloud } from "lucide-react";
+import { FileJson, FlaskConical, Laptop, LoaderCircle, Sparkles, UploadCloud } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import {
   ApiError,
@@ -42,6 +42,33 @@ export function extractDraftKeyJson(value: unknown): Record<string, unknown> {
   throw new Error("没有找到包含 calls 数组的 draft_key");
 }
 
+export function buildSampleDraftKey() {
+  const runId = `frontend_export_test_${Date.now()}`;
+  return {
+    schema_version: "1.0",
+    kind: "jianying_draft_key",
+    meta: { run_id: runId, title: "前端剪映导出测试" },
+    draft: { width: 1080, height: 1920, fps: 30, name: "前端剪映导出测试" },
+    calls: [
+      {
+        call_id: "caption_00",
+        tool: "add_captions",
+        params: {
+          captions: [
+            {
+              text: "AIVideoCreator 前端导出测试",
+              start: 0,
+              end: 2_000_000,
+            },
+          ],
+          font_size: 18,
+          text_color: "#FFFFFF",
+        },
+      },
+    ],
+  };
+}
+
 const EMPTY_STATUS: RenderStatus = {
   configured: false,
   device_online: false,
@@ -53,6 +80,8 @@ const EMPTY_STATUS: RenderStatus = {
 export function JianyingExportPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const testMode = location.pathname.endsWith("/test");
   const [draftText, setDraftText] = useState("");
   const [fileName, setFileName] = useState("");
   const [initialJob, setInitialJob] = useState<Job | null>(null);
@@ -127,10 +156,16 @@ export function JianyingExportPage() {
     }
   }
 
+  function fillSampleDraftKey() {
+    setDraftText(JSON.stringify(buildSampleDraftKey(), null, 2));
+    setFileName("内置测试 draft_key");
+    setError("");
+  }
+
   return (
     <Layout>
       <main className="content-page page-width jianying-export-page">
-        <div className="page-heading"><span className="page-icon"><FileJson /></span><div><h1>手工剪映导出</h1><p>为已有 draft_key 提供的高级入口；首页一键生成无需使用这里。</p></div></div>
+        <div className="page-heading"><span className="page-icon"><FileJson /></span><div><h1>{testMode ? "剪映导出测试" : "手工剪映导出"}</h1><p>{testMode ? "一键生成最小 draft_key，专门验证本机剪映助手能否导出 MP4。" : "为已有 draft_key 提供的高级入口；首页一键生成无需使用这里。"}</p></div></div>
         <div className={`service-status ${status.configured ? "ready" : "unavailable"}`}>
           <strong>{status.message}</strong>
           <span>{status.configured ? "可以提交草稿并生成 MP4" : "请先在设备中心完成配对"}</span>
@@ -140,6 +175,7 @@ export function JianyingExportPage() {
           <section className="generator-panel">
             <div className="section-title"><span>提交 draft_key</span><small>支持标准 JSON 和扣子嵌套输出</small></div>
             <form onSubmit={(event) => void submit(event)}>
+              <button className="secondary-button draft-key-sample-button" type="button" onClick={fillSampleDraftKey}><FlaskConical />填入测试 draft_key</button>
               <label className="draft-key-upload"><span><UploadCloud />选择 JSON 文件</span><input type="file" accept=".json,application/json" onChange={(event) => void loadFile(event.target.files?.[0])} /><small>{fileName || "最大 5MB，文件只提交到本站后台"}</small></label>
               <label className="form-field"><span>JSON 内容</span><textarea className="draft-key-textarea" value={draftText} onChange={(event) => { setDraftText(event.target.value); setFileName(""); }} placeholder={'{"kind":"jianying_draft_key","draft":{...},"calls":[...]}'}/></label>
               {error && <div className="notice error">{error}</div>}

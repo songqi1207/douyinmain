@@ -224,6 +224,7 @@ button { color: inherit; }
 .draft-key-upload > span { display: flex; align-items: center; gap: 7px; font-weight: 650; }
 .draft-key-upload input { display: none; }
 .draft-key-upload small { max-width: 460px; overflow: hidden; color: #77736b; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.draft-key-sample-button { justify-self: start; }
 .form-field .draft-key-textarea { min-height: 280px; font-family: Consolas, "SFMono-Regular", monospace; font-size: 12px; line-height: 1.65; }
 .execution-placeholder, .job-panel { padding: 18px; }
 .execution-placeholder strong { font-size: 15px; }
@@ -626,6 +627,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .device-onboarding p { flex: 1; margin: 0 0 18px; color: #817d75; font-size: 12px; line-height: 1.7; }
 .device-onboarding .secondary-button { min-height: 38px; gap: 6px; }
 .device-onboarding .secondary-button svg { width: 14px; }
+.device-onboarding .subtle-link { margin-top: 10px; color: #817d75; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.device-onboarding .subtle-link:hover { color: #dfba77; }
 .pairing-display { display: grid; grid-template-columns: 1.3fr 1fr auto; align-items: center; gap: 12px; padding: 17px; margin-bottom: 15px; border: 1px solid #725735; border-radius: 13px; background: #211a11; }
 .pairing-display > div { min-width: 0; display: grid; gap: 5px; }
 .pairing-display span { color: #756e63; font-size: 10px; }

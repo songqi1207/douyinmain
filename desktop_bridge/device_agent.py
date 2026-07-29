@@ -98,6 +98,13 @@ def _run_pyjianying_export(
     job_id: str,
 ) -> Path:
     """Export through pyJianYingDraft before using our compatibility drivers."""
+    skip_py_export = (
+        os.getenv("DEVICE_JIANYING_SKIP_PY_EXPORT") or "0"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if skip_py_export:
+        logger.info("pyjianying_export_skipped job_id=%s reason=env", job_id)
+        raise BridgeError("pyJianYingDraft export skipped by configuration")
+
     try:
         from pyJianYingDraft import JianyingController
     except ImportError as exc:
@@ -147,11 +154,11 @@ def _run_pyjianying_export(
     )
     started_at = time.monotonic()
     draft_wait_deadline = time.monotonic() + int(
-        os.getenv("DEVICE_JIANYING_DRAFT_WAIT_SECONDS") or 150
+        os.getenv("DEVICE_JIANYING_DRAFT_WAIT_SECONDS") or 12
     )
     retry_interval = max(
         0.0,
-        float(os.getenv("DEVICE_JIANYING_DRAFT_RETRY_SECONDS") or 3),
+        float(os.getenv("DEVICE_JIANYING_DRAFT_RETRY_SECONDS") or 1.5),
     )
     attempt = 0
     while True:
@@ -272,6 +279,18 @@ def _run_native_export(
         )
         if output_path.exists():
             output_path.unlink()
+        allow_foreground = (
+            os.getenv("DEVICE_JIANYING_ALLOW_FOREGROUND_AUTOMATION") or "1"
+        ).strip().lower()
+        if allow_foreground in {"0", "false", "no", "off"}:
+            raise BridgeError(
+                "pyJianYingDraft could not complete the native export. "
+                "Foreground Jianying UI automation is disabled by "
+                "DEVICE_JIANYING_ALLOW_FOREGROUND_AUTOMATION=0, so the helper "
+                "will not pop up Jianying on this desktop. Use a dedicated "
+                "Windows machine/VM for invisible exports, or re-enable "
+                "foreground automation."
+            ) from exc
         if progress:
             progress("pyJianYingDraft 未能完成导出，正在切换兼容模式…")
 
@@ -296,35 +315,59 @@ def _run_native_export(
         str(export_timeout),
     ]
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    export_started_at = time.monotonic()
-    logger.info("jianying_export_started job_id=%s", task.get("job_id"))
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=export_timeout + 60,
-        creationflags=flags,
+
+    def run_compatibility_export(
+        command_args: list[str],
+        *,
+        log_prefix: str,
+    ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+        export_started_at = time.monotonic()
+        logger.info("%s_started job_id=%s", log_prefix, job_id)
+        completed_process = subprocess.run(
+            command_args,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=export_timeout + 60,
+            creationflags=flags,
+        )
+        logger.info(
+            "%s_finished job_id=%s returncode=%s elapsed_seconds=%.3f",
+            log_prefix,
+            job_id,
+            completed_process.returncode,
+            time.monotonic() - export_started_at,
+        )
+        parsed_stage_lines = [
+            line.strip()
+            for line in (completed_process.stdout or "").splitlines()
+            if "jianying_automation_stage" in line
+        ]
+        for output_line in parsed_stage_lines:
+            if output_line:
+                logger.info(
+                    "%s_output job_id=%s %s",
+                    log_prefix,
+                    job_id,
+                    output_line,
+                )
+        return completed_process, parsed_stage_lines
+
+    fast_compatibility_path = (
+        os.getenv("DEVICE_JIANYING_SKIP_PY_EXPORT") or "0"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    initial_command = [*command, "-RestartExisting"] if fast_compatibility_path else command
+    if fast_compatibility_path:
+        logger.info(
+            "jianying_fast_path_restart_enabled job_id=%s draft_name=%s",
+            job_id,
+            draft_name,
+        )
+    completed, stage_lines = run_compatibility_export(
+        initial_command,
+        log_prefix="jianying_export",
     )
-    logger.info(
-        "jianying_export_finished job_id=%s returncode=%s elapsed_seconds=%.3f",
-        task.get("job_id"),
-        completed.returncode,
-        time.monotonic() - export_started_at,
-    )
-    stage_lines = [
-        line.strip()
-        for line in (completed.stdout or "").splitlines()
-        if "jianying_automation_stage" in line
-    ]
-    for output_line in stage_lines:
-        if output_line:
-            logger.info(
-                "jianying_export_output job_id=%s %s",
-                task.get("job_id"),
-                output_line,
-            )
     stage_output = "\n".join(stage_lines)
     if (
         completed.returncode != 0
@@ -336,34 +379,31 @@ def _run_native_export(
         )
         if progress:
             progress("剪映未开放内部控件，正在完整重启剪映后重试…")
-        restart_started_at = time.monotonic()
-        completed = subprocess.run(
+        completed, stage_lines = run_compatibility_export(
             [*command, "-RestartExisting"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=export_timeout + 60,
-            creationflags=flags,
+            log_prefix="jianying_accessibility_restart",
         )
+    stage_output = "\n".join(stage_lines)
+    restartable_window_state = (
+        completed.returncode != 0
+        and (
+            "stage=draft_card_not_found" in stage_output
+            or "stage=editor_already_open" in stage_output
+        )
+        and "stage=restarting_existing_jianying" not in stage_output
+    )
+    if restartable_window_state:
         logger.info(
-            "jianying_accessibility_restart_finished job_id=%s returncode=%s elapsed_seconds=%.3f",
-            task.get("job_id"),
-            completed.returncode,
-            time.monotonic() - restart_started_at,
+            "jianying_draft_refresh_restart_started job_id=%s draft_name=%s",
+            job_id,
+            draft_name,
         )
-        stage_lines = [
-            line.strip()
-            for line in (completed.stdout or "").splitlines()
-            if "jianying_automation_stage" in line
-        ]
-        for output_line in stage_lines:
-            if output_line:
-                logger.info(
-                    "jianying_restart_output job_id=%s %s",
-                    task.get("job_id"),
-                    output_line,
-                )
+        if progress:
+            progress("剪映没有刷新出新草稿，正在重启剪映后重试导出...")
+        completed, stage_lines = run_compatibility_export(
+            [*command, "-RestartExisting"],
+            log_prefix="jianying_draft_refresh_restart",
+        )
     if completed.returncode != 0:
         stage_output = "\n".join(stage_lines)
         uia2_markers = (

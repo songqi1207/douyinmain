@@ -80,6 +80,16 @@ export function DevicesPage() {
     setMessage(pairingCode ? "正在后台唤醒并连接助手" : "已尝试唤醒助手，正在等待设备上线");
   }
 
+  function updateHelper() {
+    const query = new URLSearchParams({ site: window.location.origin });
+    const launcher = document.createElement("iframe");
+    launcher.style.display = "none";
+    launcher.src = `douyin-draft://update?${query.toString()}`;
+    document.body.appendChild(launcher);
+    window.setTimeout(() => launcher.remove(), 1500);
+    setMessage("已发送更新指令；助手会下载最新版、退出旧版本并自动重启");
+  }
+
   async function copyPairing() {
     if (!pairing) return;
     await navigator.clipboard.writeText(pairing.code);
@@ -127,9 +137,10 @@ export function DevicesPage() {
           <article>
             <em>02</em>
             <span><Download /></span>
-            <h2>下载 AI 视频创作助手</h2>
-            <p>下载后双击一次即可。当前版本 v1.4.4，启动时会强制开启剪映完整的可访问控件。</p>
-            <a className="secondary-button" href="/api/v1/downloads/draft-bridge?v=1.4.4">下载 v1.4.4</a>
+            <h2>下载 / 更新 AI 视频创作助手</h2>
+            <p>当前最新版 v1.4.10。已安装助手时可一键更新；未安装时请先下载安装包。</p>
+            <button className="secondary-button" type="button" onClick={() => updateHelper()}><Download />一键更新最新版</button>
+            <a className="subtle-link" href="/api/v1/downloads/draft-bridge?v=1.4.10">下载安装包</a>
           </article>
           <article>
             <em>03</em>

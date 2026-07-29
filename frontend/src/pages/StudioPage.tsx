@@ -9,7 +9,7 @@ import {
   Sparkles,
   WandSparkles,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
@@ -84,6 +84,7 @@ export function StudioPage() {
   const [busy, setBusy] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState("");
+  const resultRef = useRef<HTMLDivElement>(null);
   const { job, setJob } = useJobPolling(initialJob, setError);
 
   const selected = WORKFLOW_CHOICES.find((item) => item.code === selectedCode)!;
@@ -133,6 +134,12 @@ export function StudioPage() {
   useEffect(() => {
     if (job) localStorage.setItem(`studio-job:${job.workflow_code}`, job.id);
   }, [job?.id]);
+
+  useEffect(() => {
+    if (job?.status === "succeeded" && job.results.length > 0) {
+      resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [job?.id, job?.status, job?.results.length]);
 
   const readiness = useMemo(() => [
     {
@@ -321,6 +328,9 @@ export function StudioPage() {
                     <strong>{job.display_title || theme}</strong>
                   </div>
                   <JobProgress job={job} onRetry={() => void retry()} retrying={retrying} />
+                  <div ref={resultRef}>
+                    <Results job={job} compact />
+                  </div>
                   {job.status === "succeeded" && (
                     <button className="secondary-button create-again" type="button" onClick={resetCreation}>
                       <Sparkles size={15} />再创作一个
@@ -341,7 +351,6 @@ export function StudioPage() {
               )}
             </aside>
           </div>
-          {job && <Results job={job} />}
         </section>
 
         <section className="studio-lower-grid">

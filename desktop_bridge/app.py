@@ -23,6 +23,7 @@ from desktop_bridge.draft_core import (
 from desktop_bridge.device_agent import DeviceAgent, agent_log_path, pair_with_site
 from desktop_bridge.helper_metadata import HELPER_PRODUCT_NAME, HELPER_VERSION
 from desktop_bridge.paths import app_data_dir
+from desktop_bridge.updater import download_and_launch_update
 from desktop_bridge.windows_integration import (
     acquire_single_instance,
     consume_wake_signal,
@@ -219,6 +220,11 @@ class DraftBridgeApp:
         pairing_code = str(options.get("pairing_code") or "")
         if site_url:
             self.site_url_var.set(site_url)
+        if action == "update":
+            self.background_mode = True
+            self.root.withdraw()
+            self.start_update(site_url or str(self.settings.get("site_url") or ""))
+            return
         current_site = str(self.settings.get("site_url") or "").rstrip("/")
         needs_pairing = pairing_code and (
             not self.settings.get("device_token") or (site_url and current_site != site_url.rstrip("/"))
@@ -263,6 +269,30 @@ class DraftBridgeApp:
         }
         self.settings.update(values)
         _save_settings(values)
+
+    def start_update(self, site_url: str) -> None:
+        target_site = str(site_url or self.site_url_var.get() or self.settings.get("site_url") or "")
+        self.device_status_var.set("正在下载并启动最新版助手...")
+        threading.Thread(target=self._update_worker, args=(target_site,), daemon=True).start()
+
+    def _update_worker(self, site_url: str) -> None:
+        try:
+            download_and_launch_update(site_url)
+        except Exception as exc:
+            self.root.after(0, self._finish_update_error, str(exc))
+            return
+        self.root.after(0, self._finish_update_launched)
+
+    def _finish_update_error(self, message: str) -> None:
+        self.device_status_var.set(f"助手更新失败：{message}")
+        self.background_mode = False
+        self.root.deiconify()
+        self.root.lift()
+        self.show_error(message)
+
+    def _finish_update_launched(self) -> None:
+        self.device_status_var.set("最新版助手已启动，正在退出旧助手...")
+        self.root.after(500, self._exit_app)
 
     def _set_device_status(self, message: str) -> None:
         try:
@@ -482,7 +512,7 @@ def main(argv: list[str] | None = None) -> int:
         protocol = parse_protocol_url(protocol_url)
         DraftBridgeApp(
             args.key or "",
-            start_hidden=bool(args.background or protocol.get("action") == "wake"),
+            start_hidden=bool(args.background or protocol.get("action") in {"wake", "update"}),
             protocol_url=protocol_url,
         ).run()
         return 0

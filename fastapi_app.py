@@ -250,13 +250,21 @@ def _set_session_cookie(response: Response, token: str):
 
 
 @app.get("/", include_in_schema=False)
-def root_redirect():
-    return RedirectResponse("/business")
+def root_redirect(request: Request):
+    query = request.url.query
+    target = "/business/"
+    if query:
+        target = f"{target}?{query}"
+    return RedirectResponse(target)
 
 
-@app.get("/business", response_class=HTMLResponse, include_in_schema=False)
-def business_spa():
-    return _spa_index()
+@app.get("/business", include_in_schema=False)
+def business_redirect(request: Request):
+    query = request.url.query
+    target = "/business/"
+    if query:
+        target = f"{target}?{query}"
+    return RedirectResponse(target)
 
 
 @app.get("/business/{path:path}", response_class=HTMLResponse, include_in_schema=False)

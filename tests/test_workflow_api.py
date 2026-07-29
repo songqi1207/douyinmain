@@ -31,6 +31,51 @@ from workflow_registry import get_workflow
 
 
 class WorkflowApiTests(unittest.TestCase):
+    def test_public_job_message_hides_provider_internals(self):
+        message = workflow_jobs._public_job_message(
+            "开始调用扣子工作流（workflow_id=7664842340859691042，草稿生成第 1/2 次），"
+            "扣子已响应（HTTP 200），draft_key 已生成"
+        )
+
+        for forbidden in ("扣子", "Coze", "coze", "workflow_id", "draft_key", "HTTP 200"):
+            self.assertNotIn(forbidden, message)
+        self.assertIn("内容生成服务", message)
+        self.assertIn("视频草稿", message)
+        self.assertEqual(
+            workflow_jobs._public_job_message("incomplete_draft_key"),
+            "incomplete_draft_key",
+        )
+
+    def test_coze_end_stream_event_is_not_shown_as_user_node_log(self):
+        response = MagicMock()
+        response.iter_lines.return_value = [
+            "event: Message",
+            "data: " + json.dumps(
+                {
+                    "content": json.dumps({"draft_key": {"calls": []}}, ensure_ascii=False),
+                    "content_type": "text",
+                    "node_id": "900001",
+                    "node_title": "End",
+                    "node_is_finish": True,
+                },
+                ensure_ascii=False,
+            ),
+            "event: Done",
+            "data: " + json.dumps({"debug_url": "https://example.test/debug"}),
+        ]
+
+        with (
+            patch.object(workflow_jobs, "append_job_log") as append_log,
+            patch.object(workflow_jobs, "_update_job"),
+        ):
+            result = workflow_jobs._read_coze_stream(response, job_id="job-id", workflow_code="OWN02")
+
+        self.assertEqual(result, {"draft_key": {"calls": []}})
+        logged_messages = [call.args[1] for call in append_log.call_args_list]
+        self.assertNotIn("扣子节点开始：End", logged_messages)
+        self.assertNotIn("扣子节点完成：End", logged_messages)
+        self.assertEqual(logged_messages, ["内容生成完成，正在整理视频草稿"])
+
     def test_fastapi_endpoint_parameters_avoid_python_310_union_syntax(self):
         for route in app.routes:
             endpoint = getattr(route, "endpoint", None)
@@ -52,9 +97,9 @@ class WorkflowApiTests(unittest.TestCase):
             with patch.object(fastapi_app, "ROOT", root):
                 response = fastapi_app.api_download_draft_bridge()
             self.assertEqual(Path(response.path), executable)
-            self.assertIn("AI-Video-Creator-v1.4.4.exe", response.headers["content-disposition"])
+            self.assertIn("AI-Video-Creator-v1.4.10.exe", response.headers["content-disposition"])
             self.assertIn("no-store", response.headers["cache-control"])
-            self.assertEqual(response.headers["x-helper-version"], "1.4.4")
+            self.assertEqual(response.headers["x-helper-version"], "1.4.10")
             self.assertEqual(
                 response.headers["x-content-sha256"],
                 hashlib.sha256(executable.read_bytes()).hexdigest(),
@@ -425,9 +470,23 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertNotIn("theme", book)
         self.assertNotIn("theme", cigarette)
 
+    def test_published_book_defaults_to_stable_booklist_pacing(self):
+        with patch.dict(
+            os.environ,
+            {
+                "BOOK_DEFAULT_IMAGE_COUNT": "",
+                "BOOK_DEFAULT_VOICE_ID": "",
+            },
+            clear=False,
+        ):
+            params = _provider_inputs({"theme": "Book Title|Author Name"}, "OWN01")
+
+        self.assertEqual(params["subject"], "Book Title")
+        self.assertEqual(params["author"], "Author Name")
+        self.assertEqual(params["img_count"], "10")
+
     def test_incomplete_published_book_and_cigarette_drafts_are_rejected(self):
         for code, missing_id in (
-            ("OWN01", "call_191365"),
             ("OWN02", "call_557577"),
         ):
             with self.subTest(code=code):
@@ -449,7 +508,9 @@ class WorkflowApiTests(unittest.TestCase):
                     )
 
                 self.assertEqual(raised.exception.code, "incomplete_draft_key")
-                self.assertIn(missing_id, str(raised.exception))
+                self.assertNotIn(missing_id, str(raised.exception))
+                self.assertNotIn("缺少操作节点", str(raised.exception))
+                self.assertIn("生成的视频草稿不完整", str(raised.exception))
 
     def test_empty_optional_cigarette_border_branch_is_accepted(self):
         required = workflow_jobs._EXPECTED_PUBLISHED_DRAFT_CALL_IDS["OWN02"]
@@ -472,6 +533,30 @@ class WorkflowApiTests(unittest.TestCase):
             {"workflow_code": "OWN02"},
             key,
         )
+
+    def test_empty_optional_book_body_images_are_kept_absent(self):
+        required = workflow_jobs._EXPECTED_PUBLISHED_DRAFT_CALL_IDS["OWN01"]
+        optional = workflow_jobs._OPTIONAL_PUBLISHED_DRAFT_CALL_IDS["OWN01"]
+        key = {
+            "calls": [
+                {"call_id": call_id, "tool": "test", "params": {"items": [{}]}}
+                for call_id in sorted(required - optional)
+            ],
+            "meta": {
+                "unresolved_segment_ids": [],
+                "skipped_empty_calls": [
+                    {"call_id": call_id}
+                    for call_id in sorted(optional)
+                ],
+            },
+        }
+
+        workflow_jobs._validate_published_draft_completeness(
+            {"workflow_code": "OWN01"},
+            key,
+        )
+        self.assertNotIn("call_191365", {call["call_id"] for call in key["calls"]})
+        self.assertNotIn("call_300101", {call["call_id"] for call in key["calls"]})
 
     def test_complete_published_book_draft_accepts_two_space_watermark(self):
         expected = workflow_jobs._EXPECTED_PUBLISHED_DRAFT_CALL_IDS["OWN01"]
@@ -508,6 +593,67 @@ class WorkflowApiTests(unittest.TestCase):
             watermark["params"]["captions"][0]["text"],
             "  ",
         )
+
+    def test_book_draft_does_not_reuse_intro_images_as_body_images(self):
+        expected = workflow_jobs._EXPECTED_PUBLISHED_DRAFT_CALL_IDS["OWN01"]
+        handwritten_ids = {"call_191365", "call_300101", "call_169833", "call_143757"}
+        calls = [
+            {"call_id": call_id, "tool": "add_audios", "params": {"audio_infos": [{}]}}
+            for call_id in sorted(expected - handwritten_ids)
+        ]
+        calls.append(
+            {
+                "call_id": "call_169833",
+                "tool": "add_images",
+                "params": {
+                    "image_infos": [
+                        {
+                            "image_url": "https://example.test/cover.png",
+                            "start": 0,
+                            "end": 1_000_000,
+                            "width": 1024,
+                            "height": 1024,
+                        }
+                    ]
+                },
+            }
+        )
+        calls.append(
+            {
+                "call_id": "call_143757",
+                "tool": "add_captions",
+                "params": {
+                    "captions": [
+                        {"text": "正文一", "start": 1_000_000, "end": 3_000_000},
+                        {"text": "正文二", "start": 3_000_000, "end": 5_000_000},
+                    ]
+                },
+            }
+        )
+        key = {
+            "meta": {
+                "unresolved_segment_ids": [],
+                "skipped_empty_calls": [
+                    {"call_id": "call_191365"},
+                    {"call_id": "call_300101"},
+                ],
+            },
+            "calls": calls,
+        }
+
+        workflow_jobs._repair_own01_missing_body_images(
+            {"id": "", "workflow_code": "OWN01"},
+            key,
+        )
+        workflow_jobs._validate_published_draft_completeness(
+            {"workflow_code": "OWN01"},
+            key,
+        )
+
+        repaired = {call["call_id"]: call for call in key["calls"]}
+        self.assertNotIn("call_191365", repaired)
+        self.assertNotIn("call_300101", repaired)
+        self.assertNotIn("fallback_repaired_calls", key["meta"])
 
     def test_background_coze_request_uses_direct_session_by_default(self):
         direct_response = MagicMock(status_code=200)
@@ -639,6 +785,61 @@ class WorkflowApiTests(unittest.TestCase):
                 for call in append_log.call_args_list
             )
         )
+
+    def test_published_book_sandbox_end_error_retries_with_stable_image_count(self):
+        first_response = MagicMock(status_code=200)
+        second_response = MagicMock(status_code=200)
+        sandbox_error = workflow_jobs.ProviderError(
+            "provider_error",
+            "request sandbox failed err:Cannot read properties of undefined (reading 'end')",
+        )
+        completed_results = [{"type": "draft", "format": "draft_key"}]
+        job = {
+            "id": "book-sandbox-retry-test",
+            "workflow_code": "OWN01",
+            "category": "自有工作流",
+            "inputs": {"theme": "Book Title|Author Name"},
+        }
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "COZE_API_TOKEN": "test-token",
+                    "COZE_WORKFLOW_OWN01": "published-book-id",
+                    "COZE_INCOMPLETE_DRAFT_ATTEMPTS": "2",
+                    "BOOK_DEFAULT_IMAGE_COUNT": "28",
+                    "BOOK_FALLBACK_IMAGE_COUNT": "10",
+                },
+            ),
+            patch.object(
+                workflow_jobs,
+                "_post_coze_workflow",
+                side_effect=[first_response, second_response],
+            ) as post_workflow,
+            patch.object(
+                workflow_jobs,
+                "_read_coze_stream",
+                side_effect=[sandbox_error, {"draft_key": "second"}],
+            ),
+            patch.object(
+                workflow_jobs,
+                "_save_draft_key_result",
+                return_value=completed_results,
+            ),
+            patch.object(workflow_jobs, "_update_job"),
+            patch.object(workflow_jobs, "append_job_log"),
+        ):
+            results = _run_coze(job)
+
+        self.assertEqual(results, completed_results)
+        self.assertEqual(post_workflow.call_count, 2)
+        first_payload = post_workflow.call_args_list[0].kwargs["payload"]
+        second_payload = post_workflow.call_args_list[1].kwargs["payload"]
+        self.assertEqual(first_payload["parameters"]["img_count"], "28")
+        self.assertEqual(second_payload["parameters"]["img_count"], "10")
+        first_response.close.assert_called_once()
+        second_response.close.assert_called_once()
 
     def test_background_coze_request_retries_without_environment_proxy(self):
         proxy_error = workflow_jobs.requests.exceptions.ProxyError("proxy unavailable")
@@ -1000,6 +1201,7 @@ class WorkflowApiTests(unittest.TestCase):
                 waiting = self.client.get(f"/api/v1/jobs/{job_id}").json()["job"]
                 self.assertEqual(waiting["status"], "rendering", waiting)
                 self.assertEqual(waiting["stage"], "waiting_for_device")
+                self.assertIsNone(waiting["error"])
 
                 claimed = TestClient(app).post("/api/v1/render-agent/claim", headers=headers)
                 self.assertEqual(claimed.status_code, 200, claimed.text)

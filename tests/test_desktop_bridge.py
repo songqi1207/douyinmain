@@ -30,6 +30,7 @@ from desktop_bridge.device_agent import (
 from desktop_bridge.paths import app_data_dir
 from desktop_bridge.app import DraftBridgeApp
 import desktop_bridge.windows_integration as windows_integration
+import desktop_bridge.updater as updater
 from desktop_bridge.windows_integration import parse_protocol_url
 
 
@@ -310,7 +311,37 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertEqual(parsed["action"], "wake")
         self.assertEqual(parsed["site_url"], "https://video.example.test")
         self.assertEqual(parsed["pairing_code"], "ABCD2345")
+        update = parse_protocol_url("douyin-draft://update?site=https%3A%2F%2Fvideo.example.test")
+        self.assertEqual(update["action"], "update")
+        self.assertEqual(update["site_url"], "https://video.example.test")
         self.assertEqual(parse_protocol_url("https://example.test"), {})
+
+    def test_helper_update_downloads_verifies_and_launches_latest_exe(self):
+        with tempfile.TemporaryDirectory(prefix="helper-update-") as temporary:
+            root = Path(temporary)
+            payload = b"MZ-new-helper"
+            response = MagicMock()
+            response.headers = {"X-Content-SHA256": hashlib.sha256(payload).hexdigest()}
+            response.iter_content.return_value = [payload[:4], payload[4:]]
+            response.__enter__.return_value = response
+            response.__exit__.return_value = None
+
+            with (
+                patch.object(updater, "app_data_dir", return_value=root),
+                patch.object(updater.requests, "get", return_value=response) as get,
+                patch.object(updater.subprocess, "Popen") as popen,
+            ):
+                downloaded = updater.download_and_launch_update("https://video.example.test/business")
+
+            self.assertTrue(downloaded.is_file())
+            self.assertEqual(downloaded.read_bytes(), payload)
+            get.assert_called_once_with(
+                "https://video.example.test/api/v1/downloads/draft-bridge",
+                stream=True,
+                timeout=(20, 180),
+            )
+            response.raise_for_status.assert_called_once()
+            self.assertEqual(popen.call_args.args[0], [str(downloaded), "--background"])
 
     def test_frozen_helper_self_installs_and_relaunches_from_user_directory(self):
         with tempfile.TemporaryDirectory(prefix="bridge-self-install-") as temporary:

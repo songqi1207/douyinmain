@@ -31,6 +31,7 @@ export default function App() {
         <Route path="/records" element={<RecordsPage />} />
         <Route path="/devices" element={<DevicesPage />} />
         <Route path="/jianying-export" element={<JianyingExportPage />} />
+        <Route path="/jianying-export/test" element={<JianyingExportPage />} />
         <Route path="/account/security" element={<AccountSecurityPage />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
