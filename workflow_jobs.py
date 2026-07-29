@@ -532,10 +532,7 @@ def execute_job(job_id: str):
             append_job_log(job_id, "执行方式：演示模式生成")
             results = _run_demo(job)
         workflow = get_workflow(job["workflow_code"], job["category"]) or {}
-        if (
-            workflow.get("generation_mode") != "workflow_template"
-            and any(result["type"] == "draft" for result in results)
-        ):
+        if any(result["type"] == "draft" for result in results):
             if job.get("render_device_id"):
                 logger.info(
                     "job_render_route job_id=%s route=device device_id=%s",

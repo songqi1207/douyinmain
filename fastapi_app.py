@@ -862,10 +862,10 @@ def api_create_job(
     if not isinstance(inputs, dict):
         raise HTTPException(status_code=422, detail={"code": "invalid_inputs", "message": "inputs 必须是对象"})
     workflow = get_workflow(workflow_code, category)
-    render_device = preferred_device(user["id"]) if workflow and workflow.get("generation_mode") == "draft" else None
+    needs_render = bool(workflow and workflow.get("output_type") == "draft")
+    render_device = preferred_device(user["id"]) if needs_render else None
     if (
-        workflow
-        and workflow.get("generation_mode") == "draft"
+        needs_render
         and not render_device
         and not (os.getenv("WORKFLOW_RENDER_API_URL") or "").strip()
     ):

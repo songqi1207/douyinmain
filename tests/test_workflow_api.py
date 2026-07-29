@@ -1058,6 +1058,61 @@ class WorkflowApiTests(unittest.TestCase):
                 timeout=(20, 1800),
             )
 
+    def test_workflow_template_draft_jobs_are_queued_for_device_rendering(self):
+        key = {
+            "kind": "jianying_draft_key",
+            "meta": {"run_id": "workflow-template-device-render"},
+            "draft": {"width": 1080, "height": 1920, "name": "模板草稿导出"},
+            "calls": [
+                {
+                    "call_id": "caption",
+                    "tool": "add_captions",
+                    "params": {"captions": [{"text": "模板草稿导出", "start": 0, "end": 1_000_000}]},
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory(prefix="template-device-render-") as temporary:
+            result_dir = Path(temporary)
+            draft_file = result_dir / "own02-template-draft-key.json"
+            draft_file.write_text(json.dumps(key, ensure_ascii=False), encoding="utf-8")
+            job = {
+                "id": "template-device-job",
+                "workflow_code": "OWN02",
+                "category": "自有工作流",
+                "inputs": {"theme": "中华"},
+                "render_device_id": "device-1",
+            }
+            results = [
+                {
+                    "type": "draft",
+                    "format": "draft_key",
+                    "url": f"/api/v1/job-results/{draft_file.name}",
+                    "downloadable": True,
+                }
+            ]
+            with (
+                patch.object(workflow_jobs, "RESULT_DIR", result_dir),
+                patch.object(workflow_jobs, "get_job", return_value=job),
+                patch.object(workflow_jobs, "_update_job") as update_job,
+                patch.object(workflow_jobs, "_run_local_workflow", return_value=results),
+                patch.object(
+                    workflow_jobs,
+                    "get_workflow",
+                    return_value={"output_type": "draft", "generation_mode": "workflow_template"},
+                ),
+                patch.object(workflow_jobs, "append_job_log"),
+            ):
+                workflow_jobs.execute_job(job["id"])
+
+            self.assertTrue(
+                any(
+                    call.kwargs.get("status") == "rendering"
+                    and call.kwargs.get("stage") == "waiting_for_device"
+                    for call in update_job.call_args_list
+                ),
+                update_job.call_args_list,
+            )
+
     def test_new_frontend_can_render_uploaded_draft_key_to_hosted_mp4(self):
         key = {
             "kind": "jianying_draft_key",
