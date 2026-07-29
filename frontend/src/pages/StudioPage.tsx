@@ -89,7 +89,7 @@ export function StudioPage() {
 
   const selected = WORKFLOW_CHOICES.find((item) => item.code === selectedCode)!;
   const workflow = workflows[selectedCode];
-  const published = workflow?.status === "online" && workflow.generation_mode === "draft";
+  const published = workflow?.status === "online" && workflow.output_type === "draft";
   const renderReady = renderStatus.configured;
   const ready = Boolean(user && !user.must_change_password && published && renderReady);
 

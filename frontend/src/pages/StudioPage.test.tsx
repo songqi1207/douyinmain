@@ -50,7 +50,7 @@ const workflows = ["OWN01", "OWN02", "OWN03"].map((code): Workflow => ({
   status: "online",
   input_schema: [{ name: "theme", label: "主题", type: "text", required: true }],
   output_type: "draft",
-  generation_mode: "draft",
+  generation_mode: "workflow_template",
   stats: { views: 0, favorites: 0, downloads: 0, runs: 0 },
 }));
 
