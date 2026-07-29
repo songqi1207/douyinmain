@@ -1113,6 +1113,75 @@ class WorkflowApiTests(unittest.TestCase):
                 update_job.call_args_list,
             )
 
+    def test_local_cigarette_workflow_outputs_importable_draft_key(self):
+        with tempfile.TemporaryDirectory(prefix="local-cigarette-draft-key-") as temporary:
+            result_dir = Path(temporary)
+            job = {
+                "id": "local-cigarette-job",
+                "workflow_code": "OWN02",
+                "category": "自有工作流",
+                "inputs": {"theme": "中华"},
+            }
+            with (
+                patch.object(workflow_jobs, "RESULT_DIR", result_dir),
+                patch.object(workflow_jobs, "_update_job"),
+                patch.object(workflow_jobs, "append_job_log"),
+            ):
+                results = workflow_jobs._run_local_workflow(job)
+
+            self.assertEqual(results[0]["type"], "draft")
+            self.assertEqual(results[0]["format"], "draft_key")
+            saved = result_dir / Path(results[0]["url"]).name
+            self.assertTrue(saved.is_file())
+            key = json.loads(saved.read_text(encoding="utf-8"))
+            self.assertEqual(key["kind"], "jianying_draft_key")
+            self.assertTrue(key["calls"])
+            self.assertIn("中华", saved.read_text(encoding="utf-8"))
+
+    def test_local_cigarette_job_waits_for_device_export(self):
+        with (
+            patch.object(
+                fastapi_app,
+                "preferred_device",
+                return_value={"id": "device-1", "name": "SONGQI", "online": True},
+            ),
+            patch.object(
+                workflow_jobs,
+                "get_workflow",
+                return_value={
+                    "status": "online",
+                    "output_type": "draft",
+                    "generation_mode": "workflow_template",
+                    "input_schema": [{"name": "theme", "type": "text", "required": True}],
+                },
+            ),
+            patch.object(
+                fastapi_app,
+                "get_workflow",
+                return_value={
+                    "status": "online",
+                    "output_type": "draft",
+                    "generation_mode": "workflow_template",
+                    "input_schema": [{"name": "theme", "type": "text", "required": True}],
+                },
+            ),
+        ):
+            created = self.client.post(
+                "/api/v1/jobs",
+                json={
+                    "workflow_code": "OWN02",
+                    "category": "自有工作流",
+                    "inputs": {"theme": "中华"},
+                },
+            )
+
+        self.assertEqual(created.status_code, 202, created.text)
+        job_id = created.json()["job"]["id"]
+        job = self.client.get(f"/api/v1/jobs/{job_id}").json()["job"]
+        self.assertEqual(job["status"], "rendering", job)
+        self.assertEqual(job["stage"], "waiting_for_device", job)
+        self.assertEqual(job["results"][0]["format"], "draft_key")
+
     def test_new_frontend_can_render_uploaded_draft_key_to_hosted_mp4(self):
         key = {
             "kind": "jianying_draft_key",

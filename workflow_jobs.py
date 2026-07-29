@@ -1410,6 +1410,138 @@ def _save_draft_key_result(job: dict, data: Any) -> list[dict]:
     ]
 
 
+def _save_local_draft_key_result(job: dict, draft_key: dict) -> list[dict]:
+    """Persist a locally built draft_key without Coze node completeness checks."""
+    from utils.draft_key_importer import KeyValidationError, import_draft_key
+
+    try:
+        import_draft_key(draft_key, dry_run=True)
+    except KeyValidationError as exc:
+        raise ProviderError("invalid_draft_key", "本地生成的视频草稿校验失败：" + "；".join(exc.errors)) from exc
+
+    RESULT_DIR.mkdir(parents=True, exist_ok=True)
+    destination = RESULT_DIR / f"{job['workflow_code'].lower()}-{job['id']}-draft-key.json"
+    destination.write_text(json.dumps(draft_key, ensure_ascii=False, indent=2), encoding="utf-8")
+    _update_job(job["id"], stage="draft_key_ready", progress=75)
+    append_job_log(job["id"], "视频草稿已生成并通过校验")
+    return [
+        {
+            "type": "draft",
+            "format": "draft_key",
+            "url": f"/api/v1/job-results/{destination.name}",
+            "poster_url": None,
+            "downloadable": True,
+            "remote_draft_id": "",
+        }
+    ]
+
+
+def _build_local_draft_key(job: dict) -> dict[str, Any]:
+    code = str(job.get("workflow_code") or "").upper()
+    inputs = job.get("inputs") if isinstance(job.get("inputs"), dict) else {}
+    theme = str(
+        inputs.get("theme")
+        or inputs.get("book_name")
+        or inputs.get("cigarette_name")
+        or inputs.get("god_name")
+        or "未命名主题"
+    ).strip() or "未命名主题"
+    safe_theme = re.sub(r'[\\/:*?"<>|\r\n]+', "_", theme).strip(" .")[:40] or code
+    duration = 8_000_000
+
+    if code == "OWN01":
+        title = theme
+        subtitle = "一本书，一段被时间留下的回声。"
+        body = "把最有记忆点的情绪、人物和金句整理成短视频草稿。"
+        footer = "书单视频"
+    elif code == "OWN02":
+        title = theme
+        subtitle = f"每天认识一种香烟之{theme}"
+        body = "以包装、色彩和名字意象切入，生成克制的情绪独白。"
+        footer = "香烟视频"
+    elif code == "OWN03":
+        title = theme
+        subtitle = "神话人物，一分钟讲清核心气质。"
+        body = "用开场悬念、人物标签和结尾反转搭建视频节奏。"
+        footer = "神话解说"
+    else:
+        title = theme
+        subtitle = "本地视频草稿"
+        body = "内容已整理为可导出的剪映草稿。"
+        footer = code
+
+    return {
+        "schema_version": "1.0",
+        "kind": "jianying_draft_key",
+        "meta": {
+            "workflow": code,
+            "run_id": str(job.get("id") or uuid.uuid4().hex),
+            "title": title,
+            "local_template_fallback": True,
+        },
+        "draft": {
+            "width": 1080,
+            "height": 1920,
+            "name": f"{code}_{safe_theme}",
+        },
+        "calls": [
+            {
+                "call_id": "local_title",
+                "tool": "add_captions",
+                "params": {
+                    "captions": [{"text": title, "start": 0, "end": duration}],
+                    "font": "华文行楷",
+                    "font_size": 16,
+                    "text_color": "#F8E7B0",
+                    "border_color": "#1D1208",
+                    "transform_y": -520,
+                    "in_animation": "渐显",
+                    "in_animation_duration": 500_000,
+                },
+            },
+            {
+                "call_id": "local_subtitle",
+                "tool": "add_captions",
+                "params": {
+                    "captions": [{"text": subtitle, "start": 600_000, "end": duration}],
+                    "font": "华文行楷",
+                    "font_size": 8,
+                    "text_color": "#DFD5D5",
+                    "border_color": "#000000",
+                    "transform_y": -260,
+                    "in_animation": "向上滑动",
+                    "in_animation_duration": 400_000,
+                },
+            },
+            {
+                "call_id": "local_body",
+                "tool": "add_captions",
+                "params": {
+                    "captions": [{"text": body, "start": 1_600_000, "end": duration}],
+                    "font": "华文行楷",
+                    "font_size": 7,
+                    "text_color": "#FFFFFF",
+                    "border_color": "#000000",
+                    "transform_y": 120,
+                    "line_spacing": 2,
+                    "in_animation": "渐显",
+                    "in_animation_duration": 500_000,
+                },
+            },
+            {
+                "call_id": "local_footer",
+                "tool": "add_captions",
+                "params": {
+                    "captions": [{"text": footer, "start": 0, "end": duration}],
+                    "font_size": 5,
+                    "text_color": "#B8894B",
+                    "transform_y": 760,
+                },
+            },
+        ],
+    }
+
+
 def _extract_results(value: Any, expected_type: str = "draft") -> list[dict]:
     urls: list[tuple[str, str]] = []
 
@@ -1708,6 +1840,8 @@ def _run_local_workflow(job: dict) -> list[dict]:
     _update_job(job["id"], stage="building_workflow", progress=45)
     code = job["workflow_code"]
     inputs = job["inputs"]
+    if code in LOCAL_CODES:
+        return _save_local_draft_key_result(job, _build_local_draft_key(job))
     destination = RESULT_DIR / f"{code.lower()}-{job['id']}.json"
     generated_destination = destination
 
