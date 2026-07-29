@@ -28,6 +28,7 @@ from desktop_bridge.device_agent import (
     pair_with_site,
 )
 from desktop_bridge.paths import app_data_dir
+import desktop_bridge.app as bridge_app
 from desktop_bridge.app import DraftBridgeApp
 import desktop_bridge.windows_integration as windows_integration
 import desktop_bridge.updater as updater
@@ -35,6 +36,13 @@ from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_load_settings_accepts_utf8_bom(self):
+        with tempfile.TemporaryDirectory(prefix="helper-settings-bom-") as temporary:
+            path = Path(temporary) / "settings.json"
+            path.write_text('{"site_url": "http://example.test"}', encoding="utf-8-sig")
+            with patch.object(bridge_app, "_settings_path", return_value=path):
+                self.assertEqual(bridge_app._load_settings()["site_url"], "http://example.test")
+
     def test_background_start_hides_window_before_building_widgets(self):
         source = inspect.getsource(DraftBridgeApp.__init__)
 

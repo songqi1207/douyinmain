@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 
 from desktop_bridge.draft_core import (
@@ -39,7 +41,9 @@ def _settings_path() -> Path:
 
 def _load_settings() -> dict:
     try:
-        return json.loads(_settings_path().read_text(encoding="utf-8"))
+        # PowerShell 5.1 writes UTF-8 with BOM by default; accept both forms so
+        # manual config repair does not make the background helper look unpaired.
+        return json.loads(_settings_path().read_text(encoding="utf-8-sig"))
     except Exception:
         return {}
 
@@ -51,6 +55,111 @@ def _save_settings(payload: dict) -> None:
     merged.update(payload)
     temporary.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(path)
+
+
+def _detected_default_paths(settings: dict) -> tuple[str, str]:
+    roots = detect_draft_roots()
+    executables = detect_jianying_executables()
+    draft_root = str(settings.get("draft_root") or (str(roots[0]) if roots else ""))
+    jianying_exe = str(settings.get("jianying_exe") or (str(executables[0]) if executables else ""))
+    return draft_root, jianying_exe
+
+
+def _headless_status(message: str) -> None:
+    logging.getLogger("aivideo.device_agent").info("agent_status message=%s", message)
+
+
+def _start_headless_agent(settings: dict) -> DeviceAgent | None:
+    site_url = str(settings.get("site_url") or "").strip()
+    device_id = str(settings.get("device_id") or "").strip()
+    device_token = str(settings.get("device_token") or "").strip()
+    draft_root, jianying_exe = _detected_default_paths(settings)
+    if not site_url or not device_id or not device_token or not draft_root or not jianying_exe:
+        logging.getLogger("aivideo.device_agent").warning(
+            "headless_agent_missing_config site=%s device=%s token=%s draft_root=%s jianying_exe=%s",
+            bool(site_url),
+            bool(device_id),
+            bool(device_token),
+            bool(draft_root),
+            bool(jianying_exe),
+        )
+        return None
+    settings.update({"draft_root": draft_root, "jianying_exe": jianying_exe})
+    _save_settings(settings)
+    agent = DeviceAgent(
+        site_url=site_url,
+        device_id=device_id,
+        device_token=device_token,
+        draft_root=draft_root,
+        jianying_exe=jianying_exe,
+        status=_headless_status,
+    )
+    agent.start()
+    return agent
+
+
+def _handle_headless_protocol(protocol_url: str, settings: dict) -> tuple[dict, bool]:
+    protocol = parse_protocol_url(protocol_url)
+    action = str(protocol.get("action") or "")
+    site_url = str(protocol.get("site_url") or "").strip()
+    pairing_code = str(protocol.get("pairing_code") or "").strip()
+    if action == "update":
+        download_and_launch_update(site_url or str(settings.get("site_url") or ""))
+        return settings, True
+    if site_url:
+        settings["site_url"] = site_url
+    current_site = str(settings.get("site_url") or "").rstrip("/")
+    needs_pairing = pairing_code and (
+        not settings.get("device_token") or (site_url and current_site != site_url.rstrip("/"))
+    )
+    if needs_pairing:
+        result = pair_with_site(
+            site_url or str(settings.get("site_url") or ""),
+            pairing_code,
+            str(settings.get("device_name") or os.getenv("COMPUTERNAME") or "我的电脑"),
+        )
+        settings.update(
+            {
+                "site_url": result["site_url"],
+                "device_id": result["device_id"],
+                "device_token": result["device_token"],
+                "device_name": result.get("name") or settings.get("device_name") or os.getenv("COMPUTERNAME") or "我的电脑",
+            }
+        )
+        _save_settings(settings)
+    return settings, False
+
+
+def run_headless_agent(protocol_url: str = "") -> int:
+    settings = _load_settings()
+    if protocol_url:
+        try:
+            settings, should_exit = _handle_headless_protocol(protocol_url, settings)
+        except Exception as exc:
+            logging.getLogger("aivideo.device_agent").exception("headless_protocol_failed error=%s", exc)
+            return 1
+        if should_exit:
+            return 0
+    agent = _start_headless_agent(settings)
+    try:
+        while True:
+            protocol_url = consume_wake_signal()
+            if protocol_url:
+                if agent:
+                    agent.stop()
+                    agent = None
+                    time.sleep(0.5)
+                settings = _load_settings()
+                settings, should_exit = _handle_headless_protocol(protocol_url, settings)
+                if should_exit:
+                    return 0
+                agent = _start_headless_agent(settings)
+            time.sleep(1)
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        if agent:
+            agent.stop()
 
 
 class DraftBridgeApp:
@@ -74,10 +183,7 @@ class DraftBridgeApp:
         self.hide_after_pairing = False
         self.background_mode = bool(start_hidden)
 
-        roots = detect_draft_roots()
-        executables = detect_jianying_executables()
-        default_root = self.settings.get("draft_root") or (str(roots[0]) if roots else "")
-        default_exe = self.settings.get("jianying_exe") or (str(executables[0]) if executables else "")
+        default_root, default_exe = _detected_default_paths(self.settings)
         self.draft_root_var = tk.StringVar(value=default_root)
         self.jianying_exe_var = tk.StringVar(value=default_exe)
         self.site_url_var = tk.StringVar(value=str(self.settings.get("site_url") or ""))
@@ -506,10 +612,12 @@ def main(argv: list[str] | None = None) -> int:
         if install_for_current_user(relaunch_arguments):
             return 0
         protocol_url = str(args.protocol or "")
+        protocol = parse_protocol_url(protocol_url)
         if not acquire_single_instance():
             notify_primary(protocol_url or "douyin-draft://open")
             return 0
-        protocol = parse_protocol_url(protocol_url)
+        if not args.key and (args.background or protocol.get("action") in {"wake", "update"}):
+            return run_headless_agent(protocol_url)
         DraftBridgeApp(
             args.key or "",
             start_hidden=bool(args.background or protocol.get("action") in {"wake", "update"}),
