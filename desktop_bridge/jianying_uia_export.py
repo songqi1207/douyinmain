@@ -114,6 +114,50 @@ def _wait_for_window(auto, expected: str, timeout: float):
     )
 
 
+def _close_success_dialog(auto, stage: StageCallback | None) -> bool:
+    try:
+        window, state = _get_window(auto)
+    except JianyingUIAError:
+        return False
+    if state != "pre_export":
+        return False
+
+    success_text = window.TextControl(
+        searchDepth=8,
+        Compare=lambda control, _depth: any(
+            text.casefold() in str(control.Name or "").casefold()
+            or text.casefold() in _full_description(control).casefold()
+            for text in ("导出成功", "让更多人看到你的作品", "查看草稿", "Export succeeded")
+        ),
+    )
+    if not success_text.Exists(0):
+        return False
+
+    close_button = window.TextControl(
+        searchDepth=8,
+        Compare=lambda control, _depth: str(control.Name or "").strip().casefold()
+        in {"关闭", "完成", "close", "done", "ok"},
+    )
+    if close_button.Exists(1, 0.2):
+        close_button.Click(simulateMove=False)
+        _emit(stage, "uia2_success_dialog_closed", "mode=button")
+        time.sleep(0.8)
+        return True
+
+    try:
+        import ctypes
+
+        handle = int(getattr(window, "NativeWindowHandle", 0) or 0)
+        if handle:
+            ctypes.windll.user32.PostMessageW(handle, 0x0010, 0, 0)
+            _emit(stage, "uia2_success_dialog_closed", "mode=close_message")
+            time.sleep(0.8)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def export_draft_uia(
     draft_name: str,
     output_path: Path | str,
@@ -136,6 +180,11 @@ def export_draft_uia(
         current_window, current_state = _get_window(auto)
     except JianyingUIAError:
         current_window, current_state = _wait_for_window(auto, "home", 15), "home"
+    if current_state == "pre_export" and _close_success_dialog(auto, stage):
+        try:
+            current_window, current_state = _get_window(auto)
+        except JianyingUIAError:
+            current_window, current_state = _wait_for_window(auto, "home", 15), "home"
 
     if current_state == "home":
         window = current_window

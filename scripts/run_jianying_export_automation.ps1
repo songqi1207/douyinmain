@@ -159,6 +159,43 @@ function Write-VisibleElementSnapshot([int]$ProcessId) {
     Write-Stage "ui_snapshot_finished" "elements=$written"
 }
 
+function Get-ElementText($Element) {
+    try {
+        $name = [string]$Element.Current.Name
+        $description = Get-FullDescription $Element
+        return "$name $description"
+    }
+    catch {
+        return ""
+    }
+}
+
+function Get-SubtreeText($Element, [int]$Limit = 120) {
+    $parts = New-Object System.Collections.Generic.List[string]
+    try {
+        $rootText = Get-ElementText $Element
+        if ($rootText.Trim()) {
+            $parts.Add($rootText.Trim())
+        }
+        $count = 0
+        foreach ($child in $Element.FindAll(
+            [System.Windows.Automation.TreeScope]::Subtree,
+            [System.Windows.Automation.Condition]::TrueCondition
+        )) {
+            $text = (Get-ElementText $child).Trim()
+            if ($text) {
+                $parts.Add($text)
+            }
+            $count += 1
+            if ($count -ge $Limit) {
+                break
+            }
+        }
+    }
+    catch {}
+    return ($parts -join " ")
+}
+
 function Invoke-Element($Element, [switch]$DoubleClick) {
     try {
         $pattern = $Element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
@@ -189,6 +226,41 @@ function Invoke-Point([int]$X, [int]$Y) {
     [JianyingNative]::SetCursorPos($X, $Y) | Out-Null
     [JianyingNative]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
     [JianyingNative]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+}
+
+function Close-ExportSuccessDialogs([int]$ProcessId) {
+    $closed = 0
+    for ($attempt = 0; $attempt -lt 3; $attempt += 1) {
+        $successDialog = Get-ProcessRoots $ProcessId | Where-Object {
+            $text = Get-SubtreeText $_
+            ($_.Current.ClassName -match 'ExportWindow|LVInfoDialog|Dialog|Popup' -or $_.Current.Name -match 'JianyingPro|导出') -and
+            $text -match '导出成功|让更多人看到你的作品|查看草稿|发布'
+        } | Select-Object -First 1
+        if (-not $successDialog) {
+            break
+        }
+
+        $closeButton = Get-VisibleElements $ProcessId | Where-Object {
+            $text = (Get-ElementText $_).Trim()
+            $text -match '^\s*(关闭|完成|知道了|Close|Done|OK)\s*$' -and
+            $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)'
+        } | Select-Object -Last 1
+        if ($closeButton) {
+            $name = ([string]$closeButton.Current.Name).Replace("`r", " ").Replace("`n", " ").Trim()
+            Write-Stage "export_success_dialog_closed" "mode=button name=$name"
+            Invoke-Element $closeButton
+        }
+        else {
+            $rect = $successDialog.Current.BoundingRectangle
+            $x = [int]($rect.Right - [Math]::Min(85, [Math]::Max(45, $rect.Width * 0.09)))
+            $y = [int]($rect.Bottom - [Math]::Min(42, [Math]::Max(30, $rect.Height * 0.05)))
+            Write-Stage "export_success_dialog_closed" "mode=coordinate x=$x y=$y"
+            Invoke-Point $x $y
+        }
+        $closed += 1
+        Start-Sleep -Milliseconds 800
+    }
+    return $closed
 }
 
 function Get-WindowRect($Process) {
@@ -437,11 +509,13 @@ Write-Stage "jianying_window_ready" "process_id=$($process.Id) class=$windowClas
 [JianyingNative]::SetForegroundWindow($process.MainWindowHandle) | Out-Null
 Start-Sleep -Seconds 2
 Dismiss-JianyingPopups $process.Id | Out-Null
+Close-ExportSuccessDialogs $process.Id | Out-Null
 
 Write-Stage "preparing_draft_home"
 [System.Windows.Forms.SendKeys]::SendWait("{ESC}")
 Start-Sleep -Milliseconds 500
 Dismiss-JianyingPopups $process.Id | Out-Null
+Close-ExportSuccessDialogs $process.Id | Out-Null
 $openEditorExport = Get-VisibleElements $process.Id | Where-Object {
     ($_.Current.Name -match '^\s*(导出|Export)\s*$' -or
         (Get-FullDescription $_) -match 'MainWindowTitleBarExportBtn') -and
@@ -672,6 +746,7 @@ while ((Get-Date) -lt $fileDeadline) {
                     Write-Stage "output_file_moved" "from=$sourcePath to=$OutputPath"
                 }
                 $finalSize = (Get-Item -LiteralPath $OutputPath).Length
+                Close-ExportSuccessDialogs $process.Id | Out-Null
                 Minimize-JianyingWindow $process "completed"
                 Write-Stage "export_completed" "size_bytes=$finalSize"
                 [pscustomobject]@{
