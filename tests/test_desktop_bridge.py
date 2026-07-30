@@ -29,7 +29,10 @@ from desktop_bridge.device_agent import (
     normalize_site_url,
     pair_with_site,
 )
-from desktop_bridge.draft_core import BridgeError as DraftCoreBridgeError
+from desktop_bridge.draft_core import (
+    BridgeError as DraftCoreBridgeError,
+    detect_jianying_version,
+)
 from desktop_bridge.paths import app_data_dir
 import desktop_bridge.app as bridge_app
 from desktop_bridge.app import DraftBridgeApp
@@ -415,13 +418,45 @@ class DesktopBridgeTests(unittest.TestCase):
             "device_token": "secret-token",
             "name": "办公室电脑",
         }
-        with patch("desktop_bridge.device_agent.requests.post", return_value=response) as post:
-            result = pair_with_site("https://example.test/business/", "ABCD2345", "办公室电脑")
+        with (
+            patch("desktop_bridge.device_agent.requests.post", return_value=response) as post,
+            patch(
+                "desktop_bridge.device_agent.detect_jianying_version",
+                return_value="5.9.0.11632",
+            ),
+        ):
+            with tempfile.TemporaryDirectory(prefix="jianying-version-") as temporary:
+                executable = Path(temporary) / "JianyingPro.exe"
+                executable.write_bytes(b"MZ")
+                result = pair_with_site(
+                    "https://example.test/business/",
+                    "ABCD2345",
+                    "办公室电脑",
+                    str(executable),
+                )
         self.assertEqual(normalize_site_url("https://example.test/business"), "https://example.test")
         self.assertEqual(result["site_url"], "https://example.test")
         self.assertEqual(result["device_token"], "secret-token")
         self.assertEqual(post.call_args.args[0], "https://example.test/api/v1/render-agent/pair")
         self.assertFalse(post.call_args.kwargs["json"]["capabilities"]["ffmpeg"])
+        self.assertTrue(post.call_args.kwargs["json"]["capabilities"]["jianying_found"])
+        self.assertEqual(
+            post.call_args.kwargs["json"]["capabilities"]["jianying_version"],
+            "5.9.0.11632",
+        )
+
+    def test_detects_jianying_version_from_versioned_install_folder(self):
+        with tempfile.TemporaryDirectory(prefix="jianying-install-") as temporary:
+            executable = (
+                Path(temporary)
+                / "JianyingPro"
+                / "Apps"
+                / "6.8.0.12345"
+                / "JianyingPro.exe"
+            )
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"MZ")
+            self.assertEqual(detect_jianying_version(executable), "6.8.0.12345")
 
     def test_parses_browser_wake_protocol_without_executing_shell_text(self):
         parsed = parse_protocol_url(

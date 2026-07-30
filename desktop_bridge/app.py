@@ -17,6 +17,7 @@ from desktop_bridge.draft_core import (
     BridgeError,
     detect_draft_roots,
     detect_jianying_executables,
+    detect_jianying_version,
     import_draft_payload,
     launch_jianying,
     load_payload_file,
@@ -60,8 +61,18 @@ def _save_settings(payload: dict) -> None:
 def _detected_default_paths(settings: dict) -> tuple[str, str]:
     roots = detect_draft_roots()
     executables = detect_jianying_executables()
-    draft_root = str(settings.get("draft_root") or (str(roots[0]) if roots else ""))
-    jianying_exe = str(settings.get("jianying_exe") or (str(executables[0]) if executables else ""))
+    configured_root = str(settings.get("draft_root") or "").strip()
+    configured_exe = str(settings.get("jianying_exe") or "").strip()
+    draft_root = (
+        configured_root
+        if configured_root and Path(configured_root).is_dir()
+        else (str(roots[0]) if roots else configured_root)
+    )
+    jianying_exe = (
+        configured_exe
+        if configured_exe and Path(configured_exe).is_file()
+        else (str(executables[0]) if executables else configured_exe)
+    )
     return draft_root, jianying_exe
 
 
@@ -117,6 +128,7 @@ def _handle_headless_protocol(protocol_url: str, settings: dict) -> tuple[dict, 
             site_url or str(settings.get("site_url") or ""),
             pairing_code,
             str(settings.get("device_name") or os.getenv("COMPUTERNAME") or "我的电脑"),
+            str(settings.get("jianying_exe") or ""),
         )
         settings.update(
             {
@@ -186,6 +198,7 @@ class DraftBridgeApp:
         default_root, default_exe = _detected_default_paths(self.settings)
         self.draft_root_var = tk.StringVar(value=default_root)
         self.jianying_exe_var = tk.StringVar(value=default_exe)
+        self.jianying_label_var = tk.StringVar(value=self._jianying_label(default_exe))
         self.site_url_var = tk.StringVar(value=str(self.settings.get("site_url") or ""))
         self.pairing_code_var = tk.StringVar(value="")
         self.device_name_var = tk.StringVar(
@@ -216,7 +229,9 @@ class DraftBridgeApp:
         self.ttk.Entry(frame, textvariable=self.draft_root_var).grid(row=0, column=1, sticky="ew", pady=5)
         self.ttk.Button(frame, text="选择目录", command=self.choose_draft_root).grid(row=0, column=2, padx=(8, 0), pady=5)
 
-        self.ttk.Label(frame, text="剪映程序").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=5)
+        self.ttk.Label(frame, textvariable=self.jianying_label_var).grid(
+            row=1, column=0, sticky="w", padx=(0, 8), pady=5
+        )
         self.ttk.Entry(frame, textvariable=self.jianying_exe_var).grid(row=1, column=1, sticky="ew", pady=5)
         self.ttk.Button(frame, text="选择 EXE", command=self.choose_jianying_exe).grid(row=1, column=2, padx=(8, 0), pady=5)
 
@@ -283,7 +298,12 @@ class DraftBridgeApp:
 
     def _pair_worker(self, site_url: str, pairing_code: str, device_name: str) -> None:
         try:
-            result = pair_with_site(site_url, pairing_code, device_name)
+            result = pair_with_site(
+                site_url,
+                pairing_code,
+                device_name,
+                self.jianying_exe_var.get().strip(),
+            )
         except Exception as exc:
             self.root.after(0, self._finish_pair_error, str(exc))
             return
@@ -481,9 +501,19 @@ class DraftBridgeApp:
         selected = filedialog.askopenfilename(title="选择 JianyingPro.exe", filetypes=[("程序", "*.exe")])
         if selected:
             self.jianying_exe_var.set(selected)
+            self.jianying_label_var.set(self._jianying_label(selected))
             self._persist_paths()
             if not self.device_agent or not self.device_agent.running:
                 self.start_device_agent()
+
+    @staticmethod
+    def _jianying_label(executable: str) -> str:
+        version = detect_jianying_version(executable)
+        if version:
+            return f"剪映程序\n已检测 v{version}"
+        if executable and Path(executable).is_file():
+            return "剪映程序\n版本未知"
+        return "剪映程序\n未检测到"
 
     def choose_json(self) -> None:
         from tkinter import filedialog

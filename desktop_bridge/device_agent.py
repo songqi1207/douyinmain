@@ -15,7 +15,12 @@ from typing import Callable
 
 import requests
 
-from desktop_bridge.draft_core import BridgeError, import_draft_payload
+from desktop_bridge.draft_core import (
+    BridgeError,
+    detect_jianying_executables,
+    detect_jianying_version,
+    import_draft_payload,
+)
 from desktop_bridge.helper_metadata import HELPER_VERSION
 from desktop_bridge.paths import app_data_dir
 
@@ -56,7 +61,27 @@ def normalize_site_url(value: str) -> str:
     return url
 
 
-def pair_with_site(site_url: str, code: str, device_name: str) -> dict:
+def _jianying_capabilities(jianying_exe: str = "") -> dict:
+    executable = Path(str(jianying_exe or "").strip()).expanduser()
+    if not executable.is_file():
+        detected = detect_jianying_executables()
+        executable = detected[0] if detected else executable
+    found = executable.is_file()
+    return {
+        "jianying_native_export": True,
+        "ffmpeg": False,
+        "jianying_found": found,
+        "jianying_version": detect_jianying_version(executable) if found else "",
+        "helper_version": HELPER_VERSION,
+    }
+
+
+def pair_with_site(
+    site_url: str,
+    code: str,
+    device_name: str,
+    jianying_exe: str = "",
+) -> dict:
     url = normalize_site_url(site_url)
     try:
         response = requests.post(
@@ -65,11 +90,7 @@ def pair_with_site(site_url: str, code: str, device_name: str) -> dict:
                 "code": str(code or "").strip().upper(),
                 "name": str(device_name or "").strip() or platform.node() or "我的电脑",
                 "platform": "windows",
-                "capabilities": {
-                    "jianying_native_export": True,
-                    "ffmpeg": False,
-                    "helper_version": HELPER_VERSION,
-                },
+                "capabilities": _jianying_capabilities(jianying_exe),
             },
             timeout=20,
         )
@@ -739,12 +760,7 @@ class DeviceAgent:
                 response = session.post(
                     f"{self.site_url}/api/v1/render-agent/heartbeat",
                     json={
-                        "capabilities": {
-                            "jianying_native_export": True,
-                            "ffmpeg": False,
-                            "jianying_found": Path(self.jianying_exe).is_file(),
-                            "helper_version": HELPER_VERSION,
-                        }
+                        "capabilities": _jianying_capabilities(self.jianying_exe)
                     },
                     timeout=30,
                 )

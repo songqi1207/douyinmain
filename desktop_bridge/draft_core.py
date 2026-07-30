@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
+import ctypes
 from pathlib import Path
 from typing import Any, Callable
 
@@ -201,6 +203,79 @@ def detect_jianying_executables() -> list[Path]:
         if resolved.is_file() and resolved.suffix.lower() == ".exe" and resolved not in result:
             result.append(resolved)
     return result
+
+
+def _windows_file_version(path: Path) -> str:
+    """Read the four-part file version embedded in a Windows executable."""
+    if os.name != "nt":
+        return ""
+    try:
+        version_api = ctypes.windll.version
+        size = version_api.GetFileVersionInfoSizeW(str(path), None)
+        if not size:
+            return ""
+        buffer = ctypes.create_string_buffer(size)
+        if not version_api.GetFileVersionInfoW(str(path), 0, size, buffer):
+            return ""
+        value = ctypes.c_void_p()
+        value_length = ctypes.c_uint()
+        if not version_api.VerQueryValueW(
+            buffer,
+            "\\",
+            ctypes.byref(value),
+            ctypes.byref(value_length),
+        ):
+            return ""
+
+        class VSFixedFileInfo(ctypes.Structure):
+            _fields_ = [
+                ("dwSignature", ctypes.c_uint32),
+                ("dwStrucVersion", ctypes.c_uint32),
+                ("dwFileVersionMS", ctypes.c_uint32),
+                ("dwFileVersionLS", ctypes.c_uint32),
+                ("dwProductVersionMS", ctypes.c_uint32),
+                ("dwProductVersionLS", ctypes.c_uint32),
+                ("dwFileFlagsMask", ctypes.c_uint32),
+                ("dwFileFlags", ctypes.c_uint32),
+                ("dwFileOS", ctypes.c_uint32),
+                ("dwFileType", ctypes.c_uint32),
+                ("dwFileSubtype", ctypes.c_uint32),
+                ("dwFileDateMS", ctypes.c_uint32),
+                ("dwFileDateLS", ctypes.c_uint32),
+            ]
+
+        info = ctypes.cast(value, ctypes.POINTER(VSFixedFileInfo)).contents
+        if info.dwSignature != 0xFEEF04BD:
+            return ""
+        return ".".join(
+            str(part)
+            for part in (
+                info.dwFileVersionMS >> 16,
+                info.dwFileVersionMS & 0xFFFF,
+                info.dwFileVersionLS >> 16,
+                info.dwFileVersionLS & 0xFFFF,
+            )
+        )
+    except (AttributeError, OSError, TypeError, ValueError):
+        return ""
+
+
+def detect_jianying_version(path: Path | str) -> str:
+    """Return the installed JianYing/CapCut executable version, or an empty string."""
+    raw = str(path or "").strip()
+    if not raw:
+        return ""
+    executable = Path(raw).expanduser()
+    if not executable.is_file():
+        return ""
+    version = _windows_file_version(executable)
+    if version:
+        return version
+    version_pattern = re.compile(r"^\d+\.\d+\.\d+(?:\.\d+)?$")
+    for parent in executable.parents:
+        if version_pattern.fullmatch(parent.name):
+            return parent.name
+    return ""
 
 
 def validate_draft_root(path: Path | str) -> Path:

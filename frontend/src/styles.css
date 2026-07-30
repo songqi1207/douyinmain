@@ -713,6 +713,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .connected-device-grid div { min-width: 0; display: grid; gap: 3px; }
 .connected-device-grid strong { font-size: 12px; }
 .connected-device-grid small { color: #6c6861; font-size: 10px; }
+.connected-device-grid .device-version { color: #9c8a6d; }
+.connected-device-grid .device-version.warning { color: #d9867d; }
 .connected-device-grid button { border: 0; color: #9b6f69; background: none; cursor: pointer; }
 .connected-device-grid button svg { width: 15px; }
 

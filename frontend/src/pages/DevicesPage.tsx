@@ -20,6 +20,18 @@ const EMPTY_STATUS: RenderStatus = {
   message: "正在检查设备",
 };
 
+function capabilityText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function jianyingStatus(capabilities: Record<string, unknown>): string {
+  const version = capabilityText(capabilities.jianying_version);
+  if (version) return `剪映 v${version}`;
+  if (capabilities.jianying_found === false) return "未检测到剪映";
+  if (capabilities.jianying_found === true) return "已检测到剪映（版本未知）";
+  return "剪映版本等待助手上报";
+}
+
 export function DevicesPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
@@ -138,9 +150,9 @@ export function DevicesPage() {
             <em>02</em>
             <span><Download /></span>
             <h2>下载 / 更新 AI 视频创作助手</h2>
-            <p>当前最新版 v1.4.24。已安装助手时可一键更新；未安装时请先下载安装包。</p>
+            <p>当前最新版 v1.4.26。已安装助手时可一键更新；未安装时请先下载安装包。</p>
             <button className="secondary-button" type="button" onClick={() => updateHelper()}><Download />一键更新最新版</button>
-            <a className="subtle-link" href="/api/v1/downloads/draft-bridge?v=1.4.24">下载安装包</a>
+            <a className="subtle-link" href="/api/v1/downloads/draft-bridge?v=1.4.26">下载安装包</a>
           </article>
           <article>
             <em>03</em>
@@ -177,7 +189,16 @@ export function DevicesPage() {
               {status.devices.map((device) => (
                 <article key={device.id}>
                   <span className={`device-computer ${device.online ? "online" : ""}`}><Laptop /></span>
-                  <div><strong>{device.name}</strong><small>{device.platform} · {device.online ? "在线" : "离线"}</small></div>
+                  <div>
+                    <strong>{device.name}</strong>
+                    <small>{device.platform} · {device.online ? "在线" : "离线"}</small>
+                    <small className={device.capabilities.jianying_found === false ? "device-version warning" : "device-version"}>
+                      {jianyingStatus(device.capabilities)}
+                      {capabilityText(device.capabilities.helper_version)
+                        ? ` · 助手 v${capabilityText(device.capabilities.helper_version)}`
+                        : ""}
+                    </small>
+                  </div>
                   <button type="button" aria-label={`解除 ${device.name}`} onClick={() => void removeDevice(device.id)}><Trash2 /></button>
                 </article>
               ))}
