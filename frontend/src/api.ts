@@ -6,6 +6,7 @@ import type {
   RegistrationApplication,
   RenderDevice,
   RenderStatus,
+  RuntimeSettings,
   SiteSummary,
   VoiceCatalog,
   Workflow,
@@ -203,6 +204,22 @@ export async function rejectRegistration(applicationId: string) {
     `/api/v1/admin/registration-applications/${encodeURIComponent(applicationId)}/reject`,
     { method: "POST" },
   );
+}
+
+export async function fetchRuntimeSettings() {
+  return request<RuntimeSettings>("/api/v1/admin/runtime-settings", { cache: "no-store" });
+}
+
+export async function updateRuntimeSettings(payload: {
+  mihe_key?: string;
+  clear_mihe_key?: boolean;
+  workflow_ids: Record<string, string>;
+}) {
+  return request<RuntimeSettings>("/api/v1/admin/runtime-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function toggleFavorite(resourceType: "workflow" | "voice", resourceId: string) {

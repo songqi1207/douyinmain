@@ -67,9 +67,10 @@ class JianyingTextMaterialTests(unittest.TestCase):
 
         style = json.loads(material["content"])["styles"][0]
         self.assertEqual(material["font_name"], "毛笔行楷")
-        self.assertEqual(material["font_id"], "6912033793700270606")
         self.assertEqual(style["font"]["id"], "6912033793700270606")
-        self.assertEqual(style["font"]["path"], "毛笔行楷.ttf")
+        self.assertEqual(style["font"]["path"], "D:")
+        self.assertNotIn("font_id", material)
+        self.assertNotIn("fonts", material)
         self.assertEqual(len(style["strokes"]), 1)
         self.assertTrue(material["force_apply_line_max_width"])
 
@@ -121,8 +122,8 @@ class JianyingTextMaterialTests(unittest.TestCase):
 
         style = json.loads(material["content"])["styles"][0]
         self.assertEqual(material["font_name"], "出云龙")
-        self.assertEqual(material["font_id"], "7618137748045696292")
         self.assertEqual(style["font"]["id"], "7618137748045696292")
+        self.assertEqual(style["font"]["path"], "D:")
 
     def test_text_intro_matches_god_draft_animation_shape(self):
         animation = _resolve_text_animation("滚入", "in", 0, 112_800)

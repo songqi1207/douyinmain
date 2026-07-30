@@ -38,12 +38,9 @@ CDN_REMOVE_EXIF = os.getenv("CDN_REMOVE_EXIF", "true").strip().lower() not in ("
 # ------------------------------------------------------------------
 # 米核 Key
 # ------------------------------------------------------------------
-_MIHE_DEFAULT = "10de5318-af20-472f-a3a1-bd334bea8ccc"
-
-
 def get_mihe_key() -> str:
     """Return the latest runtime value so the settings page takes effect immediately."""
-    return (os.getenv("MIHE_KEY") or "").strip() or _MIHE_DEFAULT
+    return (os.getenv("MIHE_KEY") or "").strip()
 
 
 MIHE_KEY = get_mihe_key()

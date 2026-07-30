@@ -1045,10 +1045,11 @@ def _build_text_material(
 
     canonical_font_name, font_meta = _resolve_font(font_name)
     if font_meta:
-        # 剪映按 resource id 拉取字体；保留真实字体名可以避免回退到系统默认字体。
+        # 剪映按资源 ID 解析云字体。path 必须使用官方草稿结构中的
+        # 非空占位符；写入一个并不存在的本地 ttf 路径会触发默认字体回退。
         style["font"] = {
             "id": font_meta.get("resource_id", ""),
-            "path": f"{canonical_font_name}.ttf",
+            "path": "D:",
         }
 
     parsed_style = style_text
@@ -1080,25 +1081,6 @@ def _build_text_material(
         "global_alpha": 1.0,
         "font_name": canonical_font_name,
     }
-    if font_meta:
-        resource_id = str(font_meta.get("resource_id") or "")
-        material.update(
-            {
-                "font_id": resource_id,
-                "font_resource_id": "",
-                "font_path": "",
-                "font_title": "none",
-                "fonts": [
-                    {
-                        "effect_id": resource_id,
-                        "id": resource_id,
-                        "path": f"{canonical_font_name}.ttf",
-                        "resource_id": resource_id,
-                        "title": canonical_font_name,
-                    }
-                ],
-            }
-        )
     return material
 
 

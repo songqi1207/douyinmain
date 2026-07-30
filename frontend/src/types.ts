@@ -67,6 +67,22 @@ export type RenderDevice = {
 
 export type AuthUser = { id: string; username: string; email?: string | null; role: "user" | "admin"; must_change_password?: boolean };
 
+export type RuntimeWorkflowSetting = {
+  code: string;
+  name: string;
+  category: string;
+  workflow_id: string;
+};
+
+export type RuntimeSettings = {
+  mihe_key: {
+    configured: boolean;
+    masked: string;
+  };
+  workflows: RuntimeWorkflowSetting[];
+  message?: string;
+};
+
 export type RegistrationApplication = {
   id: string;
   email: string;
