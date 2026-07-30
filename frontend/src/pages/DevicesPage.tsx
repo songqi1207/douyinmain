@@ -138,9 +138,9 @@ export function DevicesPage() {
             <em>02</em>
             <span><Download /></span>
             <h2>下载 / 更新 AI 视频创作助手</h2>
-            <p>当前最新版 v1.4.21。已安装助手时可一键更新；未安装时请先下载安装包。</p>
+            <p>当前最新版 v1.4.22。已安装助手时可一键更新；未安装时请先下载安装包。</p>
             <button className="secondary-button" type="button" onClick={() => updateHelper()}><Download />一键更新最新版</button>
-            <a className="subtle-link" href="/api/v1/downloads/draft-bridge?v=1.4.21">下载安装包</a>
+            <a className="subtle-link" href="/api/v1/downloads/draft-bridge?v=1.4.22">下载安装包</a>
           </article>
           <article>
             <em>03</em>
