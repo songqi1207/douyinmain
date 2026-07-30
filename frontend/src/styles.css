@@ -353,6 +353,35 @@ button { color: inherit; }
 .application-actions button.danger { color: #e39a93; border-color: #633b38; background: #261817; }
 .application-actions button:disabled { opacity: .42; cursor: not-allowed; }
 
+.runtime-settings-page { padding-top: 46px; }
+.runtime-settings-form { display: grid; gap: 18px; margin-top: 24px; }
+.runtime-secret-card,
+.runtime-workflow-card { padding: 22px; border: 1px solid #37352f; border-radius: 14px; background: #1a1a19; }
+.runtime-card-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.runtime-card-heading > span { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 10px; color: #e2bd78; background: #2b2418; }
+.runtime-card-heading svg { width: 19px; }
+.runtime-card-heading h2 { margin: 0; font-size: 17px; }
+.runtime-card-heading p { margin: 5px 0 0; color: #85827b; font-size: 12px; }
+.runtime-secret-card > label:not(.runtime-checkbox) { display: grid; gap: 8px; color: #bbb8b1; font-size: 13px; }
+.runtime-secret-card input[type="password"],
+.runtime-search,
+.runtime-workflow-grid input { width: 100%; min-height: 42px; border: 1px solid #3c3a36; border-radius: 9px; padding: 0 12px; outline: 0; color: #eee; background: #121212; }
+.runtime-secret-card input:focus,
+.runtime-search:focus,
+.runtime-workflow-grid input:focus { border-color: #89683d; }
+.runtime-secret-card small { color: #6e6c66; }
+.runtime-checkbox { display: flex; align-items: center; gap: 9px; margin-top: 15px; color: #a5a19a; font-size: 13px; }
+.runtime-checkbox input { accent-color: #d0a15a; }
+.runtime-search { margin-bottom: 15px; }
+.runtime-workflow-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.runtime-workflow-grid label { display: grid; grid-template-columns: minmax(150px, .8fr) minmax(200px, 1.2fr); align-items: center; gap: 14px; padding: 12px; border: 1px solid #302e2a; border-radius: 10px; background: #161615; }
+.runtime-workflow-grid label > span { min-width: 0; }
+.runtime-workflow-grid strong { display: block; color: #e4c285; font-size: 12px; }
+.runtime-workflow-grid small { display: block; overflow: hidden; margin-top: 4px; color: #78756e; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.runtime-save-bar { position: sticky; bottom: 14px; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 15px; border: 1px solid #4b4030; border-radius: 12px; color: #918d84; background: rgba(24, 23, 20, .96); box-shadow: 0 12px 35px rgba(0, 0, 0, .35); font-size: 12px; backdrop-filter: blur(12px); }
+.runtime-save-bar button { display: inline-flex; align-items: center; gap: 7px; }
+.runtime-save-bar svg { width: 16px; }
+
 @media (max-width: 1180px) {
   .workflow-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .toolbar-panel { align-items: stretch; flex-direction: column; }
@@ -361,6 +390,7 @@ button { color: inherit; }
   .topnav { font-size: 12px; }
   .voice-layout { grid-template-columns: 1fr; }
   .tts-panel { position: static; }
+  .runtime-workflow-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 860px) {
@@ -445,6 +475,10 @@ button { color: inherit; }
   .auth-card { padding: 27px 19px; }
   .application-card { grid-template-columns: 1fr; gap: 12px; }
   .application-actions { flex-wrap: wrap; }
+  .runtime-secret-card, .runtime-workflow-card { padding: 18px 14px; }
+  .runtime-workflow-grid label { grid-template-columns: 1fr; gap: 8px; }
+  .runtime-save-bar { align-items: stretch; flex-direction: column; }
+  .runtime-save-bar button { justify-content: center; width: 100%; }
 }
 
 /* Product shell and one-click studio */
@@ -655,6 +689,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .record-error { margin: 0 0 10px; color: #e69b93; font-size: 11px; }
 .record-actions button, .record-actions a { display: inline-flex; align-items: center; gap: 5px; border: 0; color: #d5ac66; background: none; cursor: pointer; font-size: 12px; }
 .record-actions svg { width: 13px; height: 13px; }
+.record-actions .record-result-actions { display: inline-flex; align-items: center; gap: 12px; margin: 0; }
+.record-video-preview { overflow: hidden; margin-top: 14px; border: 1px solid #363531; border-radius: 11px; background: #080808; }
+.record-video-preview video { display: block; width: 100%; max-height: 72vh; object-fit: contain; background: #080808; }
 .pagination { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 24px; color: #7e7a73; font-size: 11px; }
 .pagination button { min-height: 34px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #403a31; border-radius: 8px; padding: 0 10px; color: #b79b70; background: #181612; cursor: pointer; }
 .pagination button:disabled { opacity: .35; cursor: not-allowed; }
@@ -777,6 +814,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .record-card.rich .record-status { grid-column: 1 / -1; justify-self: start; }
   .record-actions { justify-content: flex-start; }
   .record-actions span { width: 100%; margin: 0; }
+  .record-result-actions { width: auto !important; flex-wrap: wrap; }
   .pagination { gap: 8px; }
   .pagination span { font-size: 9px; }
   .account-summary-card { padding: 25px 16px; }

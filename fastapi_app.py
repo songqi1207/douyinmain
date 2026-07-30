@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import time
 from copy import deepcopy
 from functools import lru_cache
@@ -74,10 +75,17 @@ from workflow_jobs import (
     list_jobs,
     workflow_job_counts,
 )
-from workflow_registry import category_summary, get_workflow, list_workflows
+from workflow_registry import (
+    PUBLISHED_WORKFLOW_ENV_ALIASES,
+    category_summary,
+    get_workflow,
+    list_workflows,
+    published_workflow_id,
+)
 from utils.draft_key_importer import KeyValidationError
 from utils.email_delivery import EmailConfigurationError, email_delivery_status, send_registration_approved
 from utils.local_media_generation import generated_file_path, list_system_voices, synthesize_speech
+from utils.runtime_settings import update_dotenv_file
 from utils.volcengine_vod_renderer import (
     VodConfigurationError,
     VodRenderError,
@@ -87,6 +95,7 @@ from utils.volcengine_vod_renderer import (
 
 
 ROOT = Path(__file__).resolve().parent
+RUNTIME_ENV_PATH = ROOT / ".env"
 JIANYING_COMPAT_VERSION = "5.9.0.11632"
 JIANYING_COMPAT_DOWNLOAD_URL = (
     os.getenv("JIANYING_COMPAT_DOWNLOAD_URL") or
@@ -180,6 +189,27 @@ def _require_render_device(request: Request) -> dict:
             detail={"code": "invalid_device_token", "message": "本机剪映助手尚未配对或授权已失效"},
         )
     return device
+
+
+def _runtime_settings_payload() -> dict:
+    workflows = sorted(list_workflows(), key=lambda item: str(item.get("code") or ""))
+    mihe_key = (os.getenv("MIHE_KEY") or "").strip()
+    return {
+        "mihe_key": {
+            "configured": bool(mihe_key),
+            "masked": f"••••{mihe_key[-4:]}" if mihe_key else "",
+        },
+        "workflows": [
+            {
+                "code": str(item.get("code") or "").upper(),
+                "name": str(item.get("name") or item.get("code") or ""),
+                "category": str(item.get("category") or ""),
+                "workflow_id": published_workflow_id(str(item.get("code") or "")),
+            }
+            for item in workflows
+            if item.get("code")
+        ],
+    }
 
 
 def _request_event_key(request: Request, resource_id: str, event_type: str) -> str:
@@ -364,6 +394,69 @@ def api_reject_registration(application_id: str, request: Request):
     except ValueError as exc:
         raise HTTPException(status_code=409, detail={"code": "application_already_reviewed", "message": str(exc)}) from exc
     return {"application": application, "message": "申请已拒绝"}
+
+
+@app.get("/api/v1/admin/runtime-settings")
+def api_admin_runtime_settings(request: Request):
+    _require_admin(request)
+    return _runtime_settings_payload()
+
+
+@app.put("/api/v1/admin/runtime-settings")
+def api_update_admin_runtime_settings(
+    request: Request,
+    payload: dict = Body(default_factory=dict),
+):
+    _require_admin(request)
+    updates: dict[str, str] = {}
+
+    if payload.get("clear_mihe_key") is True:
+        updates["MIHE_KEY"] = ""
+    elif "mihe_key" in payload:
+        mihe_key = str(payload.get("mihe_key") or "").strip()
+        if mihe_key:
+            if len(mihe_key) > 512:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "invalid_mihe_key", "message": "米核 Key 长度不能超过 512 个字符"},
+                )
+            updates["MIHE_KEY"] = mihe_key
+
+    workflow_ids = payload.get("workflow_ids", {})
+    if not isinstance(workflow_ids, dict):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_workflow_ids", "message": "工作流 ID 配置格式不正确"},
+        )
+
+    known_codes = {str(item.get("code") or "").upper() for item in list_workflows()}
+    for raw_code, raw_value in workflow_ids.items():
+        code = str(raw_code or "").upper().strip()
+        if code not in known_codes:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "unknown_workflow_code", "message": f"未知工作流：{code or '<empty>'}"},
+            )
+        workflow_id = str(raw_value or "").strip()
+        if workflow_id and not re.fullmatch(r"\d{8,32}", workflow_id):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "invalid_workflow_id", "message": f"{code} 的工作流 ID 应为 8–32 位数字"},
+            )
+        env_key = f"COZE_WORKFLOW_{code}"
+        updates[env_key] = workflow_id
+        alias = PUBLISHED_WORKFLOW_ENV_ALIASES.get(code)
+        if alias:
+            updates[alias] = workflow_id
+
+    if updates:
+        update_dotenv_file(RUNTIME_ENV_PATH, updates)
+        for key, value in updates.items():
+            os.environ[key] = value
+
+    response = _runtime_settings_payload()
+    response["message"] = "运行配置已保存并立即生效"
+    return response
 
 
 @app.post("/api/v1/auth/logout", status_code=204)

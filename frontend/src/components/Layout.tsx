@@ -6,6 +6,7 @@ import {
   Laptop,
   LogOut,
   Menu,
+  Settings,
   ShieldCheck,
   Sparkles,
   Store,
@@ -62,6 +63,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="auth-nav">
           {user ? (
             <>
+              {user.role === "admin" && <Link to="/admin/runtime-settings"><Settings size={14} />运行配置</Link>}
               {user.role === "admin" && <Link to="/admin/registrations">注册审核</Link>}
               <Link
                 className={user.must_change_password ? "security-alert-link" : ""}

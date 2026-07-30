@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import utils.draft_key_importer as draft_importer
+from desktop_bridge.draft_quality import inspect_draft_quality
 from desktop_bridge.paths import app_data_dir
 from utils.draft_key_importer import AssetDownloadError, KeyValidationError
 
@@ -236,6 +237,78 @@ def validate_import_report(report: dict[str, Any]) -> dict[str, Any]:
     verified["segment_count"] = sum(
         len(track.get("segments") or []) for track in content.get("tracks") or []
     )
+    resources: dict[tuple[str, str], dict[str, str]] = {}
+    unresolved: set[str] = set()
+    materials = content.get("materials") or {}
+
+    def add_resource(kind: str, name: str, resource_id: str, effect_id: str = "") -> None:
+        normalized_id = str(resource_id or "").strip()
+        normalized_name = str(name or effect_id or normalized_id).strip()
+        if not normalized_id:
+            if normalized_name:
+                unresolved.add(f"{kind}:{normalized_name}")
+            return
+        resources[(kind, normalized_id)] = {
+            "kind": kind,
+            "name": normalized_name,
+            "resource_id": normalized_id,
+            "effect_id": str(effect_id or "").strip(),
+        }
+
+    for text_material in materials.get("texts") or []:
+        if not isinstance(text_material, dict):
+            continue
+        font_name = str(text_material.get("font_name") or "").strip()
+        try:
+            text_content = json.loads(str(text_material.get("content") or "{}"))
+        except json.JSONDecodeError:
+            text_content = {}
+        styles = text_content.get("styles") or []
+        font_payload = (
+            styles[0].get("font") or {}
+            if styles and isinstance(styles[0], dict)
+            else {}
+        )
+        if font_name or font_payload:
+            add_resource("font", font_name, str(font_payload.get("id") or ""))
+
+    for animation_material in materials.get("material_animations") or []:
+        if not isinstance(animation_material, dict):
+            continue
+        for animation in animation_material.get("animations") or []:
+            if not isinstance(animation, dict):
+                continue
+            material_type = str(animation.get("material_type") or "animation")
+            add_resource(
+                f"{material_type}_animation",
+                str(animation.get("name") or ""),
+                str(animation.get("resource_id") or ""),
+                str(animation.get("id") or ""),
+            )
+
+    for collection in ("effects", "video_effects"):
+        for effect in materials.get(collection) or []:
+            if not isinstance(effect, dict):
+                continue
+            effect_type = str(effect.get("type") or "effect")
+            add_resource(
+                effect_type,
+                str(effect.get("name") or effect.get("effect_id") or ""),
+                str(effect.get("resource_id") or ""),
+                str(effect.get("effect_id") or ""),
+            )
+
+    for warning in report.get("warnings") or []:
+        warning_text = str(warning)
+        if "未知" in warning_text or "无法解析为剪映资源" in warning_text:
+            unresolved.add(warning_text)
+
+    verified["cloud_resources"] = sorted(
+        resources.values(),
+        key=lambda item: (item["kind"], item["name"], item["resource_id"]),
+    )
+    verified["unresolved_cloud_resources"] = sorted(unresolved)
+    verified["quality_checks"] = inspect_draft_quality(content)
     return verified
 
 

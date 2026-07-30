@@ -3,6 +3,7 @@ import { Route, Routes, useLocation } from "react-router-dom";
 
 import { AccountSecurityPage } from "./pages/AccountSecurityPage";
 import { HelpPage, NotFoundPage, RegistrationAdminPage } from "./pages/AdminHelpPages";
+import { RuntimeSettingsPage } from "./pages/AdminRuntimeSettingsPage";
 import { AuthPage } from "./pages/AuthPages";
 import { DevicesPage } from "./pages/DevicesPage";
 import { JianyingExportPage } from "./pages/JianyingExportPage";
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
         <Route path="/admin/registrations" element={<RegistrationAdminPage />} />
+        <Route path="/admin/runtime-settings" element={<RuntimeSettingsPage />} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

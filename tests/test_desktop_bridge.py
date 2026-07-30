@@ -22,11 +22,14 @@ from desktop_bridge.core import (
     import_mihe_server_draft,
 )
 from desktop_bridge.device_agent import (
+    _cloud_resource_wait_seconds,
+    _prime_jianying_cloud_resources,
     _run_native_export,
     _run_pyjianying_export,
     normalize_site_url,
     pair_with_site,
 )
+from desktop_bridge.draft_core import BridgeError as DraftCoreBridgeError
 from desktop_bridge.paths import app_data_dir
 import desktop_bridge.app as bridge_app
 from desktop_bridge.app import DraftBridgeApp
@@ -170,7 +173,7 @@ class DesktopBridgeTests(unittest.TestCase):
                 "warnings": [],
             }
 
-            def write_primary_result(_name, output_path, *_args):
+            def write_primary_result(_name, output_path, *_args, **_kwargs):
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_path.write_bytes(b"mp4")
                 return output_path
@@ -187,6 +190,114 @@ class DesktopBridgeTests(unittest.TestCase):
             self.assertEqual(result.read_bytes(), b"mp4")
             run_pyjianying.assert_called_once()
             run_compatibility_driver.assert_not_called()
+
+    def test_cloud_resource_wait_scales_and_can_be_overridden(self):
+        self.assertEqual(_cloud_resource_wait_seconds(0), 0)
+        self.assertEqual(_cloud_resource_wait_seconds(1), 15)
+        self.assertEqual(_cloud_resource_wait_seconds(100), 60)
+        with patch.dict(
+            os.environ,
+            {"DEVICE_JIANYING_RESOURCE_WAIT_SECONDS": "27"},
+        ):
+            self.assertEqual(_cloud_resource_wait_seconds(100), 27)
+
+    @patch("desktop_bridge.device_agent.time.sleep")
+    def test_cloud_resource_preload_opens_draft_and_waits_in_editor(self, sleep):
+        controller = MagicMock()
+        controller.app_status = "home"
+        draft_title = controller.app.TextControl.return_value
+        draft_title.Exists.return_value = True
+        draft_button = draft_title.GetParentControl.return_value
+
+        def update_window_state():
+            if draft_button.DoubleClick.called:
+                controller.app_status = "edit"
+
+        controller.get_window.side_effect = update_window_state
+
+        result = _prime_jianying_cloud_resources(
+            controller,
+            "神话解说",
+            22,
+            "job-id",
+        )
+
+        self.assertTrue(result)
+        draft_button.DoubleClick.assert_called_once()
+        self.assertEqual(controller.switch_to_home.call_count, 2)
+        sleep.assert_any_call(22)
+
+    @patch("desktop_bridge.device_agent._run_pyjianying_export")
+    @patch("desktop_bridge.device_agent.import_draft_payload")
+    def test_native_export_stops_before_rendering_unresolved_cloud_resources(
+        self,
+        import_payload,
+        run_pyjianying,
+    ):
+        with tempfile.TemporaryDirectory(prefix="unresolved-resource-test-") as temporary:
+            root = Path(temporary)
+            draft_root = root / "drafts"
+            executable = root / "JianyingPro.exe"
+            draft_root.mkdir()
+            executable.write_bytes(b"exe")
+            import_payload.return_value = {
+                "draft_id": "DRAFT-ID",
+                "draft_name": "DRAFT-ID",
+                "draft_dir": str(draft_root / "DRAFT-ID"),
+                "warnings": [],
+                "unresolved_cloud_resources": ["font:不存在的字体"],
+            }
+
+            with self.assertRaises(DraftCoreBridgeError) as raised:
+                _run_native_export(
+                    {"job_id": "job-id", "draft_key": {"calls": []}},
+                    str(draft_root),
+                    str(executable),
+                    root / "output",
+                )
+
+        self.assertIn("已停止导出", str(raised.exception))
+        run_pyjianying.assert_not_called()
+
+    @patch("desktop_bridge.device_agent._run_pyjianying_export")
+    @patch("desktop_bridge.device_agent.import_draft_payload")
+    def test_native_export_stops_before_rendering_failed_quality_checks(
+        self,
+        import_payload,
+        run_pyjianying,
+    ):
+        with tempfile.TemporaryDirectory(prefix="quality-gate-test-") as temporary:
+            root = Path(temporary)
+            draft_root = root / "drafts"
+            executable = root / "JianyingPro.exe"
+            draft_root.mkdir()
+            executable.write_bytes(b"exe")
+            import_payload.return_value = {
+                "draft_id": "DRAFT-ID",
+                "draft_name": "DRAFT-ID",
+                "draft_dir": str(draft_root / "DRAFT-ID"),
+                "warnings": [],
+                "quality_checks": {
+                    "passed": False,
+                    "issues": [
+                        {
+                            "code": "caption_voice_drift",
+                            "message": "主字幕与人声结束时间相差 900ms",
+                        }
+                    ],
+                },
+            }
+
+            with self.assertRaises(DraftCoreBridgeError) as raised:
+                _run_native_export(
+                    {"job_id": "job-id", "draft_key": {"calls": []}},
+                    str(draft_root),
+                    str(executable),
+                    root / "output",
+                )
+
+        self.assertIn("主字幕与人声结束时间相差 900ms", str(raised.exception))
+        run_pyjianying.assert_not_called()
 
     @patch(
         "desktop_bridge.device_agent._run_pyjianying_export",

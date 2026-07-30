@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from desktop_bridge.draft_core import validate_import_report
 from utils.jianying_drafts import (
     _build_text_material,
     _caption_text_units,
@@ -67,9 +68,10 @@ class JianyingTextMaterialTests(unittest.TestCase):
 
         style = json.loads(material["content"])["styles"][0]
         self.assertEqual(material["font_name"], "毛笔行楷")
-        self.assertEqual(material["font_id"], "6912033793700270606")
         self.assertEqual(style["font"]["id"], "6912033793700270606")
-        self.assertEqual(style["font"]["path"], "毛笔行楷.ttf")
+        self.assertEqual(style["font"]["path"], "D:")
+        self.assertNotIn("font_id", material)
+        self.assertNotIn("fonts", material)
         self.assertEqual(len(style["strokes"]), 1)
         self.assertTrue(material["force_apply_line_max_width"])
 
@@ -121,8 +123,74 @@ class JianyingTextMaterialTests(unittest.TestCase):
 
         style = json.loads(material["content"])["styles"][0]
         self.assertEqual(material["font_name"], "出云龙")
-        self.assertEqual(material["font_id"], "7618137748045696292")
         self.assertEqual(style["font"]["id"], "7618137748045696292")
+        self.assertEqual(style["font"]["path"], "D:")
+
+    def test_explicit_font_and_text_effect_resource_ids_are_preserved(self):
+        with tempfile.TemporaryDirectory() as draft_root, patch.dict(
+            os.environ, {"JIANYING_DRAFT_ROOT": draft_root}
+        ):
+            created = create_draft(1080, 1920, "自定义文字资源")
+            result = append_captions(
+                created["draft_id"],
+                [{"text": "云端花字", "start": 0, "end": 1_000_000}],
+                font="自定义云字体",
+                font_resource_id="7654321000000000001",
+                text_effect_id="7654321000000000002",
+                text_effect_resource_id="7654321000000000003",
+            )
+            content = json.loads(
+                (Path(created["draft_dir"]) / "draft_content.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            report = validate_import_report(
+                {"draft_dir": created["draft_dir"], "warnings": []}
+            )
+
+        text_material = content["materials"]["texts"][0]
+        style = json.loads(text_material["content"])["styles"][0]
+        effect = content["materials"]["effects"][0]
+        text_segment = next(
+            segment
+            for track in content["tracks"]
+            if track["type"] == "text"
+            for segment in track["segments"]
+        )
+        self.assertEqual(result["warnings"], [])
+        self.assertEqual(style["font"]["id"], "7654321000000000001")
+        self.assertEqual(effect["type"], "text_effect")
+        self.assertEqual(effect["effect_id"], "7654321000000000002")
+        self.assertEqual(effect["resource_id"], "7654321000000000003")
+        self.assertIn(effect["id"], text_segment["extra_material_refs"])
+        self.assertEqual(
+            {(item["kind"], item["resource_id"]) for item in report["cloud_resources"]},
+            {
+                ("font", "7654321000000000001"),
+                ("text_effect", "7654321000000000003"),
+            },
+        )
+        self.assertEqual(report["unresolved_cloud_resources"], [])
+
+    def test_unknown_font_is_reported_instead_of_silently_falling_back(self):
+        with tempfile.TemporaryDirectory() as draft_root, patch.dict(
+            os.environ, {"JIANYING_DRAFT_ROOT": draft_root}
+        ):
+            created = create_draft(1080, 1920, "未知字体")
+            result = append_captions(
+                created["draft_id"],
+                [{"text": "不能回退", "start": 0, "end": 1_000_000}],
+                font="不存在的云字体",
+            )
+            report = validate_import_report(
+                {
+                    "draft_dir": created["draft_dir"],
+                    "warnings": result["warnings"],
+                }
+            )
+
+        self.assertIn("未知字体无法解析为剪映资源", result["warnings"][0])
+        self.assertTrue(report["unresolved_cloud_resources"])
 
     def test_text_intro_matches_god_draft_animation_shape(self):
         animation = _resolve_text_animation("滚入", "in", 0, 112_800)

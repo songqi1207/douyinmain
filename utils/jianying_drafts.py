@@ -1008,6 +1008,7 @@ def _build_text_material(
     line_spacing: float,
     alignment: int,
     font_name: str,
+    font_resource_id: str = "",
     letter_spacing: float = 0,
     style_text: Any = None,
 ) -> dict[str, Any]:
@@ -1044,11 +1045,13 @@ def _build_text_material(
         ]
 
     canonical_font_name, font_meta = _resolve_font(font_name)
-    if font_meta:
-        # 剪映按 resource id 拉取字体；保留真实字体名可以避免回退到系统默认字体。
+    resolved_font_id = str(font_resource_id or (font_meta or {}).get("resource_id") or "").strip()
+    if resolved_font_id:
+        # 剪映按资源 ID 解析云字体。path 必须使用官方草稿结构中的
+        # 非空占位符；写入一个并不存在的本地 ttf 路径会触发默认字体回退。
         style["font"] = {
-            "id": font_meta.get("resource_id", ""),
-            "path": f"{canonical_font_name}.ttf",
+            "id": resolved_font_id,
+            "path": "D:",
         }
 
     parsed_style = style_text
@@ -1080,26 +1083,22 @@ def _build_text_material(
         "global_alpha": 1.0,
         "font_name": canonical_font_name,
     }
-    if font_meta:
-        resource_id = str(font_meta.get("resource_id") or "")
-        material.update(
-            {
-                "font_id": resource_id,
-                "font_resource_id": "",
-                "font_path": "",
-                "font_title": "none",
-                "fonts": [
-                    {
-                        "effect_id": resource_id,
-                        "id": resource_id,
-                        "path": f"{canonical_font_name}.ttf",
-                        "resource_id": resource_id,
-                        "title": canonical_font_name,
-                    }
-                ],
-            }
-        )
     return material
+
+
+def _build_text_effect_material(effect_id: str, resource_id: str = "") -> dict[str, Any]:
+    """Build Jianying's shared material shape for a text decorative effect."""
+    normalized_effect_id = str(effect_id or "").strip()
+    normalized_resource_id = str(resource_id or normalized_effect_id).strip()
+    return {
+        "apply_target_type": 0,
+        "effect_id": normalized_effect_id,
+        "id": _generate_id(),
+        "resource_id": normalized_resource_id,
+        "source_platform": 1,
+        "type": "text_effect",
+        "value": 1.0,
+    }
 
 
 def _new_speed_material() -> dict[str, Any]:
@@ -1559,12 +1558,15 @@ def append_captions(
     alignment: Any = None,
     border_color: str = "",
     font: str = "",
+    font_resource_id: str = "",
     font_size: Any = None,
     letter_spacing: Any = None,
     line_spacing: Any = None,
     scale_x: Any = None,
     scale_y: Any = None,
     style_text: Any = None,
+    text_effect_id: str = "",
+    text_effect_resource_id: str = "",
     text_color: str = "#FFFFFF",
     transform_x: Any = None,
     transform_y: Any = None,
@@ -1627,6 +1629,14 @@ def append_captions(
             end_us = start_us + duration_us
         duration_us = max(0, end_us - start_us)
 
+        item_font = str(info.get("font") or font or "").strip()
+        item_font_resource_id = str(
+            info.get("font_resource_id") or font_resource_id or ""
+        ).strip()
+        canonical_font, font_meta = _resolve_font(item_font)
+        if item_font and not item_font_resource_id and font_meta is None:
+            warnings.append(f"未知字体无法解析为剪映资源，已阻止静默回退: {item_font}")
+
         material = _build_text_material(
             text=text,
             font_size=item_font_size,
@@ -1634,7 +1644,8 @@ def append_captions(
             border_color=str(info.get("border_color") or border_color or ""),
             line_spacing=float(info.get("line_spacing", material_line_spacing) or material_line_spacing),
             alignment=int(float(info.get("alignment", material_alignment) or material_alignment)),
-            font_name=str(info.get("font") or font or ""),
+            font_name=canonical_font,
+            font_resource_id=item_font_resource_id,
             letter_spacing=float(info.get("letter_spacing", material_letter_spacing) or material_letter_spacing),
             style_text=info.get("style_text", style_text),
         )
@@ -1657,6 +1668,26 @@ def append_captions(
             },
         }
         segment = _base_segment(material["id"], start_us, duration_us, segment_render_index, clip_override=clip_override, kind="text", draft=draft)
+
+        item_text_effect_id = str(
+            info.get("text_effect_id")
+            or info.get("font_effect_id")
+            or text_effect_id
+            or ""
+        ).strip()
+        if item_text_effect_id:
+            item_text_effect_resource_id = str(
+                info.get("text_effect_resource_id")
+                or info.get("font_effect_resource_id")
+                or text_effect_resource_id
+                or item_text_effect_id
+            ).strip()
+            effect_material = _build_text_effect_material(
+                item_text_effect_id,
+                item_text_effect_resource_id,
+            )
+            draft["materials"]["effects"].append(effect_material)
+            segment["extra_material_refs"].append(effect_material["id"])
 
         animations = []
         animation_specs = (
