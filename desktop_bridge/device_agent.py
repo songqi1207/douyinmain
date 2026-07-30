@@ -375,6 +375,17 @@ def _run_native_export(
             "草稿包含助手无法识别的字体或特效资源，已停止导出以避免使用错误样式："
             + names
         )
+    quality_checks = report.get("quality_checks") or {}
+    quality_issues = [
+        item
+        for item in quality_checks.get("issues") or []
+        if isinstance(item, dict) and str(item.get("message") or "").strip()
+    ]
+    if quality_issues:
+        messages = "；".join(str(item["message"]) for item in quality_issues[:8])
+        if len(quality_issues) > 8:
+            messages += f" 等 {len(quality_issues)} 项"
+        raise BridgeError("成片质量检查未通过，已停止导出：" + messages)
     cloud_resources = report.get("cloud_resources") or []
     resource_wait_seconds = _cloud_resource_wait_seconds(len(cloud_resources))
 

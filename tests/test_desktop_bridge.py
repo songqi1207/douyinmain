@@ -259,6 +259,46 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn("已停止导出", str(raised.exception))
         run_pyjianying.assert_not_called()
 
+    @patch("desktop_bridge.device_agent._run_pyjianying_export")
+    @patch("desktop_bridge.device_agent.import_draft_payload")
+    def test_native_export_stops_before_rendering_failed_quality_checks(
+        self,
+        import_payload,
+        run_pyjianying,
+    ):
+        with tempfile.TemporaryDirectory(prefix="quality-gate-test-") as temporary:
+            root = Path(temporary)
+            draft_root = root / "drafts"
+            executable = root / "JianyingPro.exe"
+            draft_root.mkdir()
+            executable.write_bytes(b"exe")
+            import_payload.return_value = {
+                "draft_id": "DRAFT-ID",
+                "draft_name": "DRAFT-ID",
+                "draft_dir": str(draft_root / "DRAFT-ID"),
+                "warnings": [],
+                "quality_checks": {
+                    "passed": False,
+                    "issues": [
+                        {
+                            "code": "caption_voice_drift",
+                            "message": "主字幕与人声结束时间相差 900ms",
+                        }
+                    ],
+                },
+            }
+
+            with self.assertRaises(DraftCoreBridgeError) as raised:
+                _run_native_export(
+                    {"job_id": "job-id", "draft_key": {"calls": []}},
+                    str(draft_root),
+                    str(executable),
+                    root / "output",
+                )
+
+        self.assertIn("主字幕与人声结束时间相差 900ms", str(raised.exception))
+        run_pyjianying.assert_not_called()
+
     @patch(
         "desktop_bridge.device_agent._run_pyjianying_export",
         side_effect=BridgeError("primary failed"),

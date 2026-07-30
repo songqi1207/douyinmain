@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import utils.draft_key_importer as draft_importer
+from desktop_bridge.draft_quality import inspect_draft_quality
 from desktop_bridge.paths import app_data_dir
 from utils.draft_key_importer import AssetDownloadError, KeyValidationError
 
@@ -307,6 +308,7 @@ def validate_import_report(report: dict[str, Any]) -> dict[str, Any]:
         key=lambda item: (item["kind"], item["name"], item["resource_id"]),
     )
     verified["unresolved_cloud_resources"] = sorted(unresolved)
+    verified["quality_checks"] = inspect_draft_quality(content)
     return verified
 
 
