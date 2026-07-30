@@ -77,7 +77,9 @@ from workflow_jobs import (
 )
 from workflow_registry import (
     PUBLISHED_WORKFLOW_ENV_ALIASES,
+    WORKFLOW_INPUT_DEFAULTS_ENV,
     category_summary,
+    configured_workflow_input_defaults,
     get_workflow,
     list_workflows,
     published_workflow_id,
@@ -194,6 +196,7 @@ def _require_render_device(request: Request) -> dict:
 def _runtime_settings_payload() -> dict:
     workflows = sorted(list_workflows(), key=lambda item: str(item.get("code") or ""))
     mihe_key = (os.getenv("MIHE_KEY") or "").strip()
+    workflow_input_defaults = configured_workflow_input_defaults()
     return {
         "mihe_key": {
             "configured": bool(mihe_key),
@@ -205,11 +208,75 @@ def _runtime_settings_payload() -> dict:
                 "name": str(item.get("name") or item.get("code") or ""),
                 "category": str(item.get("category") or ""),
                 "workflow_id": published_workflow_id(str(item.get("code") or "")),
+                "input_schema": deepcopy(item.get("input_schema") or []),
+                "input_defaults": deepcopy(
+                    workflow_input_defaults.get(str(item.get("code") or "").upper(), {})
+                ),
             }
             for item in workflows
             if item.get("code")
         ],
     }
+
+
+_SENSITIVE_WORKFLOW_INPUT = re.compile(
+    r"(?:^|[_-])(?:api[_-]?key|token|secret|password|mihe[_-]?key)(?:$|[_-])",
+    re.IGNORECASE,
+)
+
+
+def _normalize_workflow_input_defaults(
+    payload: object,
+    known_codes: set[str],
+) -> dict[str, dict]:
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_workflow_inputs", "message": "工作流输入参数配置必须是对象"},
+        )
+    normalized: dict[str, dict] = {}
+    for raw_code, raw_values in payload.items():
+        code = str(raw_code or "").upper().strip()
+        if code not in known_codes:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "unknown_workflow_code", "message": f"未知工作流：{code or '<empty>'}"},
+            )
+        if not isinstance(raw_values, dict):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "invalid_workflow_inputs", "message": f"{code} 的输入参数必须是 JSON 对象"},
+            )
+        if len(raw_values) > 60:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "too_many_workflow_inputs", "message": f"{code} 最多配置 60 个输入参数"},
+            )
+        values: dict[str, object] = {}
+        for raw_name, value in raw_values.items():
+            name = str(raw_name or "").strip()
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]{0,127}", name):
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "invalid_workflow_input_name", "message": f"{code} 的参数名“{name}”格式不正确"},
+                )
+            if _SENSITIVE_WORKFLOW_INPUT.search(name):
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "code": "sensitive_workflow_input",
+                        "message": f"{code} 的参数“{name}”属于密钥类参数，请使用专门的 Key 配置项",
+                    },
+                )
+            values[name] = value
+        normalized[code] = values
+    encoded = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded.encode("utf-8")) > 128 * 1024:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "workflow_inputs_too_large", "message": "工作流输入参数配置不能超过 128KB"},
+        )
+    return normalized
 
 
 def _request_event_key(request: Request, resource_id: str, event_type: str) -> str:
@@ -448,6 +515,17 @@ def api_update_admin_runtime_settings(
         alias = PUBLISHED_WORKFLOW_ENV_ALIASES.get(code)
         if alias:
             updates[alias] = workflow_id
+
+    if "workflow_inputs" in payload:
+        workflow_inputs = _normalize_workflow_input_defaults(
+            payload.get("workflow_inputs"),
+            known_codes,
+        )
+        updates[WORKFLOW_INPUT_DEFAULTS_ENV] = json.dumps(
+            workflow_inputs,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
 
     if updates:
         update_dotenv_file(RUNTIME_ENV_PATH, updates)

@@ -214,6 +214,7 @@ export async function updateRuntimeSettings(payload: {
   mihe_key?: string;
   clear_mihe_key?: boolean;
   workflow_ids: Record<string, string>;
+  workflow_inputs: Record<string, Record<string, unknown>>;
 }) {
   return request<RuntimeSettings>("/api/v1/admin/runtime-settings", {
     method: "PUT",

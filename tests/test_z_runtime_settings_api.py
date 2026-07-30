@@ -13,8 +13,18 @@ import fastapi_app
 
 
 WORKFLOWS = [
-    {"code": "OWN01", "name": "书单视频", "category": "自有工作流"},
-    {"code": "OWN03", "name": "神话视频", "category": "自有工作流"},
+    {
+        "code": "OWN01",
+        "name": "书单视频",
+        "category": "自有工作流",
+        "input_schema": [{"name": "theme", "label": "书名", "type": "text", "required": True}],
+    },
+    {
+        "code": "OWN03",
+        "name": "神话视频",
+        "category": "自有工作流",
+        "input_schema": [{"name": "theme", "label": "神名", "type": "text", "required": True}],
+    },
 ]
 
 
@@ -29,6 +39,10 @@ class RuntimeSettingsApiTests(unittest.TestCase):
                     "MIHE_KEY": "secret-key-1234",
                     "COZE_WORKFLOW_OWN01": "7654321098765432101",
                     "COZE_WORKFLOW_OWN03": "7654321098765432103",
+                    "WORKFLOW_INPUT_DEFAULTS_JSON": json.dumps(
+                        {"OWN03": {"scene_count": 12, "voice_id": "voice-1"}},
+                        ensure_ascii=False,
+                    ),
                 },
                 clear=False,
             ),
@@ -39,6 +53,11 @@ class RuntimeSettingsApiTests(unittest.TestCase):
         self.assertEqual(result["mihe_key"]["masked"], "••••1234")
         self.assertNotIn("secret-key-1234", json.dumps(result, ensure_ascii=False))
         self.assertEqual(result["workflows"][0]["workflow_id"], "7654321098765432101")
+        self.assertEqual(result["workflows"][0]["input_schema"][0]["name"], "theme")
+        self.assertEqual(
+            next(item for item in result["workflows"] if item["code"] == "OWN03")["input_defaults"],
+            {"scene_count": 12, "voice_id": "voice-1"},
+        )
 
     def test_update_persists_key_and_ids_and_syncs_god_alias(self):
         with tempfile.TemporaryDirectory(prefix="runtime-settings-api-") as temporary:
@@ -58,11 +77,19 @@ class RuntimeSettingsApiTests(unittest.TestCase):
                             "OWN01": "7654321098765432101",
                             "OWN03": "7654321098765432103",
                         },
+                        "workflow_inputs": {
+                            "OWN01": {"scene_count": 8},
+                            "OWN03": {"scene_count": 12, "voice_id": "voice-1"},
+                        },
                     },
                 )
                 self.assertEqual(os.environ["MIHE_KEY"], "new key#1234")
                 self.assertEqual(os.environ["COZE_WORKFLOW_OWN03"], "7654321098765432103")
                 self.assertEqual(os.environ["COZE_WORKFLOW_GOD"], "7654321098765432103")
+                self.assertEqual(
+                    json.loads(os.environ["WORKFLOW_INPUT_DEFAULTS_JSON"])["OWN03"]["scene_count"],
+                    12,
+                )
 
             content = env_path.read_text(encoding="utf-8")
 
@@ -70,6 +97,7 @@ class RuntimeSettingsApiTests(unittest.TestCase):
         self.assertIn('MIHE_KEY="new key#1234"', content)
         self.assertIn('COZE_WORKFLOW_OWN01="7654321098765432101"', content)
         self.assertIn('COZE_WORKFLOW_GOD="7654321098765432103"', content)
+        self.assertIn("WORKFLOW_INPUT_DEFAULTS_JSON=", content)
         self.assertEqual(result["mihe_key"]["masked"], "••••1234")
 
     def test_update_rejects_invalid_workflow_id(self):
@@ -84,6 +112,23 @@ class RuntimeSettingsApiTests(unittest.TestCase):
                 )
 
         self.assertEqual(raised.exception.status_code, 422)
+
+    def test_update_rejects_secret_inside_workflow_inputs(self):
+        with (
+            patch.object(fastapi_app, "_require_admin", return_value={"id": "admin"}),
+            patch.object(fastapi_app, "list_workflows", return_value=WORKFLOWS),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                fastapi_app.api_update_admin_runtime_settings(
+                    object(),
+                    {
+                        "workflow_ids": {},
+                        "workflow_inputs": {"OWN03": {"api_key": "must-not-be-returned"}},
+                    },
+                )
+
+        self.assertEqual(raised.exception.status_code, 422)
+        self.assertEqual(raised.exception.detail["code"], "sensitive_workflow_input")
 
     def test_settings_requires_admin(self):
         denied = HTTPException(status_code=403, detail={"code": "admin_required"})

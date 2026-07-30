@@ -8,6 +8,7 @@ variables and are never returned by the public API.
 from __future__ import annotations
 
 import os
+import json
 from copy import deepcopy
 
 from business_workflows import FALLBACK, WORKFLOW_METADATA, load_business_workflows
@@ -18,6 +19,7 @@ REFERENCE_TEMPLATE_CODES = {"G259", "G258", "G168", "G45", "G263", "G129", "G159
 PROVIDER_CODES = DEMO_CODES | REFERENCE_TEMPLATE_CODES
 LOCAL_CODES = {"OWN01", "OWN02", "OWN03"}
 PUBLISHED_WORKFLOW_ENV_ALIASES = {"OWN03": "COZE_WORKFLOW_GOD"}
+WORKFLOW_INPUT_DEFAULTS_ENV = "WORKFLOW_INPUT_DEFAULTS_JSON"
 
 
 def published_workflow_id(code: str) -> str:
@@ -25,6 +27,38 @@ def published_workflow_id(code: str) -> str:
     primary = (os.getenv(f"COZE_WORKFLOW_{normalized}") or "").strip()
     alias = PUBLISHED_WORKFLOW_ENV_ALIASES.get(normalized, "")
     return primary or ((os.getenv(alias) or "").strip() if alias else "")
+
+
+def configured_workflow_input_defaults() -> dict[str, dict]:
+    """Return administrator-configured, non-secret defaults by workflow code."""
+
+    raw = (os.getenv(WORKFLOW_INPUT_DEFAULTS_ENV) or "").strip()
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    result: dict[str, dict] = {}
+    for raw_code, raw_values in payload.items():
+        code = str(raw_code or "").upper().strip()
+        if code and isinstance(raw_values, dict):
+            result[code] = deepcopy(raw_values)
+    return result
+
+
+def apply_workflow_input_defaults(code: str, inputs: dict) -> dict:
+    """Merge configured defaults while keeping non-empty per-run inputs first."""
+
+    normalized_code = str(code or "").upper().strip()
+    result = deepcopy(configured_workflow_input_defaults().get(normalized_code, {}))
+    for name, value in dict(inputs or {}).items():
+        if name in result and value in (None, "", []):
+            continue
+        result[name] = value
+    return result
 
 TEMPLATE_INPUT_SCHEMAS = {
     "OWN01": [{"name": "theme", "label": "书籍主题 / 书名", "type": "text", "required": True, "placeholder": "例如：活着"}],

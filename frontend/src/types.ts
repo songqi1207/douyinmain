@@ -72,6 +72,8 @@ export type RuntimeWorkflowSetting = {
   name: string;
   category: string;
   workflow_id: string;
+  input_schema: InputField[];
+  input_defaults: Record<string, unknown>;
 };
 
 export type RuntimeSettings = {

@@ -19,7 +19,13 @@ from typing import Any
 import requests
 
 from business_workflows import find_workflow_downloads
-from workflow_registry import LOCAL_CODES, REFERENCE_TEMPLATE_CODES, get_workflow, published_workflow_id
+from workflow_registry import (
+    LOCAL_CODES,
+    REFERENCE_TEMPLATE_CODES,
+    apply_workflow_input_defaults,
+    get_workflow,
+    published_workflow_id,
+)
 
 
 logger = logging.getLogger("workflow.jobs")
@@ -185,7 +191,7 @@ def create_job(
         raise KeyError("workflow_not_found")
     if workflow["status"] != "online":
         raise PermissionError("workflow_not_online")
-    inputs = dict(inputs)
+    inputs = apply_workflow_input_defaults(workflow_code, inputs)
     aliases = {
         "OWN01": "book_name",
         "OWN02": "cigarette_name",

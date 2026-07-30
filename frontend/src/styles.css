@@ -365,10 +365,13 @@ button { color: inherit; }
 .runtime-secret-card > label:not(.runtime-checkbox) { display: grid; gap: 8px; color: #bbb8b1; font-size: 13px; }
 .runtime-secret-card input[type="password"],
 .runtime-search,
-.runtime-workflow-grid input { width: 100%; min-height: 42px; border: 1px solid #3c3a36; border-radius: 9px; padding: 0 12px; outline: 0; color: #eee; background: #121212; }
+.runtime-workflow-grid input,
+.runtime-workflow-select select { width: 100%; min-height: 42px; border: 1px solid #3c3a36; border-radius: 9px; padding: 0 12px; outline: 0; color: #eee; background: #121212; }
 .runtime-secret-card input:focus,
 .runtime-search:focus,
-.runtime-workflow-grid input:focus { border-color: #89683d; }
+.runtime-workflow-grid input:focus,
+.runtime-workflow-select select:focus,
+.runtime-json-editor textarea:focus { border-color: #89683d; }
 .runtime-secret-card small { color: #6e6c66; }
 .runtime-checkbox { display: flex; align-items: center; gap: 9px; margin-top: 15px; color: #a5a19a; font-size: 13px; }
 .runtime-checkbox input { accent-color: #d0a15a; }
@@ -378,6 +381,22 @@ button { color: inherit; }
 .runtime-workflow-grid label > span { min-width: 0; }
 .runtime-workflow-grid strong { display: block; color: #e4c285; font-size: 12px; }
 .runtime-workflow-grid small { display: block; overflow: hidden; margin-top: 4px; color: #78756e; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.runtime-workflow-select { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 14px; color: #bbb8b1; font-size: 13px; }
+.runtime-input-editor { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(360px, 1.2fr); gap: 14px; margin-top: 15px; }
+.runtime-input-reference,
+.runtime-json-editor { min-width: 0; padding: 15px; border: 1px solid #302e2a; border-radius: 10px; background: #161615; }
+.runtime-input-reference > div:first-child { display: grid; gap: 5px; }
+.runtime-input-reference strong,
+.runtime-json-editor > span { color: #ddd8cf; font-size: 13px; }
+.runtime-input-reference small,
+.runtime-json-editor small { color: #77736c; font-size: 11px; line-height: 1.65; }
+.runtime-input-schema-list { display: grid; gap: 7px; margin-top: 13px; }
+.runtime-input-schema-list > span { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 9px; border-radius: 8px; color: #aaa69e; background: #121212; font-size: 11px; }
+.runtime-input-schema-list code { color: #e4c285; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.runtime-input-schema-list em { color: #6f6b64; font-style: normal; }
+.runtime-input-schema-list p { margin: 0; color: #77736c; font-size: 11px; line-height: 1.65; }
+.runtime-json-editor { display: grid; gap: 8px; }
+.runtime-json-editor textarea { width: 100%; min-height: 240px; resize: vertical; border: 1px solid #3c3a36; border-radius: 9px; padding: 12px; outline: 0; color: #e8dfd0; background: #10100f; font: 12px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 2; }
 .runtime-save-bar { position: sticky; bottom: 14px; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 15px; border: 1px solid #4b4030; border-radius: 12px; color: #918d84; background: rgba(24, 23, 20, .96); box-shadow: 0 12px 35px rgba(0, 0, 0, .35); font-size: 12px; backdrop-filter: blur(12px); }
 .runtime-save-bar button { display: inline-flex; align-items: center; gap: 7px; }
 .runtime-save-bar svg { width: 16px; }
@@ -391,6 +410,7 @@ button { color: inherit; }
   .voice-layout { grid-template-columns: 1fr; }
   .tts-panel { position: static; }
   .runtime-workflow-grid { grid-template-columns: 1fr; }
+  .runtime-input-editor { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 860px) {
@@ -477,6 +497,9 @@ button { color: inherit; }
   .application-actions { flex-wrap: wrap; }
   .runtime-secret-card, .runtime-workflow-card { padding: 18px 14px; }
   .runtime-workflow-grid label { grid-template-columns: 1fr; gap: 8px; }
+  .runtime-workflow-select { grid-template-columns: 1fr; gap: 8px; }
+  .runtime-input-reference, .runtime-json-editor { padding: 12px; }
+  .runtime-input-schema-list > span { grid-template-columns: 1fr; gap: 4px; }
   .runtime-save-bar { align-items: stretch; flex-direction: column; }
   .runtime-save-bar button { justify-content: center; width: 100%; }
 }
