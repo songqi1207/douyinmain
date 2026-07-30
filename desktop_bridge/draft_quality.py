@@ -384,7 +384,12 @@ def _check_pacing(
     for track_name, segment in _segments(text_tracks):
         start, end = _range(segment)
         duration = end - start
-        if 0 < duration < MIN_VISIBLE_TEXT_US and track_name not in short_text_tracks:
+        decorative_track = _has_marker(track_name, _CAPTION_EXCLUDES)
+        if (
+            not decorative_track
+            and 0 < duration < MIN_VISIBLE_TEXT_US
+            and track_name not in short_text_tracks
+        ):
             short_text_tracks.add(track_name)
             issues.append(
                 _issue(

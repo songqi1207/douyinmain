@@ -158,6 +158,14 @@ def test_quality_check_detects_short_shot_and_fast_text_animation() -> None:
     assert "text_animation_too_fast" in codes
 
 
+def test_quality_check_allows_fast_decorative_slide_text() -> None:
+    content = _base_content()
+    content["tracks"][3]["name"] = "text_00_slide_a"
+    content["tracks"][3]["segments"][0]["target_timerange"]["duration"] = 112_800
+
+    assert "text_display_too_fast" not in _codes(content)
+
+
 def test_quality_check_detects_parallel_bright_effects() -> None:
     content = _base_content()
     content["materials"]["video_effects"] = [
@@ -208,6 +216,9 @@ class DraftQualityTests(unittest.TestCase):
 
     def test_detects_short_shot_and_fast_text_animation(self) -> None:
         test_quality_check_detects_short_shot_and_fast_text_animation()
+
+    def test_allows_fast_decorative_slide_text(self) -> None:
+        test_quality_check_allows_fast_decorative_slide_text()
 
     def test_detects_parallel_bright_effects(self) -> None:
         test_quality_check_detects_parallel_bright_effects()

@@ -251,6 +251,36 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
 
         self.assertIn("缺少 effect_title/effect/name/effect_id", str(raised.exception))
 
+    def test_exact_duplicate_effect_calls_are_removed_before_import(self):
+        effect_infos = [
+            {"effect_title": "金粉闪闪", "start": 0, "end": 59_340_000},
+            {"effect_title": "金粉闪闪", "start": 57_540_000, "end": 59_340_000},
+        ]
+        key = {
+            "kind": "jianying_draft_key",
+            "calls": [
+                {
+                    "call_id": "opening_fx",
+                    "tool": "add_effects",
+                    "params": {"effect_infos": effect_infos},
+                },
+                {
+                    "call_id": "main_fx",
+                    "tool": "add_effects",
+                    "params": {"effect_infos": effect_infos},
+                },
+            ],
+        }
+
+        normalized, removed = draft_importer.deduplicate_exact_effect_calls(key)
+        dry_run = draft_importer.import_draft_key(key, dry_run=True)
+
+        self.assertEqual(removed, ["main_fx"])
+        self.assertEqual(len(normalized["calls"]), 1)
+        self.assertEqual(len(key["calls"]), 2)
+        self.assertEqual(dry_run["deduplicated_effect_calls"], ["main_fx"])
+        self.assertEqual(len(dry_run["calls"]), 1)
+
     def test_dynamic_cigarette_batch_images_and_keyframes_produce_importable_key(self):
         workflow, _warning = generate_cigarette_workflow("红塔山")
         report = convert_workflow_to_local_key(

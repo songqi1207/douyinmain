@@ -1458,10 +1458,27 @@ def _save_draft_key_result(job: dict, data: Any) -> list[dict]:
     if not isinstance(draft_key, dict):
         raise ProviderError("draft_key_missing", "内容生成已完成，但返回结果中没有视频草稿")
 
+    from utils.draft_key_importer import (
+        KeyValidationError,
+        deduplicate_exact_effect_calls,
+        import_draft_key,
+    )
+
+    draft_key, removed_effect_calls = deduplicate_exact_effect_calls(draft_key)
+    if removed_effect_calls:
+        logger.warning(
+            "duplicate_effect_calls_removed job_id=%s calls=%s",
+            job.get("id") or "-",
+            ",".join(removed_effect_calls),
+        )
+        if job.get("id"):
+            append_job_log(
+                str(job["id"]),
+                "检测到完全重复的特效轨道，已自动去重：" + "、".join(removed_effect_calls),
+                level="warning",
+            )
     _normalize_published_draft_key(job, draft_key)
     _validate_published_draft_completeness(job, draft_key)
-
-    from utils.draft_key_importer import KeyValidationError, import_draft_key
 
     try:
         import_draft_key(draft_key, dry_run=True)

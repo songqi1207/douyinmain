@@ -9,6 +9,7 @@ key 由 Coze 工作流汇总输出（音频/图片/字幕/关键帧/特效的有
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import mimetypes
@@ -154,6 +155,67 @@ def _call_items(call: dict[str, Any]) -> list[dict[str, Any]]:
         if field in params:
             return [item for item in _as_list(params[field]) if isinstance(item, dict)]
     return []
+
+
+def deduplicate_exact_effect_calls(
+    key: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """Drop unreferenced add_effects calls whose complete payload is duplicated."""
+    normalized = copy.deepcopy(key)
+    calls = normalized.get("calls")
+    if not isinstance(calls, list):
+        return normalized, []
+
+    referenced_call_ids = {
+        str(ref.get("call_id") or "").strip()
+        for call in calls
+        if isinstance(call, dict)
+        for item in _call_items(call)
+        for ref in [item.get("segment_ref")]
+        if isinstance(ref, dict)
+    }
+    seen_signatures: set[str] = set()
+    kept_calls: list[Any] = []
+    removed: list[str] = []
+    for index, call in enumerate(calls):
+        if not isinstance(call, dict) or call.get("tool") != "add_effects":
+            kept_calls.append(call)
+            continue
+        # A single repeated effect can be an intentional strength/layering
+        # choice. Only collapse a duplicated multi-effect composition.
+        if len(_call_items(call)) < 2:
+            kept_calls.append(call)
+            continue
+        call_id = str(call.get("call_id") or f"call_{index:02d}").strip()
+        signature_payload = {
+            "tool": call.get("tool"),
+            "params": call.get("params"),
+            "track_name": call.get("track_name"),
+            "render_index": call.get("render_index"),
+        }
+        signature = json.dumps(
+            signature_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if signature in seen_signatures and call_id not in referenced_call_ids:
+            removed.append(call_id)
+            continue
+        seen_signatures.add(signature)
+        kept_calls.append(call)
+
+    normalized["calls"] = kept_calls
+    if removed:
+        meta = normalized.setdefault("meta", {})
+        if isinstance(meta, dict):
+            existing = [
+                str(item)
+                for item in _as_list(meta.get("deduplicated_effect_calls"))
+                if str(item).strip()
+            ]
+            meta["deduplicated_effect_calls"] = list(dict.fromkeys([*existing, *removed]))
+    return normalized, removed
 
 
 def _fingerprint(key: dict[str, Any]) -> str:
@@ -455,6 +517,7 @@ def import_draft_key(
 def _import_draft_key_unlocked(
     key: dict[str, Any], *, force: bool = False, dry_run: bool = False
 ) -> dict[str, Any]:
+    key, removed_effect_calls = deduplicate_exact_effect_calls(key)
     errors = _validate_key(key)
     if errors:
         raise KeyValidationError(errors)
@@ -471,6 +534,7 @@ def _import_draft_key_unlocked(
                 for index, call in enumerate(key["calls"])
             ],
             "asset_urls": asset_urls,
+            "deduplicated_effect_calls": removed_effect_calls,
             "message": "ok",
         }
 
@@ -514,7 +578,10 @@ def _import_draft_key_unlocked(
 
     call_results: dict[str, dict[str, Any]] = {}
     report_calls: list[dict[str, Any]] = []
-    warnings: list[str] = []
+    warnings: list[str] = [
+        f"{call_id}: 与前面的特效调用完全重复，已跳过"
+        for call_id in removed_effect_calls
+    ]
     type_counters = {"add_audios": 0, "add_images": 0, "add_videos": 0, "add_captions": 0, "add_effects": 0}
     render_base = {"add_audios": 11000, "add_images": 14000, "add_videos": 14000, "add_captions": 15000, "add_effects": 16000}
     track_prefix = {"add_audios": "audio", "add_images": "video", "add_videos": "video", "add_captions": "text", "add_effects": "effect"}
