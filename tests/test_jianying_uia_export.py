@@ -5,6 +5,7 @@ from pathlib import Path
 from desktop_bridge.jianying_uia_export import (
     JianyingUIAError,
     _description_matcher,
+    _double_click_control,
     _draft_card_candidate_points,
     _first_draft_card_point,
     _resolve_export_path,
@@ -18,6 +19,21 @@ class _FakeControl:
     def GetPropertyValue(self, property_id):
         self.property_id = property_id
         return self.description
+
+
+class _FakeClickableControl:
+    def __init__(self, *, double_click_fails=False):
+        self.double_click_fails = double_click_fails
+        self.double_clicks = 0
+        self.clicks = 0
+
+    def DoubleClick(self, **_kwargs):
+        self.double_clicks += 1
+        if self.double_click_fails:
+            raise RuntimeError("double click unavailable")
+
+    def Click(self, **_kwargs):
+        self.clicks += 1
 
 
 class JianyingUIAExportTests(unittest.TestCase):
@@ -66,6 +82,24 @@ class JianyingUIAExportTests(unittest.TestCase):
             (770, 1046),
             _draft_card_candidate_points(100, 200, 2100, 1400),
         )
+
+    def test_draft_card_uses_native_double_click(self):
+        control = _FakeClickableControl()
+
+        mode = _double_click_control(control)
+
+        self.assertEqual(mode, "uia_double_click")
+        self.assertEqual(control.double_clicks, 1)
+        self.assertEqual(control.clicks, 0)
+
+    def test_draft_card_falls_back_to_two_clicks(self):
+        control = _FakeClickableControl(double_click_fails=True)
+
+        mode = _double_click_control(control)
+
+        self.assertEqual(mode, "uia_click_twice")
+        self.assertEqual(control.double_clicks, 1)
+        self.assertEqual(control.clicks, 2)
 
 
 if __name__ == "__main__":

@@ -147,6 +147,24 @@ def _click_control_center(control: object) -> bool:
     return True
 
 
+def _double_click_control(control: object) -> str:
+    """Open a JianYing project card with UIA and robust fallbacks."""
+
+    try:
+        control.DoubleClick(waitTime=0.1)  # type: ignore[attr-defined]
+        return "uia_double_click"
+    except Exception:
+        try:
+            control.Click(simulateMove=False)  # type: ignore[attr-defined]
+            time.sleep(0.15)
+            control.Click(simulateMove=False)  # type: ignore[attr-defined]
+            return "uia_click_twice"
+        except Exception:
+            if _click_control_center(control):
+                return "coordinate_double_click"
+            raise
+
+
 def _first_home_project_item(window: object) -> object | None:
     def matcher(control: object, _depth: int) -> bool:
         return "HomePageOpenProjectItem".casefold() in str(
@@ -269,11 +287,8 @@ def _open_home_draft_by_coordinate(auto, window: object, stage: StageCallback | 
             "uia2_draft_card_fallback_item",
             f"class={getattr(project_item, 'ClassName', '')}",
         )
-        try:
-            project_item.Click(simulateMove=False)  # type: ignore[attr-defined]
-        except Exception:
-            if not _click_control_center(project_item):
-                raise
+        mode = _double_click_control(project_item)
+        _emit(stage, "uia2_draft_card_fallback_opened", f"mode={mode}")
         return _wait_for_window(auto, "edit", 30)
 
     rect = _window_rect(window)
@@ -434,9 +449,16 @@ def export_draft_uia(
             draft_button = draft_title.GetParentControl()
             if draft_button is None:
                 draft_button = draft_title
-            draft_button.Click(simulateMove=False)
-            _emit(stage, "uia2_draft_opened", "mode=uia")
-            editor = _wait_for_window(auto, "edit", 120)
+            mode = _double_click_control(draft_button)
+            _emit(stage, "uia2_draft_open_attempted", f"mode={mode}")
+            try:
+                editor = _wait_for_window(auto, "edit", 25)
+            except JianyingUIAError:
+                _emit(stage, "uia2_draft_open_retry", f"draft_name={draft_name}")
+                _dismiss_process_popups(window, stage)
+                editor = _open_home_draft_by_coordinate(auto, window, stage)
+                mode = "coordinate_retry"
+            _emit(stage, "uia2_draft_opened", f"mode={mode}")
     elif current_state == "edit":
         editor = current_window
         _emit(stage, "uia2_editor_reused", f"class={editor.ClassName}")

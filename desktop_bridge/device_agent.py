@@ -65,7 +65,11 @@ def pair_with_site(site_url: str, code: str, device_name: str) -> dict:
                 "code": str(code or "").strip().upper(),
                 "name": str(device_name or "").strip() or platform.node() or "我的电脑",
                 "platform": "windows",
-                "capabilities": {"jianying_native_export": True, "ffmpeg": False},
+                "capabilities": {
+                    "jianying_native_export": True,
+                    "ffmpeg": False,
+                    "helper_version": HELPER_VERSION,
+                },
             },
             timeout=20,
         )
@@ -598,6 +602,7 @@ class DeviceAgent:
                             "jianying_native_export": True,
                             "ffmpeg": False,
                             "jianying_found": Path(self.jianying_exe).is_file(),
+                            "helper_version": HELPER_VERSION,
                         }
                     },
                     timeout=30,
