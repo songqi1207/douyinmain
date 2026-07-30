@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Clock3, Download, FileText, LoaderCircle, RotateCcw, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, Download, FileText, LoaderCircle, Play, RotateCcw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -37,6 +37,7 @@ export function RecordsPage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [retryingId, setRetryingId] = useState("");
+  const [preview, setPreview] = useState<{ jobId: string; url: string; poster?: string | null } | null>(null);
   const [error, setError] = useState("");
 
   async function load() {
@@ -140,14 +141,42 @@ export function RecordsPage() {
                     </button>
                   )}
                   {job.results.map((result, index) => (
-                    <a key={`${result.url}-${index}`} href={result.url} target="_blank" rel="noreferrer" download={result.downloadable || undefined}>
-                      <Download />结果 {index + 1}
-                    </a>
+                    <span className="record-result-actions" key={`${result.url}-${index}`}>
+                      {result.type === "video" && (
+                        <button
+                          type="button"
+                          onClick={() => setPreview(
+                            preview?.jobId === job.id && preview.url === result.url
+                              ? null
+                              : { jobId: job.id, url: result.url, poster: result.poster_url },
+                          )}
+                        >
+                          {preview?.jobId === job.id && preview.url === result.url ? <X /> : <Play />}
+                          {preview?.jobId === job.id && preview.url === result.url ? "收起视频" : "播放视频"}
+                        </button>
+                      )}
+                      <a href={result.url} target="_blank" rel="noreferrer" download={result.downloadable || undefined}>
+                        <Download />下载结果 {index + 1}
+                      </a>
+                    </span>
                   ))}
                   {job.workflow_code === "DRAFT_KEY_EXPORT"
                     ? <Link to="/jianying-export">打开手工导出</Link>
                     : <Link to={`/?workflow=${job.workflow_code}`}>再次创作</Link>}
                 </div>
+                {preview?.jobId === job.id && (
+                  <div className="record-video-preview">
+                    <video
+                      key={preview.url}
+                      src={preview.url}
+                      poster={preview.poster || undefined}
+                      controls
+                      autoPlay
+                      playsInline
+                      preload="metadata"
+                    />
+                  </div>
+                )}
               </article>
             ))}
           </div>
