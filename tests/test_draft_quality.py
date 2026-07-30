@@ -86,6 +86,51 @@ def test_quality_check_compares_one_voice_clip_with_caption_envelope() -> None:
     assert "caption_voice_drift" not in _codes(content)
 
 
+def test_quality_check_accepts_multiple_captions_inside_each_voice_clip() -> None:
+    content = _base_content()
+    content["materials"]["texts"] = [
+        _text("caption-1"),
+        _text("caption-2"),
+        _text("caption-3"),
+        _text("caption-4"),
+        _text("caption-5"),
+    ]
+    content["tracks"][2]["segments"] = [
+        _segment("voice-1", 0, 4_000_000),
+        _segment("voice-2", 4_000_000, 4_000_000),
+        _segment("voice-3", 8_000_000, 4_000_000),
+    ]
+    content["tracks"][3]["segments"] = [
+        _segment("caption-1", 300_000, 2_000_000),
+        _segment("caption-2", 2_300_000, 1_500_000),
+        _segment("caption-3", 4_200_000, 2_000_000),
+        _segment("caption-4", 6_200_000, 1_600_000),
+        _segment("caption-5", 8_400_000, 3_200_000),
+    ]
+    content["tracks"][0]["segments"][0]["target_timerange"]["duration"] = 12_000_000
+    content["tracks"][1]["segments"][0]["target_timerange"]["duration"] = 12_000_000
+
+    assert "caption_voice_drift" not in _codes(content)
+
+
+def test_quality_check_detects_caption_outside_multi_clip_voice_coverage() -> None:
+    content = _base_content()
+    content["materials"]["texts"].append(_text("caption-2"))
+    content["tracks"][2]["segments"] = [
+        _segment("voice-1", 1_000_000, 2_000_000),
+        _segment("voice-2", 4_000_000, 2_000_000),
+        _segment("voice-3", 7_000_000, 2_000_000),
+    ]
+    content["tracks"][3]["segments"] = [
+        _segment("caption-1", 0, 2_500_000),
+        _segment("caption-2", 4_200_000, 1_500_000),
+    ]
+    content["tracks"][0]["segments"][0]["target_timerange"]["duration"] = 9_000_000
+    content["tracks"][1]["segments"][0]["target_timerange"]["duration"] = 9_000_000
+
+    assert "caption_voice_drift" in _codes(content)
+
+
 def test_quality_check_detects_text_overlap_and_clipping() -> None:
     content = _base_content()
     content["materials"]["texts"].append(_text("caption-2"))
@@ -148,6 +193,12 @@ class DraftQualityTests(unittest.TestCase):
 
     def test_compares_one_voice_clip_with_caption_envelope(self) -> None:
         test_quality_check_compares_one_voice_clip_with_caption_envelope()
+
+    def test_accepts_multiple_captions_inside_each_voice_clip(self) -> None:
+        test_quality_check_accepts_multiple_captions_inside_each_voice_clip()
+
+    def test_detects_caption_outside_multi_clip_voice_coverage(self) -> None:
+        test_quality_check_detects_caption_outside_multi_clip_voice_coverage()
 
     def test_detects_caption_voice_drift(self) -> None:
         test_quality_check_detects_caption_voice_drift()

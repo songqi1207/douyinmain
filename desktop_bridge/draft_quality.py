@@ -206,11 +206,59 @@ def _check_caption_sync(
             voice_start, voice_end = _range(voice)
             candidates = [(max(0, min(cap_end, voice_end) - max(cap_start, voice_start)), voice_track, voice_start, voice_end)]
         else:
-            candidates = []
+            # Several captions commonly split one narration clip. Their starts
+            # and ends are not expected to equal the containing voice clip;
+            # only time outside actual voice coverage is drift.
+            intersections: list[tuple[int, int, str]] = []
             for voice_track, voice in ordered_voices:
                 voice_start, voice_end = _range(voice)
-                overlap = max(0, min(cap_end, voice_end) - max(cap_start, voice_start))
-                candidates.append((overlap, voice_track, voice_start, voice_end))
+                left = max(cap_start, voice_start)
+                right = min(cap_end, voice_end)
+                if right > left:
+                    intersections.append((left, right, voice_track))
+            if not intersections:
+                issues.append(
+                    _issue(
+                        "caption_voice_no_overlap",
+                        f"字幕轨道“{caption_track}”在 {cap_start / 1_000_000:.2f}s 没有对应人声",
+                        track=caption_track,
+                        start_us=cap_start,
+                    )
+                )
+                continue
+            merged: list[list[int]] = []
+            for left, right, _ in sorted(intersections):
+                if not merged or left > merged[-1][1]:
+                    merged.append([left, right])
+                else:
+                    merged[-1][1] = max(merged[-1][1], right)
+            covered_us = sum(right - left for left, right in merged)
+            start_drift = max(0, merged[0][0] - cap_start)
+            end_drift = max(0, cap_end - merged[-1][1])
+            uncovered_us = max(0, cap_end - cap_start - covered_us)
+            if (
+                start_drift > MAX_SYNC_DRIFT_US
+                or end_drift > MAX_SYNC_DRIFT_US
+                or uncovered_us > MAX_SYNC_DRIFT_US
+            ):
+                voice_track = intersections[0][2]
+                issues.append(
+                    _issue(
+                        "caption_voice_drift",
+                        (
+                            f"字幕“{caption_track}”超出人声“{voice_track}”覆盖范围"
+                            f"（开头 {start_drift / 1000:.0f}ms，"
+                            f"结尾 {end_drift / 1000:.0f}ms，"
+                            f"累计无声 {uncovered_us / 1000:.0f}ms）"
+                        ),
+                        caption_track=caption_track,
+                        voice_track=voice_track,
+                        start_drift_us=start_drift,
+                        end_drift_us=end_drift,
+                        uncovered_us=uncovered_us,
+                    )
+                )
+            continue
         overlap, voice_track, voice_start, voice_end = max(candidates, default=(0, "", 0, 0))
         if overlap <= 0:
             issues.append(
