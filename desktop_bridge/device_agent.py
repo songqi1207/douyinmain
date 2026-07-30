@@ -94,12 +94,114 @@ def _resource_path(relative: str) -> Path:
     return (Path(__file__).resolve().parents[1] / relative).resolve()
 
 
+def _cloud_resource_wait_seconds(resource_count: int) -> int:
+    """Return the editor settle time used to download referenced cloud assets."""
+    configured = str(os.getenv("DEVICE_JIANYING_RESOURCE_WAIT_SECONDS") or "").strip()
+    if configured:
+        try:
+            return max(0, min(180, int(float(configured))))
+        except ValueError:
+            logger.warning(
+                "invalid_resource_wait_seconds value=%s fallback=automatic",
+                configured,
+            )
+    count = max(0, int(resource_count or 0))
+    return 0 if count == 0 else min(60, max(15, 8 + count * 2))
+
+
+def _prime_jianying_cloud_resources(
+    controller: object,
+    draft_name: str,
+    wait_seconds: int,
+    job_id: str,
+) -> bool:
+    """Open a draft once and let Jianying cache all cloud-backed materials."""
+    settle_seconds = max(0, int(wait_seconds or 0))
+    if settle_seconds <= 0:
+        return False
+
+    try:
+        controller.get_window()
+        controller.switch_to_home()
+
+        expected_description = f"HomePageDraftTitle:{draft_name}"
+
+        def matches_draft(control: object, _depth: int) -> bool:
+            try:
+                return str(control.GetPropertyValue(30159) or "") == expected_description
+            except Exception:
+                return False
+
+        draft_title = controller.app.TextControl(
+            searchDepth=8,
+            Compare=matches_draft,
+        )
+        if not draft_title.Exists(10, 0.25):
+            logger.warning(
+                "resource_preload_draft_not_found job_id=%s draft_name=%s",
+                job_id,
+                draft_name,
+            )
+            return False
+        draft_button = draft_title.GetParentControl()
+        if draft_button is None:
+            draft_button = draft_title
+        try:
+            draft_button.DoubleClick(simulateMove=False)
+            open_mode = "double_click"
+        except Exception:
+            draft_button.Click(simulateMove=False)
+            time.sleep(0.15)
+            draft_button.Click(simulateMove=False)
+            open_mode = "two_clicks"
+
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            time.sleep(0.5)
+            controller.get_window()
+            if str(getattr(controller, "app_status", "")) == "edit":
+                break
+        else:
+            logger.warning(
+                "resource_preload_editor_timeout job_id=%s draft_name=%s",
+                job_id,
+                draft_name,
+            )
+            return False
+
+        logger.info(
+            "resource_preload_started job_id=%s draft_name=%s wait_seconds=%s mode=%s",
+            job_id,
+            draft_name,
+            settle_seconds,
+            open_mode,
+        )
+        time.sleep(settle_seconds)
+        controller.get_window()
+        controller.switch_to_home()
+        logger.info(
+            "resource_preload_finished job_id=%s draft_name=%s",
+            job_id,
+            draft_name,
+        )
+        return True
+    except Exception as exc:
+        logger.warning(
+            "resource_preload_failed job_id=%s draft_name=%s error=%s",
+            job_id,
+            draft_name,
+            exc,
+        )
+        return False
+
+
 def _run_pyjianying_export(
     draft_name: str,
     output_path: Path,
     executable: Path,
     timeout: int,
     job_id: str,
+    resource_wait_seconds: int = 0,
 ) -> Path:
     """Export through pyJianYingDraft before using our compatibility drivers."""
     skip_py_export = (
@@ -150,6 +252,12 @@ def _run_pyjianying_export(
     if controller is None:
         raise BridgeError(f"pyJianYingDraft 没有找到剪映窗口：{last_error}")
 
+    _prime_jianying_cloud_resources(
+        controller,
+        draft_name,
+        resource_wait_seconds,
+        job_id,
+    )
     logger.info(
         "pyjianying_export_started job_id=%s draft_name=%s timeout_seconds=%s",
         job_id,
@@ -254,6 +362,21 @@ def _run_native_export(
         len(report.get("warnings") or []),
         time.monotonic() - started_at,
     )
+    unresolved_resources = [
+        str(item)
+        for item in report.get("unresolved_cloud_resources") or []
+        if str(item).strip()
+    ]
+    if unresolved_resources:
+        names = "、".join(unresolved_resources[:8])
+        if len(unresolved_resources) > 8:
+            names += f" 等 {len(unresolved_resources)} 项"
+        raise BridgeError(
+            "草稿包含助手无法识别的字体或特效资源，已停止导出以避免使用错误样式："
+            + names
+        )
+    cloud_resources = report.get("cloud_resources") or []
+    resource_wait_seconds = _cloud_resource_wait_seconds(len(cloud_resources))
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = (output_dir / f"{task['job_id']}.mp4").resolve()
@@ -266,7 +389,13 @@ def _run_native_export(
     export_timeout = int(os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800)
     job_id = str(task.get("job_id") or "-")
     if progress:
-        progress("正在使用 pyJianYingDraft 导出视频…")
+        if resource_wait_seconds:
+            progress(
+                f"检测到 {len(cloud_resources)} 项云端字体/特效，"
+                f"正在打开草稿并等待素材同步（约 {resource_wait_seconds} 秒）…"
+            )
+        else:
+            progress("正在使用 pyJianYingDraft 导出视频…")
     try:
         return _run_pyjianying_export(
             draft_name,
@@ -274,6 +403,7 @@ def _run_native_export(
             executable,
             export_timeout,
             job_id,
+            resource_wait_seconds=resource_wait_seconds,
         )
     except Exception as exc:
         logger.warning(
