@@ -57,6 +57,8 @@ public static class JianyingNative {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
@@ -124,6 +126,27 @@ function Get-VisibleElements([int]$ProcessId) {
     return $items
 }
 
+function Get-VisibleElementsUnder($Root) {
+    $items = New-Object System.Collections.Generic.List[object]
+    if (-not $Root) {
+        return $items
+    }
+    try {
+        foreach ($element in $Root.FindAll(
+            [System.Windows.Automation.TreeScope]::Subtree,
+            [System.Windows.Automation.Condition]::TrueCondition
+        )) {
+            if (-not $element.Current.IsOffscreen -and $element.Current.IsEnabled) {
+                $items.Add($element)
+            }
+        }
+    }
+    catch {
+        # Jianying frequently replaces transient Chromium/Qt elements.
+    }
+    return $items
+}
+
 function Wait-Element([int]$ProcessId, [scriptblock]$Selector, [int]$Seconds, [string]$Description) {
     $deadline = (Get-Date).AddSeconds($Seconds)
     while ((Get-Date) -lt $deadline) {
@@ -134,6 +157,56 @@ function Wait-Element([int]$ProcessId, [scriptblock]$Selector, [int]$Seconds, [s
         Start-Sleep -Milliseconds 500
     }
     throw "等待剪映界面元素超时：$Description"
+}
+
+function Wait-EditorRoot([int]$ProcessId, [int]$Seconds) {
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    $lastDismiss = (Get-Date).AddSeconds(-10)
+    while ((Get-Date) -lt $deadline) {
+        $root = Get-ProcessRoots $ProcessId | Where-Object {
+            $_.Current.ClassName -match 'MainWindow'
+        } | Select-Object -First 1
+        if ($root) {
+            return $root
+        }
+        if ((Get-Date) -ge $lastDismiss.AddSeconds(3)) {
+            Dismiss-JianyingPopups $ProcessId | Out-Null
+            $lastDismiss = Get-Date
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    return $null
+}
+
+function Get-FirstHomeProjectItem([int]$ProcessId) {
+    return Get-VisibleElements $ProcessId | Where-Object {
+        $_.Current.ClassName -match 'HomePageOpenProjectItem' -and
+        $_.Current.ControlType.ProgrammaticName -match '(Group|Custom)'
+    } | Sort-Object `
+        @{Expression = {$_.Current.BoundingRectangle.Y}; Ascending = $true}, `
+        @{Expression = {$_.Current.BoundingRectangle.X}; Ascending = $true} |
+        Select-Object -First 1
+}
+
+function Invoke-HomeProjectItemByPoint($Element) {
+    try {
+        $elementProcess = Get-Process -Id $Element.Current.ProcessId -ErrorAction SilentlyContinue
+        if ($elementProcess) {
+            Set-JianyingForeground $elementProcess
+        }
+    }
+    catch {}
+    $rect = $Element.Current.BoundingRectangle
+    if ($rect.Width -le 1 -or $rect.Height -le 1) {
+        Invoke-Element $Element -DoubleClick
+        return
+    }
+    $x = [int]($rect.X + ($rect.Width * 0.50))
+    $y = [int]($rect.Y + ($rect.Height * 0.38))
+    Write-Stage "draft_card_item_point_click" "class=$($Element.Current.ClassName) x=$x y=$y"
+    Invoke-Point $x $y
+    Start-Sleep -Milliseconds 150
+    Invoke-Point $x $y
 }
 
 function Write-VisibleElementSnapshot([int]$ProcessId) {
@@ -263,15 +336,42 @@ function Close-ExportSuccessDialogs([int]$ProcessId) {
     return $closed
 }
 
+function Set-JianyingForeground($Process) {
+    if (-not $Process -or $Process.MainWindowHandle -eq 0) {
+        return
+    }
+    $handle = $Process.MainWindowHandle
+    [JianyingNative]::ShowWindow($handle, 9) | Out-Null
+    [JianyingNative]::SetWindowPos($handle, [IntPtr](-1), 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0040) | Out-Null
+    Start-Sleep -Milliseconds 120
+    [JianyingNative]::SetForegroundWindow($handle) | Out-Null
+    Start-Sleep -Milliseconds 250
+    [JianyingNative]::SetWindowPos($handle, [IntPtr](-2), 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0040) | Out-Null
+}
+
 function Get-WindowRect($Process) {
+    Set-JianyingForeground $Process
     $rect = New-Object JianyingNative+RECT
     if (-not [JianyingNative]::GetWindowRect($Process.MainWindowHandle, [ref]$rect)) {
         throw "无法读取剪映窗口位置"
+    }
+    if ($rect.Left -lt -30000 -or $rect.Top -lt -30000 -or ($rect.Right -le $rect.Left) -or ($rect.Bottom -le $rect.Top)) {
+        [JianyingNative]::ShowWindow($Process.MainWindowHandle, 3) | Out-Null
+        [JianyingNative]::SetForegroundWindow($Process.MainWindowHandle) | Out-Null
+        Start-Sleep -Milliseconds 500
+        if (-not [JianyingNative]::GetWindowRect($Process.MainWindowHandle, [ref]$rect)) {
+            throw "无法读取剪映窗口位置"
+        }
     }
     return $rect
 }
 
 function Invoke-HomeDraftCardByCoordinate($Process) {
+    $projectItem = Get-FirstHomeProjectItem $Process.Id
+    if ($projectItem) {
+        Invoke-HomeProjectItemByPoint $projectItem
+        return
+    }
     $rect = Get-WindowRect $Process
     $width = [Math]::Max(1, $rect.Right - $rect.Left)
     $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
@@ -289,14 +389,64 @@ function Invoke-EditorExportByCoordinate($Process) {
 }
 
 function Get-ExportWindowRect([int]$ProcessId) {
-    $exportWindow = Get-ProcessRoots $ProcessId | Where-Object {
-        $_.Current.ClassName -match 'ExportWindow' -or $_.Current.Name -match '^\s*导出'
-    } | Select-Object -First 1
+    $activeProcess = Get-JianyingProcess
+    $processIds = @($ProcessId)
+    if ($activeProcess) {
+        $processIds = @($activeProcess.Id, $ProcessId) | Select-Object -Unique
+    }
+    $exportWindow = $null
+    $deadline = (Get-Date).AddSeconds(45)
+    while ((Get-Date) -lt $deadline) {
+        foreach ($candidateProcessId in $processIds) {
+            $exportWindow = Get-ExportDialogRoot $candidateProcessId
+            if ($exportWindow) {
+                break
+            }
+        }
+        if ($exportWindow) {
+            break
+        }
+        Start-Sleep -Milliseconds 500
+    }
     if ($exportWindow) {
         return $exportWindow.Current.BoundingRectangle
     }
-    $process = Get-Process -Id $ProcessId -ErrorAction Stop
-    return Get-WindowRect $process
+    throw "等待剪映导出弹窗超时"
+}
+
+function Get-ExportDialogRoot([int]$ProcessId) {
+    $rootWindow = Get-ProcessRoots $ProcessId | Where-Object {
+        $_.Current.ClassName -match 'ExportWindow' -or
+        (
+            $_.Current.Name -match '^\s*导出' -and
+            $_.Current.ClassName -notmatch 'HomePage'
+        )
+    } | Select-Object -First 1
+    if ($rootWindow) {
+        return $rootWindow
+    }
+    return Get-VisibleElements $ProcessId | Where-Object {
+        $_.Current.AutomationId -match 'ExportWindow_Container' -or
+        $_.Current.ClassName -match '(^|_)Export(_|$)|Export_QMLTYPE' -or
+        (
+            $_.Current.Name -match '^\s*导出\s*$' -and
+            $_.Current.ControlType.ProgrammaticName -match 'Window'
+        )
+    } | Sort-Object `
+        @{Expression = {$_.Current.BoundingRectangle.Width * $_.Current.BoundingRectangle.Height}; Descending = $true} |
+        Select-Object -First 1
+}
+
+function Wait-ExportDialogRoot([int]$ProcessId, [int]$Seconds) {
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    while ((Get-Date) -lt $deadline) {
+        $root = Get-ExportDialogRoot $ProcessId
+        if ($root) {
+            return $root
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "等待剪映导出弹窗超时"
 }
 
 function Set-TextByCoordinate([int]$X, [int]$Y, [string]$Value) {
@@ -334,8 +484,11 @@ function Get-CandidateOutputPaths {
         $outputDirectory,
         (Join-Path $env:USERPROFILE "Downloads"),
         (Join-Path $env:USERPROFILE "Videos"),
+        (Join-Path $env:USERPROFILE "OneDrive\Videos"),
         (Join-Path $env:USERPROFILE "Desktop"),
-        (Join-Path $env:USERPROFILE "Documents")
+        (Join-Path $env:USERPROFILE "OneDrive\Desktop"),
+        (Join-Path $env:USERPROFILE "Documents"),
+        (Join-Path $env:USERPROFILE "OneDrive\Documents")
     )
     $names = @($outputName, $DraftName) | Where-Object { $_ } | Select-Object -Unique
     $paths = New-Object System.Collections.Generic.List[string]
@@ -349,6 +502,44 @@ function Get-CandidateOutputPaths {
         }
     }
     return $paths | Select-Object -Unique
+}
+
+function Find-CandidateOutputFile([datetime]$WaitStartedAt) {
+    $threshold = $WaitStartedAt.AddMinutes(-15)
+    $directories = @(
+        $outputDirectory,
+        (Join-Path $env:USERPROFILE "Downloads"),
+        (Join-Path $env:USERPROFILE "Videos"),
+        (Join-Path $env:USERPROFILE "OneDrive\Videos"),
+        (Join-Path $env:USERPROFILE "Desktop"),
+        (Join-Path $env:USERPROFILE "OneDrive\Desktop"),
+        (Join-Path $env:USERPROFILE "Documents"),
+        (Join-Path $env:USERPROFILE "OneDrive\Documents")
+    ) | Where-Object {
+        $_ -and (Test-Path -LiteralPath $_ -PathType Container)
+    } | Select-Object -Unique
+    $names = @($outputName, $DraftName) | Where-Object { $_ } | Select-Object -Unique
+
+    foreach ($candidate in (Get-CandidateOutputPaths)) {
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            continue
+        }
+        $item = Get-Item -LiteralPath $candidate
+        if ($item.LastWriteTime -ge $threshold) {
+            return $item
+        }
+    }
+    $matches = New-Object System.Collections.Generic.List[object]
+    foreach ($directory in $directories) {
+        foreach ($name in $names) {
+            foreach ($item in (Get-ChildItem -LiteralPath $directory -Filter "$name*.mp4" -File -ErrorAction SilentlyContinue)) {
+                if ($item.LastWriteTime -ge $threshold) {
+                    $matches.Add($item)
+                }
+            }
+        }
+    }
+    return $matches | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 }
 
 function Minimize-JianyingWindow {
@@ -375,6 +566,36 @@ function Dismiss-JianyingPopups([int]$ProcessId) {
     $dismissPattern = '(放弃福利|暂不|以后再说|取消|跳过|我知道了|知道了|Not now|Later|Skip|Cancel)'
     $dismissed = 0
     for ($attempt = 0; $attempt -lt 4; $attempt += 1) {
+        $blockingDialog = Get-ProcessRoots $ProcessId | Where-Object {
+            $_.Current.ClassName -match 'LVInfoDialog|SplashDialog|Popup' -and
+            $_.Current.ClassName -notmatch 'ExportWindow'
+        } | Where-Object {
+            $rect = $_.Current.BoundingRectangle
+            $rect.Width -gt 200 -and $rect.Height -gt 120
+        } | Select-Object -First 1
+        if ($blockingDialog) {
+            $rect = $blockingDialog.Current.BoundingRectangle
+            $handle = [IntPtr]$blockingDialog.Current.NativeWindowHandle
+            if ($handle -ne [IntPtr]::Zero) {
+                Write-Stage "popup_dismissed" "mode=window_close class=$($blockingDialog.Current.ClassName)"
+                [JianyingNative]::PostMessage($handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+                $dismissed += 1
+                Start-Sleep -Milliseconds 600
+                $stillBlocking = Get-ProcessRoots $ProcessId | Where-Object {
+                    $_.Current.ClassName -eq $blockingDialog.Current.ClassName
+                } | Select-Object -First 1
+                if (-not $stillBlocking) {
+                    continue
+                }
+                $x = [int]($rect.Right - [Math]::Min(230, [Math]::Max(80, $rect.Width * 0.33)))
+                $y = [int]($rect.Bottom - [Math]::Min(55, [Math]::Max(35, $rect.Height * 0.12)))
+                Write-Stage "popup_dismissed" "mode=blocking_dialog_click class=$($blockingDialog.Current.ClassName) x=$x y=$y"
+                Invoke-Point $x $y
+                [System.Windows.Forms.SendKeys]::SendWait("{ESC}")
+                Start-Sleep -Milliseconds 900
+                continue
+            }
+        }
         $draftListProblem = Get-ProcessRoots $ProcessId | Where-Object {
             ($_.Current.Name + " " + (Get-FullDescription $_)) -match '草稿列表异常|草稿丢失'
         } | Select-Object -First 1
@@ -445,6 +666,48 @@ function Set-ElementValue($Element, [string]$Value) {
     return $false
 }
 
+function Clear-HomeSearchFields([int]$ProcessId) {
+    $cleared = 0
+    foreach ($root in (Get-ProcessRoots $ProcessId)) {
+        if ($root.Current.ClassName -notmatch 'HomePage') {
+            continue
+        }
+        foreach ($edit in (Get-VisibleElementsUnder $root | Where-Object {
+            $_.Current.ControlType.ProgrammaticName -match 'Edit'
+        })) {
+            $previous = ""
+            try {
+                $pattern = $edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+                if ($pattern) {
+                    $previous = [string]$pattern.Current.Value
+                    if ($previous) {
+                        $pattern.SetValue("")
+                        $cleared += 1
+                    }
+                    continue
+                }
+            }
+            catch {}
+            try {
+                $rect = $edit.Current.BoundingRectangle
+                if ($rect.Width -gt 1 -and $rect.Height -gt 1) {
+                    Invoke-Point ([int]($rect.X + $rect.Width / 2)) ([int]($rect.Y + $rect.Height / 2))
+                    Start-Sleep -Milliseconds 100
+                    [System.Windows.Forms.SendKeys]::SendWait("^a")
+                    [System.Windows.Forms.SendKeys]::SendWait("{DELETE}")
+                    $cleared += 1
+                }
+            }
+            catch {}
+        }
+    }
+    if ($cleared -gt 0) {
+        Write-Stage "home_search_cleared" "fields=$cleared"
+        Start-Sleep -Milliseconds 600
+    }
+    return $cleared
+}
+
 if (-not (Test-Path -LiteralPath $JianyingExe -PathType Leaf)) {
     throw "剪映程序不存在：$JianyingExe"
 }
@@ -487,7 +750,7 @@ else {
     Write-Stage "using_existing_jianying" "process_id=$($process.Id)"
 }
 
-$deadline = (Get-Date).AddSeconds([Math]::Min(60, $TimeoutSeconds))
+$deadline = (Get-Date).AddSeconds([Math]::Min(120, $TimeoutSeconds))
 while (-not $process -and (Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 500
     $process = Get-JianyingProcess
@@ -505,17 +768,18 @@ catch {
     $windowClass = ""
 }
 Write-Stage "jianying_window_ready" "process_id=$($process.Id) class=$windowClass"
-[JianyingNative]::ShowWindow($process.MainWindowHandle, 3) | Out-Null
-[JianyingNative]::SetForegroundWindow($process.MainWindowHandle) | Out-Null
+Set-JianyingForeground $process
 Start-Sleep -Seconds 2
 Dismiss-JianyingPopups $process.Id | Out-Null
 Close-ExportSuccessDialogs $process.Id | Out-Null
+Clear-HomeSearchFields $process.Id | Out-Null
 
 Write-Stage "preparing_draft_home"
 [System.Windows.Forms.SendKeys]::SendWait("{ESC}")
 Start-Sleep -Milliseconds 500
 Dismiss-JianyingPopups $process.Id | Out-Null
 Close-ExportSuccessDialogs $process.Id | Out-Null
+Clear-HomeSearchFields $process.Id | Out-Null
 $openEditorExport = Get-VisibleElements $process.Id | Where-Object {
     ($_.Current.Name -match '^\s*(导出|Export)\s*$' -or
         (Get-FullDescription $_) -match 'MainWindowTitleBarExportBtn') -and
@@ -533,11 +797,13 @@ if ($localDrafts) {
     Invoke-Element $localDrafts
     Write-Stage "local_drafts_selected"
     Start-Sleep -Seconds 1
+    Clear-HomeSearchFields $process.Id | Out-Null
 }
 [System.Windows.Forms.SendKeys]::SendWait("{F5}")
 Write-Stage "draft_home_refreshed"
 Start-Sleep -Seconds 3
 Dismiss-JianyingPopups $process.Id | Out-Null
+Clear-HomeSearchFields $process.Id | Out-Null
 
 $treeDeadline = (Get-Date).AddSeconds(8)
 $treeElements = @()
@@ -565,6 +831,8 @@ $draftDescription = "HomePageDraftTitle:$DraftName"
 Write-Stage "waiting_for_draft_card"
 $draft = $null
 if ($coordinateDraftFallback) {
+    Dismiss-JianyingPopups $process.Id | Out-Null
+    Clear-HomeSearchFields $process.Id | Out-Null
     Invoke-HomeDraftCardByCoordinate $process
     Start-Sleep -Seconds 8
 }
@@ -579,14 +847,29 @@ else {
     catch {
         Write-Stage "draft_card_not_found"
         Write-VisibleElementSnapshot $process.Id
-        Invoke-HomeDraftCardByCoordinate $process
-        Start-Sleep -Seconds 8
-        $coordinateDraftFallback = $true
+        Dismiss-JianyingPopups $process.Id | Out-Null
+        Clear-HomeSearchFields $process.Id | Out-Null
+        Start-Sleep -Milliseconds 400
+        $projectItem = Get-FirstHomeProjectItem $process.Id
+        if ($projectItem) {
+            $draft = $projectItem
+            $coordinateDraftFallback = $false
+            Write-Stage "draft_card_fallback_item" "class=$($projectItem.Current.ClassName)"
+        }
+        else {
+            Invoke-HomeDraftCardByCoordinate $process
+            Start-Sleep -Seconds 8
+            $coordinateDraftFallback = $true
+        }
     }
 }
 if ($draft) {
     $draftFullDescription = Get-FullDescription $draft
-    if ($draftFullDescription -eq $draftDescription) {
+    if ($draft.Current.ClassName -match 'HomePageOpenProjectItem') {
+        Invoke-HomeProjectItemByPoint $draft
+        Write-Stage "draft_card_opened" "mode=uia_item"
+    }
+    elseif ($draftFullDescription -eq $draftDescription) {
         $draftParent = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($draft)
         if ($draftParent) {
             Invoke-Element $draftParent
@@ -594,45 +877,94 @@ if ($draft) {
         else {
             Invoke-Element $draft
         }
+        Write-Stage "draft_card_opened" "mode=uia"
     }
     else {
         Invoke-Element $draft -DoubleClick
+        Write-Stage "draft_card_opened" "mode=uia"
     }
-    Write-Stage "draft_card_opened" "mode=uia"
 }
 else {
     Write-Stage "draft_card_opened" "mode=coordinate"
 }
 
+$editorRootAfterOpen = Wait-EditorRoot $process.Id ([Math]::Min(180, $TimeoutSeconds))
+if (-not $editorRootAfterOpen) {
+    Write-Stage "draft_open_retry" "reason=editor_not_ready_after_open"
+    $retryItem = Get-FirstHomeProjectItem $process.Id
+    if ($retryItem) {
+        Invoke-HomeProjectItemByPoint $retryItem
+        $editorRootAfterOpen = Wait-EditorRoot $process.Id ([Math]::Min(180, $TimeoutSeconds))
+    }
+}
+if (-not $editorRootAfterOpen) {
+    throw "点击草稿卡片后没有进入剪映草稿编辑页"
+}
+Write-Stage "editor_ready" "class=$($editorRootAfterOpen.Current.ClassName)"
+
 Write-Stage "waiting_for_editor_export_button"
 $exportButton = $null
-if ($coordinateDraftFallback) {
-    $process = Get-JianyingProcess
+$process = Get-JianyingProcess
+try {
+    $exportButton = Wait-Element $process.Id {
+        ($_.Current.Name -match '^\s*(导出|Export)\s*$' -or
+            (Get-FullDescription $_) -match 'MainWindowTitleBarExportBtn') -and
+        $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)'
+    } ([Math]::Min(15, $TimeoutSeconds)) "编辑页导出按钮"
+}
+catch {
+    Write-Stage "editor_export_button_not_found"
+    if ($coordinateDraftFallback -and -not $editorRootAfterOpen) {
+        throw "坐标点击后没有进入剪映草稿编辑页"
+    }
+    Dismiss-JianyingPopups $process.Id | Out-Null
+    $editorRoot = Get-ProcessRoots $process.Id | Where-Object {
+        $_.Current.ClassName -match 'MainWindow'
+    } | Select-Object -First 1
+    if (-not $editorRoot) {
+        Write-Stage "draft_open_retry" "reason=still_on_home"
+        $retryItem = Get-FirstHomeProjectItem $process.Id
+        if ($retryItem) {
+            Invoke-HomeProjectItemByPoint $retryItem
+        }
+        $editorRoot = Wait-EditorRoot $process.Id ([Math]::Min(90, $TimeoutSeconds))
+        if (-not $editorRoot) {
+            throw "点击草稿卡片后没有进入剪映草稿编辑页"
+        }
+        Write-Stage "editor_ready_after_retry" "class=$($editorRoot.Current.ClassName)"
+        try {
+            $exportButton = Wait-Element $process.Id {
+                ($_.Current.Name -match '^\s*(导出|Export)\s*$' -or
+                    (Get-FullDescription $_) -match 'MainWindowTitleBarExportBtn') -and
+                $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)'
+            } ([Math]::Min(15, $TimeoutSeconds)) "编辑页导出按钮"
+        }
+        catch {
+            Write-Stage "editor_export_button_not_exposed" "action=shortcut"
+        }
+    }
+}
+if (-not $exportButton) {
     Invoke-EditorExportByCoordinate $process
     Start-Sleep -Seconds 2
-}
-else {
-    try {
-        $exportButton = Wait-Element $process.Id {
-            ($_.Current.Name -match '^\s*(导出|Export)\s*$' -or
-                (Get-FullDescription $_) -match 'MainWindowTitleBarExportBtn') -and
-            $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)'
-        } ([Math]::Min(120, $TimeoutSeconds)) "编辑页导出按钮"
-    }
-    catch {
-        Write-Stage "editor_export_button_not_found"
-        $process = Get-JianyingProcess
-        Invoke-EditorExportByCoordinate $process
-        Start-Sleep -Seconds 2
-    }
 }
 if ($exportButton) {
     Invoke-Element $exportButton
 }
 Write-Stage "export_dialog_opening"
 Start-Sleep -Seconds 2
+$exportRoot = $null
+try {
+    $exportRoot = Wait-ExportDialogRoot $process.Id 30
+    Write-Stage "export_dialog_root_ready" "class=$($exportRoot.Current.ClassName)"
+}
+catch {
+    Write-Stage "export_dialog_root_not_found" "action=fail"
+    throw "剪映导出弹窗未打开，已停止自动点击以避免误操作"
+}
 
-$edits = @(Get-VisibleElements $process.Id | Where-Object {
+$dialogElements = if ($exportRoot) { Get-VisibleElementsUnder $exportRoot } else { @() }
+$edits = @($dialogElements | Where-Object {
     $_.Current.ControlType.ProgrammaticName -match 'Edit'
 })
 $nameEdit = $edits | Where-Object {
@@ -713,18 +1045,7 @@ $waitStartedAt = (Get-Date).AddSeconds(-5)
 $candidateOutputPaths = @(Get-CandidateOutputPaths)
 Write-Stage "waiting_for_output_file"
 while ((Get-Date) -lt $fileDeadline) {
-    $source = $null
-    foreach ($candidate in $candidateOutputPaths) {
-        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
-            continue
-        }
-        $item = Get-Item -LiteralPath $candidate
-        if ($item.LastWriteTime -lt $waitStartedAt) {
-            continue
-        }
-        $source = $item
-        break
-    }
+    $source = Find-CandidateOutputFile $waitStartedAt
     if ($source) {
         $sourcePath = [System.IO.Path]::GetFullPath($source.FullName)
         $size = $source.Length

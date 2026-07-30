@@ -72,6 +72,231 @@ def _minimize_jianying_window(control: object, stage: StageCallback | None, reas
         pass
 
 
+def _force_foreground(control: object) -> None:
+    try:
+        import ctypes
+
+        handle = int(getattr(control, "NativeWindowHandle", 0) or 0)
+        if not handle:
+            return
+        user32 = ctypes.windll.user32
+        user32.ShowWindow(handle, 9)
+        user32.SetWindowPos(handle, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)
+        time.sleep(0.12)
+        user32.SetForegroundWindow(handle)
+        time.sleep(0.25)
+        user32.SetWindowPos(handle, -2, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)
+    except Exception:
+        pass
+
+
+def _first_draft_card_point(left: int, top: int, right: int, bottom: int) -> tuple[int, int]:
+    width = max(1, int(right) - int(left))
+    height = max(1, int(bottom) - int(top))
+    return int(int(left) + (width * 0.255)), int(int(top) + (height * 0.775))
+
+
+def _draft_card_candidate_points(left: int, top: int, right: int, bottom: int) -> list[tuple[int, int]]:
+    width = max(1, int(right) - int(left))
+    height = max(1, int(bottom) - int(top))
+    ratios = [
+        (0.255, 0.775),
+        (0.335, 0.705),
+        (0.255, 0.705),
+        (0.335, 0.775),
+        (0.205, 0.775),
+        (0.395, 0.775),
+    ]
+    points: list[tuple[int, int]] = []
+    for x_ratio, y_ratio in ratios:
+        point = (int(int(left) + (width * x_ratio)), int(int(top) + (height * y_ratio)))
+        if point not in points:
+            points.append(point)
+    return points
+
+
+def _click_point(x: int, y: int) -> None:
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    user32.SetCursorPos(int(x), int(y))
+    user32.mouse_event(0x0002, 0, 0, 0, 0)
+    user32.mouse_event(0x0004, 0, 0, 0, 0)
+
+
+def _control_rect(control: object) -> tuple[int, int, int, int] | None:
+    try:
+        rect = control.BoundingRectangle  # type: ignore[attr-defined]
+        return int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
+    except Exception:
+        return None
+
+
+def _click_control_center(control: object) -> bool:
+    rect = _control_rect(control)
+    if not rect:
+        return False
+    left, top, right, bottom = rect
+    if right <= left or bottom <= top:
+        return False
+    x = int(left + ((right - left) * 0.50))
+    y = int(top + ((bottom - top) * 0.38))
+    _click_point(x, y)
+    time.sleep(0.15)
+    _click_point(x, y)
+    return True
+
+
+def _first_home_project_item(window: object) -> object | None:
+    def matcher(control: object, _depth: int) -> bool:
+        return "HomePageOpenProjectItem".casefold() in str(
+            getattr(control, "ClassName", "") or ""
+        ).casefold()
+
+    for factory_name in ("CustomControl", "GroupControl", "PaneControl", "Control"):
+        factory = getattr(window, factory_name, None)
+        if not factory:
+            continue
+        try:
+            item = factory(searchDepth=8, Compare=matcher)
+            if item.Exists(0):
+                return item
+        except Exception:
+            continue
+    return None
+
+
+def _window_process_id(handle: int) -> int:
+    import ctypes
+
+    process_id = ctypes.c_ulong()
+    ctypes.windll.user32.GetWindowThreadProcessId(int(handle), ctypes.byref(process_id))
+    return int(process_id.value)
+
+
+def _dismiss_process_popups(reference_window: object, stage: StageCallback | None) -> int:
+    import ctypes
+
+    reference_handle = int(getattr(reference_window, "NativeWindowHandle", 0) or 0)
+    if not reference_handle:
+        return 0
+    process_id = _window_process_id(reference_handle)
+    if not process_id:
+        return 0
+
+    user32 = ctypes.windll.user32
+    closed = 0
+    EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+    class RECT(ctypes.Structure):
+        _fields_ = [
+            ("left", ctypes.c_long),
+            ("top", ctypes.c_long),
+            ("right", ctypes.c_long),
+            ("bottom", ctypes.c_long),
+        ]
+
+    @EnumWindowsProc
+    def enum_proc(hwnd, _lparam):
+        nonlocal closed
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        if _window_process_id(hwnd) != process_id:
+            return True
+        class_buffer = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(hwnd, class_buffer, len(class_buffer))
+        class_name = class_buffer.value or ""
+        if (
+            hwnd != reference_handle
+            and any(token in class_name for token in ("LVInfoDialog", "SplashDialog", "Popup"))
+            and "ExportWindow" not in class_name
+        ):
+            rect = RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            user32.PostMessageW(hwnd, 0x0010, 0, 0)
+            _emit(stage, "uia2_popup_dismissed", f"mode=window_close class={class_name}")
+            width = max(1, int(rect.right) - int(rect.left))
+            height = max(1, int(rect.bottom) - int(rect.top))
+            x = int(rect.right - min(230, max(80, width * 0.33)))
+            y = int(rect.bottom - min(55, max(35, height * 0.12)))
+            _click_point(x, y)
+            _emit(stage, "uia2_popup_dismissed", f"mode=coordinate class={class_name} x={x} y={y}")
+            closed += 1
+        return True
+
+    user32.EnumWindows(enum_proc, 0)
+    if closed:
+        time.sleep(0.8)
+    return closed
+
+
+def _window_rect(window: object) -> tuple[int, int, int, int]:
+    import ctypes
+
+    handle = int(getattr(window, "NativeWindowHandle", 0) or 0)
+    if not handle:
+        raise JianyingUIAError("UIA2 无法读取剪映首页窗口句柄")
+    user32 = ctypes.windll.user32
+    _force_foreground(window)
+
+    class RECT(ctypes.Structure):
+        _fields_ = [
+            ("left", ctypes.c_long),
+            ("top", ctypes.c_long),
+            ("right", ctypes.c_long),
+            ("bottom", ctypes.c_long),
+        ]
+
+    rect = RECT()
+    if not user32.GetWindowRect(handle, ctypes.byref(rect)):
+        raise JianyingUIAError("UIA2 无法读取剪映首页窗口位置")
+    if rect.left < -30000 or rect.top < -30000 or rect.right <= rect.left or rect.bottom <= rect.top:
+        user32.ShowWindow(handle, 3)
+        user32.SetForegroundWindow(handle)
+        time.sleep(0.5)
+        if not user32.GetWindowRect(handle, ctypes.byref(rect)):
+            raise JianyingUIAError("UIA2 无法读取剪映首页窗口位置")
+    return int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
+
+
+def _open_home_draft_by_coordinate(auto, window: object, stage: StageCallback | None):
+    _force_foreground(window)
+    project_item = _first_home_project_item(window)
+    if project_item is not None:
+        _dismiss_process_popups(window, stage)
+        _emit(
+            stage,
+            "uia2_draft_card_fallback_item",
+            f"class={getattr(project_item, 'ClassName', '')}",
+        )
+        try:
+            project_item.Click(simulateMove=False)  # type: ignore[attr-defined]
+        except Exception:
+            if not _click_control_center(project_item):
+                raise
+        return _wait_for_window(auto, "edit", 30)
+
+    rect = _window_rect(window)
+    for index, (x, y) in enumerate(_draft_card_candidate_points(*rect), start=1):
+        _dismiss_process_popups(window, stage)
+        _emit(stage, "uia2_draft_card_coordinate_click", f"attempt={index} x={x} y={y}")
+        _click_point(x, y)
+        time.sleep(0.15)
+        _click_point(x, y)
+        try:
+            return _wait_for_window(auto, "edit", 8)
+        except JianyingUIAError:
+            try:
+                current_window, current_state = _get_window(auto)
+                if current_state != "home":
+                    return _wait_for_window(auto, "edit", 8)
+                current_window.SetActive()
+                current_window.SetTopmost()
+            except JianyingUIAError:
+                pass
+    raise JianyingUIAError("UIA2 坐标兜底点击后仍未进入草稿编辑页")
+
+
 def _get_window(auto):
     state = {"value": ""}
 
@@ -190,6 +415,7 @@ def export_draft_uia(
         window = current_window
         window.SetActive()
         window.SetTopmost()
+        _dismiss_process_popups(window, stage)
         _emit(stage, "uia2_home_ready", f"class={window.ClassName}")
 
         draft_title = window.TextControl(
@@ -200,13 +426,17 @@ def export_draft_uia(
             ),
         )
         if not draft_title.Exists(15, 0.25):
-            raise JianyingUIAError(f"UIA2 没有找到草稿卡片“{draft_name}”")
-        draft_button = draft_title.GetParentControl()
-        if draft_button is None:
-            draft_button = draft_title
-        draft_button.Click(simulateMove=False)
-        _emit(stage, "uia2_draft_opened")
-        editor = _wait_for_window(auto, "edit", 120)
+            _emit(stage, "uia2_draft_card_not_found", f"draft_name={draft_name}")
+            _dismiss_process_popups(window, stage)
+            editor = _open_home_draft_by_coordinate(auto, window, stage)
+            _emit(stage, "uia2_draft_opened", "mode=coordinate")
+        else:
+            draft_button = draft_title.GetParentControl()
+            if draft_button is None:
+                draft_button = draft_title
+            draft_button.Click(simulateMove=False)
+            _emit(stage, "uia2_draft_opened", "mode=uia")
+            editor = _wait_for_window(auto, "edit", 120)
     elif current_state == "edit":
         editor = current_window
         _emit(stage, "uia2_editor_reused", f"class={editor.ClassName}")

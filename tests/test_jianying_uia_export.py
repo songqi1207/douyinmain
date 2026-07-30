@@ -5,6 +5,8 @@ from pathlib import Path
 from desktop_bridge.jianying_uia_export import (
     JianyingUIAError,
     _description_matcher,
+    _draft_card_candidate_points,
+    _first_draft_card_point,
     _resolve_export_path,
 )
 
@@ -52,6 +54,18 @@ class JianyingUIAExportTests(unittest.TestCase):
     def test_empty_export_path_is_rejected(self):
         with self.assertRaises(JianyingUIAError):
             _resolve_export_path("", "DRAFT-ID")
+
+    def test_first_draft_card_coordinate_matches_legacy_click_point(self):
+        self.assertEqual(
+            _first_draft_card_point(100, 200, 2100, 1400),
+            (610, 1130),
+        )
+
+    def test_draft_card_candidates_include_known_legacy_restart_point(self):
+        self.assertIn(
+            (770, 1046),
+            _draft_card_candidate_points(100, 200, 2100, 1400),
+        )
 
 
 if __name__ == "__main__":

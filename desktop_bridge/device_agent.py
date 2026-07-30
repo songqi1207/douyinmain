@@ -357,7 +357,13 @@ def _run_native_export(
     fast_compatibility_path = (
         os.getenv("DEVICE_JIANYING_SKIP_PY_EXPORT") or "0"
     ).strip().lower() in {"1", "true", "yes", "on"}
-    initial_command = [*command, "-RestartExisting"] if fast_compatibility_path else command
+    restart_first = (os.getenv("DEVICE_JIANYING_RESTART_FIRST") or "1").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    initial_command = [*command, "-RestartExisting"] if (fast_compatibility_path or restart_first) else command
     if fast_compatibility_path:
         logger.info(
             "jianying_fast_path_restart_enabled job_id=%s draft_name=%s",
