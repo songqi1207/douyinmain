@@ -104,6 +104,89 @@ ONE_CLICK_INPUT_SCHEMAS = {
     ],
 }
 
+RUNTIME_INPUT_SCHEMAS = {
+    "OWN01": [
+        {"name": "author", "label": "默认作者", "type": "text", "required": False, "default": "佚名"},
+        {
+            "name": "scene_count",
+            "label": "默认分镜数量",
+            "type": "number",
+            "required": False,
+            "default": 10,
+            "min": 2,
+            "max": 30,
+        },
+        {
+            "name": "voice_id",
+            "label": "默认配音音色 ID",
+            "type": "text",
+            "required": False,
+            "default": "7620288417930297386",
+        },
+    ],
+    "OWN02": [
+        {
+            "name": "left",
+            "label": "左侧提示文字",
+            "type": "text",
+            "required": False,
+            "default": "未成年人禁止吸烟",
+        },
+        {
+            "name": "left_top",
+            "label": "左上角提示文字",
+            "type": "text",
+            "required": False,
+            "default": "吸烟有害身体健康",
+        },
+    ],
+    "OWN03": [
+        {
+            "name": "shuliang",
+            "label": "默认分镜数量",
+            "type": "number",
+            "required": False,
+            "default": 10,
+            "min": 1,
+            "max": 22,
+        },
+        {
+            "name": "yinse",
+            "label": "默认配音音色 ID",
+            "type": "text",
+            "required": False,
+            "default": "7620288417930297386",
+        },
+        {"name": "audio", "label": "默认背景音乐地址", "type": "text", "required": False},
+        {
+            "name": "wenan",
+            "label": "默认文案方向",
+            "type": "textarea",
+            "required": False,
+            "placeholder": "留空时根据本次输入的神名自动生成",
+        },
+        {
+            "name": "fengge",
+            "label": "默认画面风格",
+            "type": "textarea",
+            "required": False,
+            "placeholder": "留空时使用神话工作流内置风格",
+        },
+        {
+            "name": "cankao",
+            "label": "默认参考文案",
+            "type": "textarea",
+            "required": False,
+        },
+    ],
+}
+
+
+def runtime_input_schema(workflow: dict) -> list[dict]:
+    code = str(workflow.get("code") or "").upper()
+    return deepcopy(RUNTIME_INPUT_SCHEMAS.get(code, workflow.get("input_schema") or []))
+
+
 LOCAL_WORKFLOWS = [
     {
         "code": "OWN01",

@@ -6,7 +6,9 @@ from unittest.mock import patch
 from workflow_registry import (
     apply_workflow_input_defaults,
     configured_workflow_input_defaults,
+    runtime_input_schema,
 )
+from workflow_jobs import _provider_inputs
 
 
 class WorkflowInputDefaultsTests(unittest.TestCase):
@@ -60,6 +62,28 @@ class WorkflowInputDefaultsTests(unittest.TestCase):
             clear=False,
         ):
             self.assertEqual(configured_workflow_input_defaults(), {})
+
+    def test_owned_workflow_runtime_schema_exposes_existing_fields(self):
+        schema = runtime_input_schema({"code": "OWN03", "input_schema": []})
+
+        self.assertEqual(
+            [field["name"] for field in schema],
+            ["shuliang", "yinse", "audio", "wenan", "fengge", "cankao"],
+        )
+
+    def test_cigarette_runtime_text_overrides_are_sent_to_provider(self):
+        result = _provider_inputs(
+            {
+                "theme": "中华",
+                "left": "左侧自定义",
+                "left_top": "左上角自定义",
+            },
+            "OWN02",
+        )
+
+        self.assertEqual(result["xiangyan_name"], "中华")
+        self.assertEqual(result["left"], "左侧自定义")
+        self.assertEqual(result["left_top"], "左上角自定义")
 
 
 if __name__ == "__main__":

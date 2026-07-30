@@ -691,14 +691,10 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
             result.pop("theme", "") or result.pop("cigarette_name", "") or ""
         ).strip()
         result = {
-            "left": _configured_visible_text(
-                "CIGARETTE_LEFT_TEXT",
-                "未成年人禁止吸烟",
-            ),
-            "left_top": _configured_visible_text(
-                "CIGARETTE_LEFT_TOP_TEXT",
-                "吸烟有害身体健康",
-            ),
+            "left": str(result.pop("left", "") or "").strip()
+            or _configured_visible_text("CIGARETTE_LEFT_TEXT", "未成年人禁止吸烟"),
+            "left_top": str(result.pop("left_top", "") or "").strip()
+            or _configured_visible_text("CIGARETTE_LEFT_TOP_TEXT", "吸烟有害身体健康"),
             "xiangyan_name": theme,
         }
     elif code == "OWN03":

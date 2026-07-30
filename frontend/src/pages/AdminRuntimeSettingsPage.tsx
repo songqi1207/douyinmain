@@ -1,11 +1,25 @@
-import { Braces, Check, KeyRound, LoaderCircle, Save, Settings } from "lucide-react";
+import { Check, KeyRound, LoaderCircle, Save, Settings, SlidersHorizontal, Trash2 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ApiError, fetchRuntimeSettings, updateRuntimeSettings } from "../api";
 import { useAuth } from "../auth";
 import { Layout } from "../components/Layout";
-import type { RuntimeSettings } from "../types";
+import type { RuntimeSettings, RuntimeWorkflowSetting } from "../types";
+
+function workflowInputValues(workflows: RuntimeWorkflowSetting[]) {
+  return Object.fromEntries(workflows.map((item) => [
+    item.code,
+    {
+      ...Object.fromEntries(
+        item.input_schema
+          .filter((field) => field.default !== undefined)
+          .map((field) => [field.name, field.default]),
+      ),
+      ...(item.input_defaults || {}),
+    },
+  ]));
+}
 
 export function RuntimeSettingsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -14,7 +28,7 @@ export function RuntimeSettingsPage() {
   const [miheKey, setMiheKey] = useState("");
   const [clearMiheKey, setClearMiheKey] = useState(false);
   const [workflowIds, setWorkflowIds] = useState<Record<string, string>>({});
-  const [workflowInputJson, setWorkflowInputJson] = useState<Record<string, string>>({});
+  const [workflowInputs, setWorkflowInputs] = useState<Record<string, Record<string, unknown>>>({});
   const [selectedWorkflowCode, setSelectedWorkflowCode] = useState("");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -28,12 +42,7 @@ export function RuntimeSettingsPage() {
       const result = await fetchRuntimeSettings();
       setSettings(result);
       setWorkflowIds(Object.fromEntries(result.workflows.map((item) => [item.code, item.workflow_id])));
-      setWorkflowInputJson(Object.fromEntries(
-        result.workflows.map((item) => [
-          item.code,
-          JSON.stringify(item.input_defaults || {}, null, 2),
-        ]),
-      ));
+      setWorkflowInputs(workflowInputValues(result.workflows));
       setSelectedWorkflowCode((previous) =>
         result.workflows.some((item) => item.code === previous)
           ? previous
@@ -82,34 +91,35 @@ export function RuntimeSettingsPage() {
     setError("");
     setMessage("");
     try {
-      const workflowInputs: Record<string, Record<string, unknown>> = {};
+      const normalizedWorkflowInputs: Record<string, Record<string, unknown>> = {};
       for (const item of settings?.workflows || []) {
-        const raw = (workflowInputJson[item.code] || "{}").trim() || "{}";
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(raw);
-        } catch {
-          throw new Error(`${item.code} 的输入参数不是合法 JSON`);
+        const values = workflowInputs[item.code] || {};
+        const fields = new Map(item.input_schema.map((field) => [field.name, field]));
+        const normalized: Record<string, unknown> = {};
+        for (const [name, value] of Object.entries(values)) {
+          if (value === "" || value === null || value === undefined) continue;
+          const field = fields.get(name);
+          if (field?.type === "number") {
+            const numberValue = typeof value === "number" ? value : Number(value);
+            if (!Number.isFinite(numberValue)) {
+              throw new Error(`${item.code} 的“${field.label}”必须是数字`);
+            }
+            normalized[name] = numberValue;
+          } else if (!field || !["image", "video", "audio", "file", "notice"].includes(field.type)) {
+            normalized[name] = value;
+          }
         }
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          throw new Error(`${item.code} 的输入参数必须是 JSON 对象`);
-        }
-        workflowInputs[item.code] = parsed as Record<string, unknown>;
+        normalizedWorkflowInputs[item.code] = normalized;
       }
       const result = await updateRuntimeSettings({
         ...(miheKey.trim() ? { mihe_key: miheKey.trim() } : {}),
         ...(clearMiheKey ? { clear_mihe_key: true } : {}),
         workflow_ids: workflowIds,
-        workflow_inputs: workflowInputs,
+        workflow_inputs: normalizedWorkflowInputs,
       });
       setSettings(result);
       setWorkflowIds(Object.fromEntries(result.workflows.map((item) => [item.code, item.workflow_id])));
-      setWorkflowInputJson(Object.fromEntries(
-        result.workflows.map((item) => [
-          item.code,
-          JSON.stringify(item.input_defaults || {}, null, 2),
-        ]),
-      ));
+      setWorkflowInputs(workflowInputValues(result.workflows));
       setMiheKey("");
       setClearMiheKey(false);
       setMessage(result.message || "运行配置已保存");
@@ -196,10 +206,10 @@ export function RuntimeSettingsPage() {
 
             <section className="runtime-workflow-card runtime-input-card">
               <div className="runtime-card-heading">
-                <span><Braces /></span>
+                <span><SlidersHorizontal /></span>
                 <div>
                   <h2>工作流输入参数</h2>
-                  <p>选择工作流后编辑默认参数；用户运行时填写的非空值会优先覆盖这里的配置。</p>
+                  <p>选择工作流后直接修改已有参数，不需要填写参数名或编写 JSON。</p>
                 </div>
               </div>
 
@@ -221,8 +231,8 @@ export function RuntimeSettingsPage() {
                 <div className="runtime-input-editor">
                   <div className="runtime-input-reference">
                     <div>
-                      <strong>{selectedWorkflow.code} 可用页面参数</strong>
-                      <small>下面是网站已经识别的字段；也可以在 JSON 中填写该 Coze 工作流支持的其他参数。</small>
+                      <strong>{selectedWorkflow.code} · {selectedWorkflow.name}</strong>
+                      <small>这些参数会作为后台默认值；用户每次运行时填写的非空内容优先。</small>
                     </div>
                     <div className="runtime-input-schema-list">
                       {selectedWorkflow.input_schema.length > 0 ? selectedWorkflow.input_schema.map((field) => (
@@ -232,28 +242,76 @@ export function RuntimeSettingsPage() {
                           <em>{field.type}{field.required ? " · 必填" : ""}</em>
                         </span>
                       )) : (
-                        <p>该工作流没有公开页面字段，请直接按 Coze 开始节点的参数名填写。</p>
+                        <p>这个工作流暂时没有可修改的输入参数。</p>
                       )}
                     </div>
+                    <button
+                      className="runtime-clear-inputs"
+                      type="button"
+                      onClick={() => setWorkflowInputs((previous) => ({
+                        ...previous,
+                        [selectedWorkflow.code]: Object.fromEntries(
+                          selectedWorkflow.input_schema.map((field) => [field.name, ""]),
+                        ),
+                      }))}
+                    >
+                      <Trash2 />清除这个工作流的后台默认值
+                    </button>
                   </div>
 
-                  <label className="runtime-json-editor">
-                    <span>默认输入参数（JSON 对象）</span>
-                    <textarea
-                      rows={12}
-                      spellCheck={false}
-                      value={workflowInputJson[selectedWorkflow.code] || "{}"}
-                      onChange={(event) => setWorkflowInputJson((previous) => ({
+                  <div className="runtime-parameter-fields">
+                    {selectedWorkflow.input_schema.length > 0 ? selectedWorkflow.input_schema.map((field) => {
+                      const value = workflowInputs[selectedWorkflow.code]?.[field.name] ?? "";
+                      const setValue = (nextValue: unknown) => setWorkflowInputs((previous) => ({
                         ...previous,
-                        [selectedWorkflow.code]: event.target.value,
-                      }))}
-                      placeholder={'{\n  "scene_count": 12,\n  "voice_id": "你的音色 ID"\n}'}
-                    />
-                    <small>
-                      支持文字、数字、布尔值、数组和对象。上传图片、视频、音频、文件仍应在每次运行时选择；
-                      API Key、Token、密码等密钥参数不会在这里保存。
+                        [selectedWorkflow.code]: {
+                          ...(previous[selectedWorkflow.code] || {}),
+                          [field.name]: nextValue,
+                        },
+                      }));
+                      return (
+                        <label key={field.name}>
+                          <span>
+                            <strong>{field.label}</strong>
+                            <code>{field.name}</code>
+                          </span>
+                          {field.type === "select" ? (
+                            <select value={String(value)} onChange={(event) => setValue(event.target.value)}>
+                              <option value="">不设置后台默认值</option>
+                              {(field.options || []).map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          ) : field.type === "textarea" ? (
+                            <textarea
+                              rows={4}
+                              value={String(value)}
+                              onChange={(event) => setValue(event.target.value)}
+                              placeholder={field.placeholder || "留空表示使用工作流内置值"}
+                            />
+                          ) : ["image", "video", "audio", "file"].includes(field.type) ? (
+                            <div className="runtime-upload-notice">该参数需要在每次运行时选择文件，不能设为固定值。</div>
+                          ) : field.type === "notice" ? (
+                            <div className="runtime-upload-notice">{String(field.default || "说明参数无需配置")}</div>
+                          ) : (
+                            <input
+                              type={field.type === "number" ? "number" : "text"}
+                              min={field.min}
+                              max={field.max}
+                              value={String(value)}
+                              onChange={(event) => setValue(event.target.value)}
+                              placeholder={field.placeholder || "留空表示使用工作流内置值"}
+                            />
+                          )}
+                        </label>
+                      );
+                    }) : (
+                      <div className="runtime-upload-notice">这个工作流暂时没有可修改的输入参数。</div>
+                    )}
+                    <small className="runtime-parameter-hint">
+                      密钥类配置仍在上方独立管理；上传素材继续在每次运行工作流时选择。
                     </small>
-                  </label>
+                  </div>
                 </div>
               ) : null}
             </section>

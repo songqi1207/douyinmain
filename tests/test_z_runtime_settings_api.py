@@ -53,7 +53,7 @@ class RuntimeSettingsApiTests(unittest.TestCase):
         self.assertEqual(result["mihe_key"]["masked"], "••••1234")
         self.assertNotIn("secret-key-1234", json.dumps(result, ensure_ascii=False))
         self.assertEqual(result["workflows"][0]["workflow_id"], "7654321098765432101")
-        self.assertEqual(result["workflows"][0]["input_schema"][0]["name"], "theme")
+        self.assertEqual(result["workflows"][0]["input_schema"][0]["name"], "author")
         self.assertEqual(
             next(item for item in result["workflows"] if item["code"] == "OWN03")["input_defaults"],
             {"scene_count": 12, "voice_id": "voice-1"},

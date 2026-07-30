@@ -83,6 +83,7 @@ from workflow_registry import (
     get_workflow,
     list_workflows,
     published_workflow_id,
+    runtime_input_schema,
 )
 from utils.draft_key_importer import KeyValidationError
 from utils.email_delivery import EmailConfigurationError, email_delivery_status, send_registration_approved
@@ -208,7 +209,7 @@ def _runtime_settings_payload() -> dict:
                 "name": str(item.get("name") or item.get("code") or ""),
                 "category": str(item.get("category") or ""),
                 "workflow_id": published_workflow_id(str(item.get("code") or "")),
-                "input_schema": deepcopy(item.get("input_schema") or []),
+                "input_schema": runtime_input_schema(item),
                 "input_defaults": deepcopy(
                     workflow_input_defaults.get(str(item.get("code") or "").upper(), {})
                 ),
