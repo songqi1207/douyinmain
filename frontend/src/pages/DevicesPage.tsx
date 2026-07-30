@@ -94,12 +94,11 @@ export function DevicesPage() {
 
   function updateHelper() {
     const query = new URLSearchParams({ site: window.location.origin });
-    const launcher = document.createElement("iframe");
-    launcher.style.display = "none";
-    launcher.src = `douyin-draft://update?${query.toString()}`;
-    document.body.appendChild(launcher);
-    window.setTimeout(() => launcher.remove(), 1500);
-    setMessage("已发送更新指令；助手会下载最新版、退出旧版本并自动重启");
+    window.location.href = `douyin-draft://update?${query.toString()}`;
+    setMessage(
+      "正在打开 AI 视频创作助手。请在浏览器询问时选择“打开”；更新完成约需 1 分钟。"
+      + "若版本仍未变化，请点击下方“下载安装包”并运行一次。",
+    );
   }
 
   async function copyPairing() {
