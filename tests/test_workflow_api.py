@@ -485,6 +485,29 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(params["author"], "Author Name")
         self.assertEqual(params["img_count"], "10")
 
+    def test_published_book_replaces_encoding_damaged_default_author(self):
+        with patch.dict(
+            os.environ,
+            {"BOOK_DEFAULT_AUTHOR": "??"},
+        ):
+            params = _provider_inputs({"theme": "活着"}, "OWN01")
+
+        self.assertEqual(params["subject"], "活着")
+        self.assertEqual(params["author"], "佚名")
+
+    def test_published_cigarette_replaces_encoding_damaged_corner_text(self):
+        with patch.dict(
+            os.environ,
+            {
+                "CIGARETTE_LEFT_TEXT": "????????",
+                "CIGARETTE_LEFT_TOP_TEXT": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd",
+            },
+        ):
+            params = _provider_inputs({"theme": "中华"}, "OWN02")
+
+        self.assertEqual(params["left"], "未成年人禁止吸烟")
+        self.assertEqual(params["left_top"], "吸烟有害身体健康")
+
     def test_incomplete_published_book_and_cigarette_drafts_are_rejected(self):
         for code, missing_id in (
             ("OWN02", "call_557577"),
@@ -593,6 +616,67 @@ class WorkflowApiTests(unittest.TestCase):
             watermark["params"]["captions"][0]["text"],
             "  ",
         )
+
+    def test_published_cigarette_draft_repairs_question_mark_corner_text(self):
+        key = {
+            "calls": [
+                {
+                    "call_id": "call_273408",
+                    "tool": "add_captions",
+                    "params": {"captions": [{"text": "????????", "start": 0, "end": 1}]},
+                },
+                {
+                    "call_id": "call_1733515",
+                    "tool": "add_captions",
+                    "params": {"captions": [{"text": "????????", "start": 0, "end": 1}]},
+                },
+            ]
+        }
+        with patch.dict(
+            os.environ,
+            {
+                "CIGARETTE_LEFT_TEXT": "????????",
+                "CIGARETTE_LEFT_TOP_TEXT": "????????",
+            },
+        ):
+            workflow_jobs._normalize_published_draft_key(
+                {"workflow_code": "OWN02"},
+                key,
+            )
+
+        self.assertEqual(
+            key["calls"][0]["params"]["captions"][0]["text"],
+            "吸烟有害身体健康",
+        )
+        self.assertEqual(
+            key["calls"][1]["params"]["captions"][0]["text"],
+            "未成年人禁止吸烟",
+        )
+
+    def test_draft_with_unrepaired_encoding_damaged_caption_is_rejected(self):
+        key = {
+            "meta": {"unresolved_segment_ids": []},
+            "calls": [
+                {
+                    "call_id": "caption",
+                    "tool": "add_captions",
+                    "params": {
+                        "captions": [
+                            {"text": "标题???", "start": 0, "end": 1_000_000}
+                        ]
+                    },
+                }
+            ],
+        }
+
+        with self.assertRaises(workflow_jobs.ProviderError) as raised:
+            workflow_jobs._validate_published_draft_completeness(
+                {"workflow_code": "OWN03"},
+                key,
+            )
+
+        self.assertEqual(raised.exception.code, "incomplete_draft_key")
+        self.assertIn("字幕", str(raised.exception))
 
     def test_book_draft_does_not_reuse_intro_images_as_body_images(self):
         expected = workflow_jobs._EXPECTED_PUBLISHED_DRAFT_CALL_IDS["OWN01"]

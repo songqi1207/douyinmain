@@ -604,6 +604,31 @@ def _asset_public_url(asset_id: str) -> str:
     return f"{base}/api/v1/assets/{asset_id}"
 
 
+def _visible_text_has_encoding_damage(value: str) -> bool:
+    compact = "".join(character for character in str(value or "") if not character.isspace())
+    return bool(
+        compact
+        and (
+            all(character in {"?", "\ufffd"} for character in compact)
+            or "\ufffd" in compact
+            or re.search(r"\?{3,}", compact)
+        )
+    )
+
+
+def _configured_visible_text(env_name: str, default: str) -> str:
+    """Return configured visible text unless encoding replacement destroyed it."""
+    value = (os.getenv(env_name) or "").strip()
+    if not value or _visible_text_has_encoding_damage(value):
+        if value:
+            logger.warning(
+                "visible_text_config_encoding_invalid env=%s fallback_used=true",
+                env_name,
+            )
+        return default
+    return value
+
+
 def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
     result: dict[str, Any] = {}
     for key, value in inputs.items():
@@ -625,7 +650,7 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
                 subject, inline_author = (part.strip() for part in subject.split(separator, 1))
                 author = author or inline_author
                 break
-        author = author or (os.getenv("BOOK_DEFAULT_AUTHOR") or "佚名").strip()
+        author = author or _configured_visible_text("BOOK_DEFAULT_AUTHOR", "佚名")
         try:
             image_count = max(
                 2,
@@ -660,10 +685,14 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
             result.pop("theme", "") or result.pop("cigarette_name", "") or ""
         ).strip()
         result = {
-            "left": (os.getenv("CIGARETTE_LEFT_TEXT") or "未成年人禁止吸烟").strip(),
-            "left_top": (
-                os.getenv("CIGARETTE_LEFT_TOP_TEXT") or "吸烟有害身体健康"
-            ).strip(),
+            "left": _configured_visible_text(
+                "CIGARETTE_LEFT_TEXT",
+                "未成年人禁止吸烟",
+            ),
+            "left_top": _configured_visible_text(
+                "CIGARETTE_LEFT_TOP_TEXT",
+                "吸烟有害身体健康",
+            ),
             "xiangyan_name": theme,
         }
     elif code == "OWN03":
@@ -1138,11 +1167,28 @@ _OPTIONAL_PUBLISHED_DRAFT_CALL_IDS = {
 
 def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
     code = str(job.get("workflow_code") or "").upper()
-    expected_ids = _EXPECTED_PUBLISHED_DRAFT_CALL_IDS.get(code)
-    if not expected_ids:
+    calls = draft_key.get("calls")
+    if not isinstance(calls, list):
+        calls = []
+    damaged_caption_ids = []
+    for call in calls:
+        if not isinstance(call, dict) or call.get("tool") != "add_captions":
+            continue
+        params = call.get("params") if isinstance(call.get("params"), dict) else {}
+        captions = params.get("captions")
+        if not isinstance(captions, list):
+            continue
+        if any(
+            isinstance(caption, dict)
+            and _visible_text_has_encoding_damage(str(caption.get("text") or ""))
+            for caption in captions
+        ):
+            damaged_caption_ids.append(str(call.get("call_id") or "unknown"))
+
+    expected_ids = _EXPECTED_PUBLISHED_DRAFT_CALL_IDS.get(code, set())
+    if not expected_ids and not damaged_caption_ids:
         return
 
-    calls = draft_key.get("calls")
     actual_ids = {
         str(call.get("call_id") or "")
         for call in calls
@@ -1156,7 +1202,7 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
         for value in (meta.get("unresolved_segment_ids") or [])
         if str(value)
     ]
-    if not missing_ids and not unresolved:
+    if not missing_ids and not unresolved and not damaged_caption_ids:
         return
 
     skipped_titles = {
@@ -1175,6 +1221,8 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
         details.append("缺少操作节点：" + "、".join(labelled))
     if unresolved:
         details.append("存在未解析片段：" + "、".join(sorted(set(unresolved))[:10]))
+    if damaged_caption_ids:
+        details.append("存在乱码字幕：" + "、".join(sorted(set(damaged_caption_ids))))
 
     job_id = str(job.get("id") or "").strip()
     if job_id:
@@ -1183,12 +1231,13 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
         try:
             rejected_file.write_text(json.dumps(draft_key, ensure_ascii=False, indent=2), encoding="utf-8")
             logger.warning(
-                "draft_key_rejected job_id=%s workflow=%s file=%s missing=%s unresolved=%s",
+                "draft_key_rejected job_id=%s workflow=%s file=%s missing=%s unresolved=%s damaged_captions=%s",
                 job_id,
                 code,
                 rejected_file.name,
                 ",".join(missing_ids) or "-",
                 len(unresolved),
+                ",".join(sorted(set(damaged_caption_ids))) or "-",
             )
         except OSError:
             logger.exception("draft_key_reject_dump_failed job_id=%s", job_id)
@@ -1201,6 +1250,8 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
             public_details.append("部分画面素材没有生成完整")
     if unresolved:
         public_details.append("部分分镜片段没有匹配到素材")
+    if damaged_caption_ids:
+        public_details.append("部分字幕发生编码损坏")
     public_suffix = "；".join(public_details) or "部分素材没有生成完整"
     raise ProviderError(
         "incomplete_draft_key",
@@ -1353,7 +1404,36 @@ def _repair_own01_missing_body_images(job: dict, draft_key: dict) -> None:
 
 
 def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
-    if str(job.get("workflow_code") or "").upper() != "OWN01":
+    workflow_code = str(job.get("workflow_code") or "").upper()
+    if workflow_code == "OWN02":
+        replacements = {
+            "call_273408": _configured_visible_text(
+                "CIGARETTE_LEFT_TOP_TEXT",
+                "吸烟有害身体健康",
+            ),
+            "call_1733515": _configured_visible_text(
+                "CIGARETTE_LEFT_TEXT",
+                "未成年人禁止吸烟",
+            ),
+        }
+        for call in draft_key.get("calls") or []:
+            if not isinstance(call, dict):
+                continue
+            replacement = replacements.get(str(call.get("call_id") or ""))
+            if replacement is None:
+                continue
+            params = call.get("params") if isinstance(call.get("params"), dict) else {}
+            captions = params.get("captions")
+            if not isinstance(captions, list):
+                continue
+            for caption in captions:
+                if not isinstance(caption, dict):
+                    continue
+                text = str(caption.get("text") or "").strip()
+                if not text or _visible_text_has_encoding_damage(text):
+                    caption["text"] = replacement
+        return
+    if workflow_code != "OWN01":
         return
     for call in draft_key.get("calls") or []:
         if not isinstance(call, dict) or call.get("call_id") != "call_138594":
