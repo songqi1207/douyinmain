@@ -500,10 +500,9 @@ def export_draft_uia(
             left, top, right, bottom = _window_rect(editor)
             width = max(1, right - left)
             height = max(1, bottom - top)
-            y = int(top + min(62, max(40, height * 0.052)))
+            y = int(top + min(30, max(18, height * 0.023)))
             offsets = (
-                min(230, max(145, width * 0.115)),
-                min(180, max(110, width * 0.080)),
+                min(210, max(115, width * 0.105)),
             )
             export_window = None
             for attempt, offset in enumerate(offsets, start=1):

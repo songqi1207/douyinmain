@@ -400,10 +400,11 @@ function Invoke-EditorExportByCoordinate($Process) {
     $rect = Get-WindowRect $Process
     $width = [Math]::Max(1, $rect.Right - $rect.Left)
     $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
-    $y = [int]($rect.Top + [Math]::Min(62, [Math]::Max(40, $height * 0.052)))
+    # JianYing 11 editor screenshot: export center is about 89.5% width,
+    # 2.1% height (roughly 1145,17 on a 1280x800 window).
+    $y = [int]($rect.Top + [Math]::Min(30, [Math]::Max(18, $height * 0.023)))
     $offsets = @(
-        [Math]::Min(230, [Math]::Max(145, $width * 0.115)),
-        [Math]::Min(180, [Math]::Max(110, $width * 0.080))
+        [Math]::Min(210, [Math]::Max(115, $width * 0.105))
     )
     $attempt = 0
     foreach ($offset in $offsets) {
