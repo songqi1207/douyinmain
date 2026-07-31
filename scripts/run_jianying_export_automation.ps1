@@ -501,9 +501,9 @@ function Invoke-ExportDialogByCoordinate([int]$ProcessId, [string]$Name, [string
     $nameY = [int]($rect.Top + ($height * 0.14))
     $pathX = [int]($rect.Left + ($width * 0.80))
     $pathY = [int]($rect.Top + ($height * 0.195))
-    # The bottom-right row is usually "Export" followed by "Cancel". Click the
-    # left button, not the rightmost button.
-    $confirmX = [int]($rect.Right - [Math]::Min(170, [Math]::Max(135, $width * 0.20)))
+    # JianYing 11 places the real confirmation button at the bottom-right.
+    # Never reuse a top title element named "导出" as the confirmation target.
+    $confirmX = [int]($rect.Right - [Math]::Min(120, [Math]::Max(75, $width * 0.08)))
     $confirmY = [int]($rect.Bottom - [Math]::Min(50, [Math]::Max(38, $height * 0.05)))
     Write-Stage "export_dialog_coordinate_fields" "name_x=$nameX name_y=$nameY path_x=$pathX path_y=$pathY confirm_x=$confirmX confirm_y=$confirmY"
     Set-TextByCoordinate $nameX $nameY $Name
@@ -1072,16 +1072,41 @@ else {
     Write-Stage "output_directory_set" "mode=folder_dialog"
 }
 
-$confirm = Get-VisibleElements $process.Id | Where-Object {
-    ($_.Current.Name -match '^\s*(导出|Export)\s*$' -or
-        (Get-FullDescription $_) -match 'ExportOkBtn') -and
-    $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)'
-} | Select-Object -Last 1
+$exportRect = $exportRoot.Current.BoundingRectangle
+$confirm = $dialogElements | Where-Object {
+    $description = Get-FullDescription $_
+    $rect = $_.Current.BoundingRectangle
+    $centerY = $rect.Y + ($rect.Height / 2)
+    $isExplicitConfirm = $description -match '(^|:)ExportOkBtn($|:)'
+    $isBottomButton = (
+        $_.Current.Name -match '^\s*(导出|Export)\s*$' -and
+        $_.Current.ControlType.ProgrammaticName -match '(Button|Custom)' -and
+        $rect.Width -gt 20 -and
+        $rect.Height -gt 15 -and
+        $centerY -ge ($exportRect.Y + ($exportRect.Height * 0.55))
+    )
+    $isExplicitConfirm -or $isBottomButton
+} | Sort-Object `
+    @{Expression = {if ((Get-FullDescription $_) -match '(^|:)ExportOkBtn($|:)') { 1 } else { 0 }}; Descending = $true}, `
+    @{Expression = {$_.Current.BoundingRectangle.Y}; Descending = $true}, `
+    @{Expression = {$_.Current.BoundingRectangle.X}; Descending = $true} |
+    Select-Object -First 1
 if (-not $confirm) {
-    throw "没有找到剪映导出确认按钮"
+    $width = [Math]::Max(1, $exportRect.Width)
+    $height = [Math]::Max(1, $exportRect.Height)
+    $confirmX = [int]($exportRect.Right - [Math]::Min(120, [Math]::Max(75, $width * 0.08)))
+    $confirmY = [int]($exportRect.Bottom - [Math]::Min(55, [Math]::Max(38, $height * 0.055)))
+    Write-Stage "export_confirm_coordinate_click" "x=$confirmX y=$confirmY"
+    Invoke-Point $confirmX $confirmY
+    Write-Stage "export_confirmed" "mode=coordinate_fallback"
 }
-Invoke-Element $confirm
-Write-Stage "export_confirmed"
+else {
+    $confirmDescription = Get-FullDescription $confirm
+    $confirmRect = $confirm.Current.BoundingRectangle
+    Write-Stage "export_confirm_control_ready" "type=$($confirm.Current.ControlType.ProgrammaticName) x=$($confirmRect.X) y=$($confirmRect.Y) description=$confirmDescription"
+    Invoke-Element $confirm
+    Write-Stage "export_confirmed" "mode=control"
+}
 Minimize-JianyingWindow $process "export_wait"
 }
 

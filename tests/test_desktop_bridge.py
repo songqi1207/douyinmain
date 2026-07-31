@@ -446,6 +446,10 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Minimize-JianyingWindow $process "cloud_resource_sync"', script)
         self.assertIn('Write-Stage "editor_export_coordinate_click"', script)
         self.assertIn("$width * 0.115", script)
+        self.assertIn('Write-Stage "export_confirm_control_ready"', script)
+        self.assertIn('Write-Stage "export_confirm_coordinate_click"', script)
+        self.assertIn("$centerY -ge ($exportRect.Y + ($exportRect.Height * 0.55))", script)
+        self.assertNotIn("$confirm = Get-VisibleElements $process.Id", script)
         uia_source = (
             Path(__file__).resolve().parents[1]
             / "desktop_bridge"
