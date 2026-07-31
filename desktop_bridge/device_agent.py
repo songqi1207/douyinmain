@@ -724,6 +724,8 @@ def _run_native_export_unlocked(
         str(agent_log_path()),
         "-TimeoutSeconds",
         str(export_timeout),
+        "-ResourceWaitSeconds",
+        str(resource_wait_seconds),
     ]
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -866,6 +868,21 @@ def _run_native_export_unlocked(
                     task.get("job_id"),
                     result.stat().st_size,
                 )
+                if font_resources:
+                    missing_fonts = [
+                        item["name"]
+                        for item in inspect_font_resources(
+                            font_resources,
+                            draft_root=root,
+                        )
+                        if not item.get("available")
+                    ]
+                    if missing_fonts:
+                        result.unlink(missing_ok=True)
+                        raise FontResourceUnavailable(
+                            "剪映导出前未能下载字体资源："
+                            + "、".join(missing_fonts)
+                        )
                 return result
             except JianyingUIAError as exc:
                 logger.warning(
@@ -906,6 +923,21 @@ def _run_native_export_unlocked(
         raise BridgeError(message[-2000:])
     if not output_path.is_file() or output_path.stat().st_size <= 0:
         raise BridgeError("剪映导出流程已结束，但没有生成 MP4 文件")
+    if font_resources:
+        missing_fonts = [
+            item["name"]
+            for item in inspect_font_resources(
+                font_resources,
+                draft_root=root,
+            )
+            if not item.get("available")
+        ]
+        if missing_fonts:
+            output_path.unlink(missing_ok=True)
+            raise FontResourceUnavailable(
+                "剪映导出前未能下载字体资源："
+                + "、".join(missing_fonts)
+            )
     return output_path
 
 

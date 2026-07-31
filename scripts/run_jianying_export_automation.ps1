@@ -8,6 +8,7 @@
     [string]$LogPath = "",
     [int]$TimeoutSeconds = 1800,
     [int]$NoOutputTimeoutSeconds = 210,
+    [int]$ResourceWaitSeconds = 0,
     [switch]$RestartExisting
 )
 
@@ -901,6 +902,11 @@ if (-not $editorRootAfterOpen) {
     throw "点击草稿卡片后没有进入剪映草稿编辑页"
 }
 Write-Stage "editor_ready" "class=$($editorRootAfterOpen.Current.ClassName)"
+if ($ResourceWaitSeconds -gt 0) {
+    Write-Stage "cloud_resource_sync_wait_started" "seconds=$ResourceWaitSeconds"
+    Start-Sleep -Seconds $ResourceWaitSeconds
+    Write-Stage "cloud_resource_sync_wait_finished" "seconds=$ResourceWaitSeconds"
+}
 
 Write-Stage "waiting_for_editor_export_button"
 $exportButton = $null

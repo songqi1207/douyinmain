@@ -423,6 +423,8 @@ class DesktopBridgeTests(unittest.TestCase):
             self.assertEqual(result.read_bytes(), b"mp4")
             run_pyjianying.assert_not_called()
             self.assertIn("-RestartExisting", run_compatibility_export.call_args.args[0])
+            command = run_compatibility_export.call_args.args[0]
+            self.assertEqual(command[command.index("-ResourceWaitSeconds") + 1], "0")
 
     def test_jianying_automation_uses_full_description_controls(self):
         script = (
@@ -440,6 +442,7 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn("ui_tree_unavailable", script)
         self.assertIn('Write-Stage "restarting_existing_jianying"', script)
         self.assertIn('Write-Stage "jianying_minimized"', script)
+        self.assertIn('Write-Stage "cloud_resource_sync_wait_started"', script)
 
     def test_renamed_helper_uses_an_independent_single_instance_lock(self):
         self.assertEqual(windows_integration.MUTEX_NAME, r"Local\AIVideoCreator.UserAgent")
