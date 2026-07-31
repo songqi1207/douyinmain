@@ -305,8 +305,7 @@ def _open_home_draft_by_coordinate(auto, window: object, stage: StageCallback | 
                 current_window, current_state = _get_window(auto)
                 if current_state != "home":
                     return _wait_for_window(auto, "edit", 8)
-                current_window.SetActive()
-                current_window.SetTopmost()
+                _force_foreground(current_window)
             except JianyingUIAError:
                 pass
     raise JianyingUIAError("UIA2 坐标兜底点击后仍未进入草稿编辑页")
@@ -438,8 +437,7 @@ def export_draft_uia(
 
     if current_state == "home":
         window = current_window
-        window.SetActive()
-        window.SetTopmost()
+        _force_foreground(window)
         _dismiss_process_popups(window, stage)
         _emit(stage, "uia2_home_ready", f"class={window.ClassName}")
 
@@ -479,8 +477,7 @@ def export_draft_uia(
         raise JianyingUIAError(f"UIA2 不支持的剪映窗口状态：{current_state or 'unknown'}")
 
     if current_state != "pre_export":
-        editor.SetActive()
-        editor.SetTopmost()
+        _force_foreground(editor)
         export_button = editor.TextControl(
             searchDepth=8,
             Compare=_description_matcher("MainWindowTitleBarExportBtn"),

@@ -443,6 +443,13 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "restarting_existing_jianying"', script)
         self.assertIn('Write-Stage "jianying_minimized"', script)
         self.assertIn('Write-Stage "cloud_resource_sync_wait_started"', script)
+        self.assertIn('Minimize-JianyingWindow $process "cloud_resource_sync"', script)
+        uia_source = (
+            Path(__file__).resolve().parents[1]
+            / "desktop_bridge"
+            / "jianying_uia_export.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn(".SetTopmost()", uia_source)
 
     def test_renamed_helper_uses_an_independent_single_instance_lock(self):
         self.assertEqual(windows_integration.MUTEX_NAME, r"Local\AIVideoCreator.UserAgent")

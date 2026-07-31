@@ -211,6 +211,20 @@ def _prime_jianying_cloud_resources(
             settle_seconds,
             open_mode,
         )
+        try:
+            import ctypes
+
+            controller.app.SetTopmost(False)
+            handle = int(getattr(controller.app, "NativeWindowHandle", 0) or 0)
+            if handle:
+                ctypes.windll.user32.ShowWindow(handle, 6)
+                logger.info(
+                    "resource_preload_window_minimized job_id=%s draft_name=%s",
+                    job_id,
+                    draft_name,
+                )
+        except Exception:
+            pass
         if ready_check is None:
             time.sleep(settle_seconds)
         else:
@@ -224,8 +238,25 @@ def _prime_jianying_cloud_resources(
                     )
                     break
                 time.sleep(1)
+        try:
+            import ctypes
+
+            handle = int(getattr(controller.app, "NativeWindowHandle", 0) or 0)
+            if handle:
+                ctypes.windll.user32.ShowWindow(handle, 9)
+        except Exception:
+            pass
         controller.get_window()
         controller.switch_to_home()
+        try:
+            import ctypes
+
+            controller.app.SetTopmost(False)
+            handle = int(getattr(controller.app, "NativeWindowHandle", 0) or 0)
+            if handle:
+                ctypes.windll.user32.ShowWindow(handle, 6)
+        except Exception:
+            pass
         logger.info(
             "resource_preload_finished job_id=%s draft_name=%s",
             job_id,

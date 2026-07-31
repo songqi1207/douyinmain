@@ -554,6 +554,15 @@ function Minimize-JianyingWindow {
     try {
         $currentProcess = Get-Process -Id $Process.Id -ErrorAction SilentlyContinue
         if ($currentProcess -and $currentProcess.MainWindowHandle -ne 0) {
+            [JianyingNative]::SetWindowPos(
+                $currentProcess.MainWindowHandle,
+                [IntPtr](-2),
+                0,
+                0,
+                0,
+                0,
+                0x0001 -bor 0x0002 -bor 0x0040
+            ) | Out-Null
             [JianyingNative]::ShowWindow($currentProcess.MainWindowHandle, 6) | Out-Null
             Write-Stage "jianying_minimized" "reason=$Reason"
         }
@@ -903,6 +912,7 @@ if (-not $editorRootAfterOpen) {
 }
 Write-Stage "editor_ready" "class=$($editorRootAfterOpen.Current.ClassName)"
 if ($ResourceWaitSeconds -gt 0) {
+    Minimize-JianyingWindow $process "cloud_resource_sync"
     Write-Stage "cloud_resource_sync_wait_started" "seconds=$ResourceWaitSeconds"
     Start-Sleep -Seconds $ResourceWaitSeconds
     Write-Stage "cloud_resource_sync_wait_finished" "seconds=$ResourceWaitSeconds"
@@ -911,6 +921,7 @@ if ($ResourceWaitSeconds -gt 0) {
 Write-Stage "waiting_for_editor_export_button"
 $exportButton = $null
 $process = Get-JianyingProcess
+Set-JianyingForeground $process
 try {
     $exportButton = Wait-Element $process.Id {
         ($_.Current.Name -match '^\s*(导出|Export)\s*$' -or
