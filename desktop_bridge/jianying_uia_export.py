@@ -484,7 +484,14 @@ def export_draft_uia(
             Compare=_description_matcher("MainWindowTitleBarExportBtn"),
         )
         if export_button.Exists(10, 0.25):
-            export_button.Click(simulateMove=False)
+            rect = _control_rect(export_button)
+            if rect and rect[2] > rect[0] and rect[3] > rect[1]:
+                x = int(rect[0] + ((rect[2] - rect[0]) * 0.50))
+                y = int(rect[1] + ((rect[3] - rect[1]) * 0.50))
+                _emit(stage, "uia2_export_control_point_click", f"x={x} y={y}")
+                _click_point(x, y)
+            else:
+                export_button.Click(simulateMove=False)
         else:
             try:
                 import uiautomation as auto_module

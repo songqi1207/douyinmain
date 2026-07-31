@@ -954,6 +954,7 @@ if ($ResourceWaitSeconds -gt 0) {
 
 Write-Stage "waiting_for_editor_export_button"
 $exportButton = $null
+$exportRoot = $null
 $process = Get-JianyingProcess
 Set-JianyingForeground $process
 try {
@@ -995,18 +996,38 @@ catch {
         }
     }
 }
-if (-not $exportButton) {
-    Invoke-EditorExportByCoordinate $process
-    Start-Sleep -Seconds 2
-}
 if ($exportButton) {
-    Invoke-Element $exportButton
+    $buttonRect = $exportButton.Current.BoundingRectangle
+    if ($buttonRect.Width -gt 1 -and $buttonRect.Height -gt 1) {
+        $buttonX = [int]($buttonRect.X + ($buttonRect.Width / 2))
+        $buttonY = [int]($buttonRect.Y + ($buttonRect.Height / 2))
+        Write-Stage "editor_export_control_point_click" "x=$buttonX y=$buttonY"
+        Invoke-Point $buttonX $buttonY
+    }
+    else {
+        Invoke-Element $exportButton
+    }
+    $controlClickDeadline = (Get-Date).AddSeconds(3)
+    while ((Get-Date) -lt $controlClickDeadline) {
+        $exportRoot = Get-ExportDialogRoot $process.Id
+        if ($exportRoot) {
+            Write-Stage "editor_export_opened" "mode=control_point"
+            break
+        }
+        Start-Sleep -Milliseconds 300
+    }
+}
+if (-not $exportRoot) {
+    Write-Stage "editor_export_control_click_unverified" "action=shortcut_and_coordinate"
+    Invoke-EditorExportByCoordinate $process
+    $exportRoot = Get-ExportDialogRoot $process.Id
 }
 Write-Stage "export_dialog_opening"
 Start-Sleep -Seconds 2
-$exportRoot = $null
 try {
-    $exportRoot = Wait-ExportDialogRoot $process.Id 30
+    if (-not $exportRoot) {
+        $exportRoot = Wait-ExportDialogRoot $process.Id 30
+    }
     Write-Stage "export_dialog_root_ready" "class=$($exportRoot.Current.ClassName)"
 }
 catch {

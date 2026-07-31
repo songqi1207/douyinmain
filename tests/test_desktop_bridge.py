@@ -445,6 +445,8 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "cloud_resource_sync_wait_started"', script)
         self.assertIn('Minimize-JianyingWindow $process "cloud_resource_sync"', script)
         self.assertIn('Write-Stage "editor_export_coordinate_click"', script)
+        self.assertIn('Write-Stage "editor_export_control_point_click"', script)
+        self.assertIn('Write-Stage "editor_export_control_click_unverified"', script)
         self.assertIn("$width * 0.105", script)
         self.assertIn("$height * 0.023", script)
         self.assertIn('Write-Stage "export_confirm_control_ready"', script)
@@ -460,6 +462,7 @@ class DesktopBridgeTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertNotIn(".SetTopmost()", uia_source)
         self.assertIn('"uia2_export_coordinate_click"', uia_source)
+        self.assertIn('"uia2_export_control_point_click"', uia_source)
         self.assertIn("width * 0.105", uia_source)
         self.assertIn("height * 0.023", uia_source)
 
