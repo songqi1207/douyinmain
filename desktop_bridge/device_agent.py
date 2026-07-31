@@ -29,6 +29,7 @@ from desktop_bridge.font_resources import (
     inspect_font_resources,
     required_font_resources,
 )
+from desktop_bridge.click_calibration import load_export_calibration
 from desktop_bridge.helper_metadata import HELPER_VERSION
 from desktop_bridge.paths import app_data_dir
 
@@ -758,6 +759,16 @@ def _run_native_export_unlocked(
         "-ResourceWaitSeconds",
         str(resource_wait_seconds),
     ]
+    export_calibration = load_export_calibration(app_data_dir() / "settings.json")
+    if export_calibration:
+        command.extend(
+            [
+                "-EditorExportXFromRightRatio",
+                str(export_calibration["x_from_right_ratio"]),
+                "-EditorExportYFromTopRatio",
+                str(export_calibration["y_from_top_ratio"]),
+            ]
+        )
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
     def run_compatibility_export(
@@ -893,6 +904,7 @@ def _run_native_export_unlocked(
                         os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800
                     ),
                     stage=log_uia2_stage,
+                    editor_export_calibration=export_calibration,
                 )
                 logger.info(
                     "jianying_uia2_fallback_finished job_id=%s size_bytes=%s",

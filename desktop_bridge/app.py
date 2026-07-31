@@ -30,6 +30,7 @@ from desktop_bridge.device_agent import (
     pair_with_site,
     prepare_required_jianying_fonts,
 )
+from desktop_bridge.click_calibration import CALIBRATION_KEY, record_next_jianying_click
 from desktop_bridge.helper_metadata import HELPER_PRODUCT_NAME, HELPER_VERSION
 from desktop_bridge.paths import app_data_dir
 from desktop_bridge.updater import download_and_launch_update
@@ -270,6 +271,12 @@ class DraftBridgeApp:
             sticky="w",
             pady=(6, 0),
         )
+        self.calibrate_button = self.ttk.Button(
+            device,
+            text="校准剪映导出按钮",
+            command=self.start_export_click_calibration,
+        )
+        self.calibrate_button.grid(row=3, column=2, columnspan=2, sticky="w", pady=(6, 0))
         self.ttk.Label(device, textvariable=self.device_status_var, foreground="#19714a").grid(
             row=2, column=0, columnspan=4, sticky="w", pady=(6, 0)
         )
@@ -502,6 +509,50 @@ class DraftBridgeApp:
         path = agent_log_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         open_directory(path.parent)
+
+    def start_export_click_calibration(self) -> None:
+        from tkinter import messagebox
+
+        confirmed = messagebox.askokcancel(
+            "校准剪映导出按钮",
+            "请先让剪映停留在目标草稿编辑页。\n\n"
+            "点击“确定”后，助手会隐藏；请在 60 秒内手动点击一次右上角蓝色“导出”。\n"
+            "助手只记录这一次点击在剪映窗口中的相对坐标，不记录键盘或其他鼠标活动。\n"
+            "按 Esc 可以取消。",
+        )
+        if not confirmed:
+            return
+        self.calibrate_button.configure(state="disabled")
+        self.device_status_var.set("等待你点击剪映右上角的“导出”…")
+        self.root.withdraw()
+        threading.Thread(target=self._export_click_calibration_worker, daemon=True).start()
+
+    def _export_click_calibration_worker(self) -> None:
+        try:
+            calibration = record_next_jianying_click()
+            _save_settings({CALIBRATION_KEY: calibration})
+            self.settings[CALIBRATION_KEY] = calibration
+        except Exception as exc:
+            self.root.after(0, self._finish_export_click_calibration, None, str(exc))
+            return
+        self.root.after(0, self._finish_export_click_calibration, calibration, "")
+
+    def _finish_export_click_calibration(self, calibration: dict | None, error: str) -> None:
+        from tkinter import messagebox
+
+        self.root.deiconify()
+        self.root.lift()
+        self.calibrate_button.configure(state="normal")
+        if error:
+            self.device_status_var.set(f"导出按钮校准失败：{error}")
+            messagebox.showerror("校准失败", error)
+            return
+        self.device_status_var.set("剪映导出按钮位置已保存，后续任务将优先使用该位置")
+        messagebox.showinfo(
+            "校准完成",
+            "已保存本机剪映导出按钮位置。\n"
+            "如果剪映已经打开导出窗口，可以点击“取消”返回编辑页。",
+        )
 
     def start_font_prepare(self) -> None:
         draft_root = self.draft_root_var.get().strip()

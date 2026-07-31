@@ -9,6 +9,8 @@
     [int]$TimeoutSeconds = 1800,
     [int]$NoOutputTimeoutSeconds = 210,
     [int]$ResourceWaitSeconds = 0,
+    [double]$EditorExportXFromRightRatio = -1,
+    [double]$EditorExportYFromTopRatio = -1,
     [switch]$RestartExisting
 )
 
@@ -433,10 +435,27 @@ function Invoke-EditorExportByCoordinate($Process) {
     $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
     # JianYing 11 editor screenshot: export center is about 89.5% width,
     # 2.1% height (roughly 1145,17 on a 1280x800 window).
-    $y = [int]($rect.Top + [Math]::Min(30, [Math]::Max(18, $height * 0.023)))
-    $offsets = @(
-        [Math]::Min(210, [Math]::Max(115, $width * 0.105))
+    $hasCalibration = (
+        $EditorExportXFromRightRatio -ge 0.01 -and $EditorExportXFromRightRatio -le 0.5 -and
+        $EditorExportYFromTopRatio -ge 0.0 -and $EditorExportYFromTopRatio -le 0.25
     )
+    $y = if ($hasCalibration) {
+        [int]($rect.Top + ($height * $EditorExportYFromTopRatio))
+    }
+    else {
+        [int]($rect.Top + [Math]::Min(30, [Math]::Max(18, $height * 0.023)))
+    }
+    $offsets = @(
+        $(if ($hasCalibration) {
+            $width * $EditorExportXFromRightRatio
+        }
+        else {
+            [Math]::Min(210, [Math]::Max(115, $width * 0.105))
+        })
+    )
+    if ($hasCalibration) {
+        Write-Stage "editor_export_calibration_loaded" "x_from_right_ratio=$EditorExportXFromRightRatio y_from_top_ratio=$EditorExportYFromTopRatio"
+    }
     $attempt = 0
     foreach ($offset in $offsets) {
         $attempt += 1

@@ -35,6 +35,7 @@ from desktop_bridge.draft_core import (
     prefer_newest_jianying_executable,
 )
 from desktop_bridge.paths import app_data_dir
+from desktop_bridge.click_calibration import normalize_export_click, valid_export_calibration
 import desktop_bridge.app as bridge_app
 from desktop_bridge.app import DraftBridgeApp
 import desktop_bridge.windows_integration as windows_integration
@@ -43,6 +44,28 @@ from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_jianying_export_click_calibration_uses_relative_window_coordinates(self):
+        calibration = normalize_export_click(1145, 17, (0, 0, 1280, 800))
+
+        self.assertAlmostEqual(calibration["x_from_right_ratio"], 0.105469, places=6)
+        self.assertAlmostEqual(calibration["y_from_top_ratio"], 0.02125, places=6)
+        self.assertEqual(
+            valid_export_calibration(calibration),
+            {
+                "x_from_right_ratio": calibration["x_from_right_ratio"],
+                "y_from_top_ratio": calibration["y_from_top_ratio"],
+            },
+        )
+
+    def test_jianying_export_click_calibration_rejects_unrelated_clicks(self):
+        with self.assertRaises(ValueError):
+            normalize_export_click(1400, 17, (0, 0, 1280, 800))
+        self.assertIsNone(
+            valid_export_calibration(
+                {"x_from_right_ratio": 0.9, "y_from_top_ratio": 0.5}
+            )
+        )
+
     def test_load_settings_accepts_utf8_bom(self):
         with tempfile.TemporaryDirectory(prefix="helper-settings-bom-") as temporary:
             path = Path(temporary) / "settings.json"
@@ -452,6 +475,7 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn("SetProcessDpiAwarenessContext", script)
         self.assertIn('Write-Stage "physical_click_sent"', script)
         self.assertIn('Write-Stage "window_click_sent"', script)
+        self.assertIn('Write-Stage "editor_export_calibration_loaded"', script)
         self.assertIn("$width * 0.105", script)
         self.assertIn("$height * 0.023", script)
         self.assertIn('Write-Stage "export_confirm_control_ready"', script)
@@ -472,6 +496,7 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn("(rect[2] - rect[0]) < 420", uia_source)
         self.assertIn("_enable_dpi_awareness()", uia_source)
         self.assertIn('"uia2_export_window_message_click"', uia_source)
+        self.assertIn('"uia2_export_calibration_loaded"', uia_source)
         device_agent_source = (
             Path(__file__).resolve().parents[1]
             / "desktop_bridge"

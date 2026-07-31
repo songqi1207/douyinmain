@@ -470,6 +470,7 @@ def export_draft_uia(
     *,
     timeout: int = 1800,
     stage: StageCallback | None = None,
+    editor_export_calibration: dict[str, float] | None = None,
 ) -> Path:
     """Open ``draft_name`` in JianYing, export it, and return the task MP4."""
 
@@ -564,10 +565,27 @@ def export_draft_uia(
             left, top, right, bottom = _window_rect(editor)
             width = max(1, right - left)
             height = max(1, bottom - top)
-            y = int(top + min(30, max(18, height * 0.023)))
-            offsets = (
-                min(210, max(115, width * 0.105)),
+            calibration = editor_export_calibration or {}
+            calibrated_x = calibration.get("x_from_right_ratio")
+            calibrated_y = calibration.get("y_from_top_ratio")
+            has_calibration = (
+                calibrated_x is not None
+                and calibrated_y is not None
+                and 0.01 <= float(calibrated_x) <= 0.5
+                and 0.0 <= float(calibrated_y) <= 0.25
             )
+            y = int(top + (height * float(calibrated_y))) if has_calibration else int(
+                top + min(30, max(18, height * 0.023))
+            )
+            offsets = (
+                width * float(calibrated_x) if has_calibration else min(210, max(115, width * 0.105)),
+            )
+            if has_calibration:
+                _emit(
+                    stage,
+                    "uia2_export_calibration_loaded",
+                    f"x_from_right_ratio={calibrated_x} y_from_top_ratio={calibrated_y}",
+                )
             export_window = None
             for attempt, offset in enumerate(offsets, start=1):
                 x = int(right - offset)
