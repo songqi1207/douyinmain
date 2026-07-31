@@ -490,7 +490,12 @@ def _new_meta_template(name: str, draft_id: str, draft_dir: Path, draft_root: Pa
 
 
 def _write_json(path: Path, payload: Any) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    temporary.replace(path)
 
 
 def _write_bundle(bundle: dict[str, Any]) -> None:

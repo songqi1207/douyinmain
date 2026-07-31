@@ -225,10 +225,16 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
                 self.assertFalse(first["already_imported"])
                 self.assertTrue(second["already_imported"])
 
-                third = draft_importer.import_draft_key(key, force=True)
+                (Path(second["draft_dir"]) / "draft_content.json").write_text("", encoding="utf-8")
+                repaired = draft_importer.import_draft_key(key)
                 self.assertFalse(Path(first["draft_dir"]).exists())
+                self.assertTrue(Path(repaired["draft_dir"]).is_dir())
+                self.assertNotEqual(first["draft_id"], repaired["draft_id"])
+
+                third = draft_importer.import_draft_key(key, force=True)
+                self.assertFalse(Path(repaired["draft_dir"]).exists())
                 self.assertTrue(Path(third["draft_dir"]).is_dir())
-                self.assertNotEqual(first["draft_id"], third["draft_id"])
+                self.assertNotEqual(repaired["draft_id"], third["draft_id"])
 
     def test_effect_without_a_supported_name_field_is_rejected_before_import(self):
         key = {

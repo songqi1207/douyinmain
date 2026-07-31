@@ -13,6 +13,7 @@ import copy
 import hashlib
 import json
 import mimetypes
+import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -239,7 +240,20 @@ def _load_registry() -> dict[str, Any]:
 
 def _save_registry(registry: dict[str, Any]) -> None:
     _REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _REGISTRY_PATH.write_text(json.dumps(registry, ensure_ascii=False, indent=1), encoding="utf-8")
+    temporary = _REGISTRY_PATH.with_suffix(_REGISTRY_PATH.suffix + ".tmp")
+    temporary.write_text(json.dumps(registry, ensure_ascii=False, indent=1), encoding="utf-8")
+    temporary.replace(_REGISTRY_PATH)
+
+
+def _is_reusable_draft_dir(draft_dir: Path) -> bool:
+    try:
+        for name in ("draft_content.json", "draft_info.json", "draft_meta_info.json"):
+            payload = json.loads((draft_dir / name).read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                return False
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def _save_render_key(draft_id: str, key: dict[str, Any]) -> Path:
@@ -544,7 +558,11 @@ def _import_draft_key_unlocked(
     if existing and not force:
         existing_dir_value = str(existing.get("draft_dir") or "").strip()
         existing_dir = Path(existing_dir_value) if existing_dir_value else None
-        if existing_dir is not None and existing_dir.is_dir():
+        if (
+            existing_dir is not None
+            and existing_dir.is_dir()
+            and _is_reusable_draft_dir(existing_dir)
+        ):
             return {
                 **existing,
                 "already_imported": True,
@@ -552,13 +570,15 @@ def _import_draft_key_unlocked(
                 "warnings": existing.get("warnings") or [],
                 "message": f"该任务已导入，复用现有草稿：{existing_dir}",
             }
+        if existing_dir is not None and existing_dir.is_dir():
+            shutil.rmtree(existing_dir, ignore_errors=True)
+        _unregister_root_meta(str(existing.get("draft_id") or ""))
         registry.pop(fingerprint, None)
+        _save_registry(registry)
 
     if existing and force:
         old_dir = Path(str(existing.get("draft_dir") or ""))
         if old_dir.exists():
-            import shutil
-
             shutil.rmtree(old_dir, ignore_errors=True)
         _unregister_root_meta(str(existing.get("draft_id") or ""))
         registry.pop(fingerprint, None)
