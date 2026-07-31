@@ -449,6 +449,9 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "editor_export_control_click_unverified"', script)
         self.assertIn("Test-RealExportDialog", script)
         self.assertIn("$rect.Width -lt 420", script)
+        self.assertIn("SetProcessDpiAwarenessContext", script)
+        self.assertIn('Write-Stage "physical_click_sent"', script)
+        self.assertIn('Write-Stage "window_click_sent"', script)
         self.assertIn("$width * 0.105", script)
         self.assertIn("$height * 0.023", script)
         self.assertIn('Write-Stage "export_confirm_control_ready"', script)
@@ -467,6 +470,14 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('"uia2_export_control_point_click"', uia_source)
         self.assertIn("is_real_export_window", uia_source)
         self.assertIn("(rect[2] - rect[0]) < 420", uia_source)
+        self.assertIn("_enable_dpi_awareness()", uia_source)
+        self.assertIn('"uia2_export_window_message_click"', uia_source)
+        device_agent_source = (
+            Path(__file__).resolve().parents[1]
+            / "desktop_bridge"
+            / "device_agent.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("剪映主自动化最后阶段", device_agent_source)
         self.assertIn("width * 0.105", uia_source)
         self.assertIn("height * 0.023", uia_source)
 

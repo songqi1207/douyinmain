@@ -921,8 +921,13 @@ def _run_native_export_unlocked(
                     task.get("job_id"),
                     exc,
                 )
+                primary_stages = "；".join(
+                    line.split("jianying_automation_stage", 1)[-1].strip()
+                    for line in stage_lines[-12:]
+                )
                 raise BridgeError(
-                    f"剪映 UIA2 自动导出失败：{exc}"
+                    f"剪映主自动化最后阶段：{primary_stages or '无阶段记录'}；"
+                    f"UIA2 自动导出失败：{exc}"
                 ) from exc
         if "stage=ui_tree_unavailable" in stage_output:
             if "action=restart_with_helper" in stage_output:

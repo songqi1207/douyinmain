@@ -124,6 +124,38 @@ def _click_point(x: int, y: int) -> None:
     user32.mouse_event(0x0004, 0, 0, 0, 0)
 
 
+def _enable_dpi_awareness() -> None:
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    try:
+        user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except Exception:
+        try:
+            user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
+
+def _post_window_click(control: object, x: int, y: int) -> bool:
+    import ctypes
+    from ctypes import wintypes
+
+    handle = int(getattr(control, "NativeWindowHandle", 0) or 0)
+    if not handle:
+        return False
+    point = wintypes.POINT(int(x), int(y))
+    user32 = ctypes.windll.user32
+    if not user32.ScreenToClient(handle, ctypes.byref(point)):
+        return False
+    packed = ((int(point.y) & 0xFFFF) << 16) | (int(point.x) & 0xFFFF)
+    user32.PostMessageW(handle, 0x0200, 0, packed)
+    user32.PostMessageW(handle, 0x0201, 1, packed)
+    time.sleep(0.08)
+    user32.PostMessageW(handle, 0x0202, 0, packed)
+    return True
+
+
 def _control_rect(control: object) -> tuple[int, int, int, int] | None:
     try:
         rect = control.BoundingRectangle  # type: ignore[attr-defined]
@@ -441,6 +473,7 @@ def export_draft_uia(
 ) -> Path:
     """Open ``draft_name`` in JianYing, export it, and return the task MP4."""
 
+    _enable_dpi_awareness()
     try:
         import uiautomation as auto
     except ImportError as exc:  # pragma: no cover - guarded by packaged build
@@ -545,9 +578,20 @@ def export_draft_uia(
                 )
                 _click_point(x, y)
                 try:
-                    export_window = _wait_for_window(auto, "pre_export", 5)
+                    export_window = _wait_for_window(auto, "pre_export", 3)
                     break
                 except JianyingUIAError:
+                    if _post_window_click(editor, x, y):
+                        _emit(
+                            stage,
+                            "uia2_export_window_message_click",
+                            f"attempt={attempt} x={x} y={y}",
+                        )
+                        try:
+                            export_window = _wait_for_window(auto, "pre_export", 3)
+                            break
+                        except JianyingUIAError:
+                            pass
                     continue
             if export_window is None:
                 raise JianyingUIAError(

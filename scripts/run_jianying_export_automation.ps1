@@ -54,6 +54,8 @@ Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public static class JianyingNative {
+    [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
@@ -62,9 +64,19 @@ public static class JianyingNative {
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT { public int X; public int Y; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT point);
+    [DllImport("user32.dll")] public static extern bool ScreenToClient(IntPtr hWnd, ref POINT point);
 }
 "@
+try {
+    [JianyingNative]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null
+}
+catch {
+    [JianyingNative]::SetProcessDPIAware() | Out-Null
+}
 
 function Get-FullDescription($Element) {
     try {
@@ -297,9 +309,28 @@ function Invoke-Element($Element, [switch]$DoubleClick) {
 }
 
 function Invoke-Point([int]$X, [int]$Y) {
-    [JianyingNative]::SetCursorPos($X, $Y) | Out-Null
+    $moved = [JianyingNative]::SetCursorPos($X, $Y)
     [JianyingNative]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
     [JianyingNative]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    $actual = New-Object JianyingNative+POINT
+    [JianyingNative]::GetCursorPos([ref]$actual) | Out-Null
+    Write-Stage "physical_click_sent" "requested_x=$X requested_y=$Y actual_x=$($actual.X) actual_y=$($actual.Y) cursor_moved=$moved"
+}
+
+function Invoke-WindowMessagePoint($Process, [int]$X, [int]$Y) {
+    $clientPoint = New-Object JianyingNative+POINT
+    $clientPoint.X = $X
+    $clientPoint.Y = $Y
+    if (-not [JianyingNative]::ScreenToClient($Process.MainWindowHandle, [ref]$clientPoint)) {
+        Write-Stage "window_click_skipped" "reason=screen_to_client_failed x=$X y=$Y"
+        return
+    }
+    $packed = (($clientPoint.Y -band 0xFFFF) -shl 16) -bor ($clientPoint.X -band 0xFFFF)
+    [JianyingNative]::PostMessage($Process.MainWindowHandle, 0x0200, [IntPtr]::Zero, [IntPtr]$packed) | Out-Null
+    [JianyingNative]::PostMessage($Process.MainWindowHandle, 0x0201, [IntPtr]1, [IntPtr]$packed) | Out-Null
+    Start-Sleep -Milliseconds 80
+    [JianyingNative]::PostMessage($Process.MainWindowHandle, 0x0202, [IntPtr]::Zero, [IntPtr]$packed) | Out-Null
+    Write-Stage "window_click_sent" "screen_x=$X screen_y=$Y client_x=$($clientPoint.X) client_y=$($clientPoint.Y)"
 }
 
 function Close-ExportSuccessDialogs([int]$ProcessId) {
@@ -412,10 +443,20 @@ function Invoke-EditorExportByCoordinate($Process) {
         $x = [int]($rect.Right - $offset)
         Write-Stage "editor_export_coordinate_click" "attempt=$attempt x=$x y=$y"
         Invoke-Point $x $y
-        $clickDeadline = (Get-Date).AddSeconds(4)
+        $clickDeadline = (Get-Date).AddSeconds(2)
         while ((Get-Date) -lt $clickDeadline) {
             if (Get-ExportDialogRoot $Process.Id) {
                 Write-Stage "editor_export_opened" "mode=coordinate attempt=$attempt"
+                return
+            }
+            Start-Sleep -Milliseconds 300
+        }
+        Write-Stage "editor_export_window_message_click" "attempt=$attempt x=$x y=$y"
+        Invoke-WindowMessagePoint $Process $x $y
+        $messageDeadline = (Get-Date).AddSeconds(3)
+        while ((Get-Date) -lt $messageDeadline) {
+            if (Get-ExportDialogRoot $Process.Id) {
+                Write-Stage "editor_export_opened" "mode=window_message attempt=$attempt"
                 return
             }
             Start-Sleep -Milliseconds 300
