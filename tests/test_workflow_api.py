@@ -111,6 +111,16 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["latest_helper_version"], "1.4.37")
 
+    def test_spa_index_must_revalidate_after_frontend_deploy(self):
+        with tempfile.TemporaryDirectory(prefix="frontend-dist-") as temporary:
+            frontend_dist = Path(temporary)
+            (frontend_dist / "index.html").write_text("<!doctype html>", encoding="utf-8")
+            with patch.object(fastapi_app, "FRONTEND_DIST", frontend_dist):
+                response = fastapi_app._spa_index()
+
+        self.assertIn("no-cache", response.headers["cache-control"])
+        self.assertIn("must-revalidate", response.headers["cache-control"])
+
     def test_compatible_jianying_download_uses_verified_official_cdn(self):
         response = fastapi_app.api_download_compatible_jianying()
 

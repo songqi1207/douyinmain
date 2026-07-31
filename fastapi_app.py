@@ -130,7 +130,11 @@ if (FRONTEND_DIST / "assets").is_dir():
 def _spa_index() -> FileResponse | HTMLResponse:
     index = FRONTEND_DIST / "index.html"
     if index.is_file():
-        return FileResponse(index, media_type="text/html")
+        return FileResponse(
+            index,
+            media_type="text/html",
+            headers={"Cache-Control": "no-cache, must-revalidate"},
+        )
     return HTMLResponse(
         """
 <!doctype html>
