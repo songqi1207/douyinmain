@@ -386,7 +386,40 @@ function Invoke-HomeDraftCardByCoordinate($Process) {
 
 function Invoke-EditorExportByCoordinate($Process) {
     Write-Stage "editor_export_shortcut" "key=ctrl+e"
+    Set-JianyingForeground $Process
     [System.Windows.Forms.SendKeys]::SendWait("^e")
+    $shortcutDeadline = (Get-Date).AddSeconds(3)
+    while ((Get-Date) -lt $shortcutDeadline) {
+        if (Get-ExportDialogRoot $Process.Id) {
+            Write-Stage "editor_export_opened" "mode=shortcut"
+            return
+        }
+        Start-Sleep -Milliseconds 300
+    }
+
+    $rect = Get-WindowRect $Process
+    $width = [Math]::Max(1, $rect.Right - $rect.Left)
+    $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
+    $y = [int]($rect.Top + [Math]::Min(62, [Math]::Max(40, $height * 0.052)))
+    $offsets = @(
+        [Math]::Min(230, [Math]::Max(145, $width * 0.115)),
+        [Math]::Min(180, [Math]::Max(110, $width * 0.080))
+    )
+    $attempt = 0
+    foreach ($offset in $offsets) {
+        $attempt += 1
+        $x = [int]($rect.Right - $offset)
+        Write-Stage "editor_export_coordinate_click" "attempt=$attempt x=$x y=$y"
+        Invoke-Point $x $y
+        $clickDeadline = (Get-Date).AddSeconds(4)
+        while ((Get-Date) -lt $clickDeadline) {
+            if (Get-ExportDialogRoot $Process.Id) {
+                Write-Stage "editor_export_opened" "mode=coordinate attempt=$attempt"
+                return
+            }
+            Start-Sleep -Milliseconds 300
+        }
+    }
 }
 
 function Get-ExportWindowRect([int]$ProcessId) {

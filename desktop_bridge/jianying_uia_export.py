@@ -336,7 +336,8 @@ def _get_window(auto):
     export_window = window.WindowControl(
         searchDepth=2,
         Compare=lambda control, _depth: (
-            str(control.Name or "").strip().casefold() in {"导出", "export"}
+            str(control.Name or "").strip().casefold().startswith("导出")
+            or "export" in str(control.Name or "").strip().casefold()
             or "ExportWindow".casefold()
             in str(control.ClassName or "").casefold()
         ),
@@ -493,7 +494,35 @@ def export_draft_uia(
                 raise JianyingUIAError("UIA2 没有找到编辑页导出按钮") from exc
             _emit(stage, "uia2_export_shortcut", "key=ctrl+e")
         _emit(stage, "uia2_export_dialog_opening")
-        export_window = _wait_for_window(auto, "pre_export", 30)
+        try:
+            export_window = _wait_for_window(auto, "pre_export", 4)
+        except JianyingUIAError:
+            left, top, right, bottom = _window_rect(editor)
+            width = max(1, right - left)
+            height = max(1, bottom - top)
+            y = int(top + min(62, max(40, height * 0.052)))
+            offsets = (
+                min(230, max(145, width * 0.115)),
+                min(180, max(110, width * 0.080)),
+            )
+            export_window = None
+            for attempt, offset in enumerate(offsets, start=1):
+                x = int(right - offset)
+                _emit(
+                    stage,
+                    "uia2_export_coordinate_click",
+                    f"attempt={attempt} x={x} y={y}",
+                )
+                _click_point(x, y)
+                try:
+                    export_window = _wait_for_window(auto, "pre_export", 5)
+                    break
+                except JianyingUIAError:
+                    continue
+            if export_window is None:
+                raise JianyingUIAError(
+                    "UIA2 已尝试快捷键和右上角坐标，剪映仍未打开导出弹窗"
+                )
     path_label = export_window.TextControl(
         searchDepth=8,
         Compare=_description_matcher("ExportPath"),
