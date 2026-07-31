@@ -22,6 +22,7 @@ from desktop_bridge.draft_core import (
     launch_jianying,
     load_payload_file,
     open_directory,
+    prefer_newest_jianying_executable,
 )
 from desktop_bridge.device_agent import (
     DeviceAgent,
@@ -73,11 +74,11 @@ def _detected_default_paths(settings: dict) -> tuple[str, str]:
         if configured_root and Path(configured_root).is_dir()
         else (str(roots[0]) if roots else configured_root)
     )
-    jianying_exe = (
-        configured_exe
-        if configured_exe and Path(configured_exe).is_file()
-        else (str(executables[0]) if executables else configured_exe)
+    preferred_executable = prefer_newest_jianying_executable(
+        configured_exe,
+        executables,
     )
+    jianying_exe = str(preferred_executable) if preferred_executable else configured_exe
     return draft_root, jianying_exe
 
 

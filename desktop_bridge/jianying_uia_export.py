@@ -316,7 +316,10 @@ def _get_window(auto):
     state = {"value": ""}
 
     def window_matcher(control, depth: int) -> bool:
-        if depth != 1 or str(control.Name or "") != "剪映专业版":
+        if depth != 1:
+            return False
+        window_name = str(control.Name or "").casefold()
+        if not any(token in window_name for token in ("剪映", "jianying", "capcut")):
             return False
         class_name = str(control.ClassName or "")
         if "HomePage".casefold() in class_name.casefold():
@@ -331,7 +334,14 @@ def _get_window(auto):
     if not window.Exists(2, 0.2):
         raise JianyingUIAError("UIA2 没有找到剪映主页或编辑窗口")
 
-    export_window = window.WindowControl(searchDepth=2, Name="导出")
+    export_window = window.WindowControl(
+        searchDepth=2,
+        Compare=lambda control, _depth: (
+            str(control.Name or "").strip().casefold() in {"导出", "export"}
+            or "ExportWindow".casefold()
+            in str(control.ClassName or "").casefold()
+        ),
+    )
     if export_window.Exists(0):
         return export_window, "pre_export"
     return window, state["value"]

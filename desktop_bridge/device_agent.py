@@ -20,6 +20,7 @@ from desktop_bridge.draft_core import (
     detect_jianying_executables,
     detect_jianying_version,
     import_draft_payload,
+    jianying_version_key,
 )
 from desktop_bridge.font_resources import (
     bind_cached_fonts,
@@ -645,50 +646,64 @@ def _run_native_export_unlocked(
         progress(f"正在用剪映专业版导出“{draft_name}”…")
     export_timeout = int(os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800)
     job_id = str(task.get("job_id") or "-")
-    if progress:
-        if resource_wait_seconds:
-            progress(
-                f"检测到 {len(cloud_resources)} 项云端字体/特效，"
-                f"正在打开草稿并等待素材同步（约 {resource_wait_seconds} 秒）…"
-            )
-        else:
-            progress("正在使用 pyJianYingDraft 导出视频…")
-    try:
-        return _run_pyjianying_export(
-            draft_name,
-            output_path,
+    jianying_version = detect_jianying_version(executable)
+    modern_jianying = jianying_version_key(jianying_version) >= (7,)
+    if modern_jianying:
+        logger.info(
+            "modern_jianying_compatibility_export job_id=%s version=%s executable=%s",
+            job_id,
+            jianying_version or "unknown",
             executable,
-            export_timeout,
-            job_id,
-            resource_wait_seconds=resource_wait_seconds,
-            draft_dir=report.get("draft_dir") or "",
-            draft_root=root,
-            font_resources=font_resources,
         )
-    except FontResourceUnavailable:
-        raise
-    except Exception as exc:
-        logger.warning(
-            "pyjianying_export_failed job_id=%s fallback=compatibility_driver error=%s",
-            job_id,
-            exc,
-        )
-        if output_path.exists():
-            output_path.unlink()
-        allow_foreground = (
-            os.getenv("DEVICE_JIANYING_ALLOW_FOREGROUND_AUTOMATION") or "1"
-        ).strip().lower()
-        if allow_foreground in {"0", "false", "no", "off"}:
-            raise BridgeError(
-                "pyJianYingDraft could not complete the native export. "
-                "Foreground Jianying UI automation is disabled by "
-                "DEVICE_JIANYING_ALLOW_FOREGROUND_AUTOMATION=0, so the helper "
-                "will not pop up Jianying on this desktop. Use a dedicated "
-                "Windows machine/VM for invisible exports, or re-enable "
-                "foreground automation."
-            ) from exc
         if progress:
-            progress("pyJianYingDraft 未能完成导出，正在切换兼容模式…")
+            progress(
+                f"已识别剪映 v{jianying_version}，正在使用新版兼容导出通道…"
+            )
+    else:
+        if progress:
+            if resource_wait_seconds:
+                progress(
+                    f"检测到 {len(cloud_resources)} 项云端字体/特效，"
+                    f"正在打开草稿并等待素材同步（约 {resource_wait_seconds} 秒）…"
+                )
+            else:
+                progress("正在使用 pyJianYingDraft 导出视频…")
+        try:
+            return _run_pyjianying_export(
+                draft_name,
+                output_path,
+                executable,
+                export_timeout,
+                job_id,
+                resource_wait_seconds=resource_wait_seconds,
+                draft_dir=report.get("draft_dir") or "",
+                draft_root=root,
+                font_resources=font_resources,
+            )
+        except FontResourceUnavailable:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "pyjianying_export_failed job_id=%s fallback=compatibility_driver error=%s",
+                job_id,
+                exc,
+            )
+            if output_path.exists():
+                output_path.unlink()
+            allow_foreground = (
+                os.getenv("DEVICE_JIANYING_ALLOW_FOREGROUND_AUTOMATION") or "1"
+            ).strip().lower()
+            if allow_foreground in {"0", "false", "no", "off"}:
+                raise BridgeError(
+                    "pyJianYingDraft could not complete the native export. "
+                    "Foreground Jianying UI automation is disabled by "
+                    "DEVICE_JIANYING_ALLOW_FOREGROUND_AUTOMATION=0, so the helper "
+                    "will not pop up Jianying on this desktop. Use a dedicated "
+                    "Windows machine/VM for invisible exports, or re-enable "
+                    "foreground automation."
+                ) from exc
+            if progress:
+                progress("pyJianYingDraft 未能完成导出，正在切换兼容模式…")
 
     if not automation.is_file():
         raise BridgeError(f"剪映自动导出脚本不存在：{automation}")
@@ -759,7 +774,11 @@ def _run_native_export_unlocked(
         "yes",
         "on",
     }
-    initial_command = [*command, "-RestartExisting"] if (fast_compatibility_path or restart_first) else command
+    initial_command = (
+        [*command, "-RestartExisting"]
+        if (modern_jianying or fast_compatibility_path or restart_first)
+        else command
+    )
     if fast_compatibility_path:
         logger.info(
             "jianying_fast_path_restart_enabled job_id=%s draft_name=%s",
@@ -866,8 +885,8 @@ def _run_native_export_unlocked(
                 )
             raise BridgeError(
                 "剪映没有向助手开放内部控件，无法自动点击草稿和导出按钮。"
-                "当前剪映 7+ 版本可能隐藏了自动化控件；请改用剪映专业版 5.9，"
-                "或确认剪映与助手使用相同的运行权限。"
+                f"当前助手启动的是剪映 v{jianying_version or '未知'}；"
+                "请确认剪映与助手使用相同的运行权限，并把本次助手日志发给维护人员。"
             )
         if "stage=draft_card_not_found" in stage_output:
             raise BridgeError(

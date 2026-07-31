@@ -202,7 +202,14 @@ def detect_jianying_executables() -> list[Path]:
             continue
         if resolved.is_file() and resolved.suffix.lower() == ".exe" and resolved not in result:
             result.append(resolved)
-    return result
+    # JianYing keeps older versioned executables after an in-place upgrade.
+    # Prefer the newest installed build so a persisted 5.x path cannot mask a
+    # newly installed 11.x build.
+    return sorted(
+        result,
+        key=lambda item: jianying_version_key(detect_jianying_version(item)),
+        reverse=True,
+    )
 
 
 def _windows_file_version(path: Path) -> str:
@@ -276,6 +283,40 @@ def detect_jianying_version(path: Path | str) -> str:
         if version_pattern.fullmatch(parent.name):
             return parent.name
     return ""
+
+
+def jianying_version_key(version: str) -> tuple[int, ...]:
+    """Return a comparable numeric key for a JianYing version string."""
+    parts = [int(item) for item in re.findall(r"\d+", str(version or ""))]
+    return tuple(parts) if parts else (0,)
+
+
+def prefer_newest_jianying_executable(
+    configured: Path | str,
+    detected: list[Path] | None = None,
+) -> Path | None:
+    """Keep a valid configured EXE unless a newer JianYing build is installed."""
+    candidates = list(detected if detected is not None else detect_jianying_executables())
+    configured_path: Path | None = None
+    raw = str(configured or "").strip()
+    if raw:
+        candidate = Path(raw).expanduser()
+        if candidate.is_file():
+            configured_path = candidate.resolve()
+            if configured_path not in candidates:
+                candidates.append(configured_path)
+    if not candidates:
+        return configured_path
+
+    newest = max(
+        candidates,
+        key=lambda item: jianying_version_key(detect_jianying_version(item)),
+    )
+    if configured_path is None:
+        return newest
+    configured_key = jianying_version_key(detect_jianying_version(configured_path))
+    newest_key = jianying_version_key(detect_jianying_version(newest))
+    return newest if newest_key > configured_key else configured_path
 
 
 def validate_draft_root(path: Path | str) -> Path:

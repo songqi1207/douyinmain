@@ -32,6 +32,7 @@ from desktop_bridge.device_agent import (
 from desktop_bridge.draft_core import (
     BridgeError as DraftCoreBridgeError,
     detect_jianying_version,
+    prefer_newest_jianying_executable,
 )
 from desktop_bridge.paths import app_data_dir
 import desktop_bridge.app as bridge_app
@@ -374,6 +375,55 @@ class DesktopBridgeTests(unittest.TestCase):
             )
             export_uia2.assert_called_once()
 
+    @patch(
+        "desktop_bridge.device_agent.detect_jianying_version",
+        return_value="11.2.5.12345",
+    )
+    @patch("desktop_bridge.device_agent._run_pyjianying_export")
+    @patch("desktop_bridge.device_agent.subprocess.run")
+    @patch("desktop_bridge.device_agent.import_draft_payload")
+    def test_modern_jianying_uses_restarted_compatibility_driver(
+        self,
+        import_payload,
+        run_compatibility_export,
+        run_pyjianying,
+        _detect_version,
+    ):
+        with tempfile.TemporaryDirectory(prefix="modern-jianying-test-") as temporary:
+            root = Path(temporary)
+            draft_root = root / "drafts"
+            output_root = root / "output"
+            executable = root / "JianyingPro.exe"
+            draft_root.mkdir()
+            executable.write_bytes(b"exe")
+            import_payload.return_value = {
+                "draft_id": "DRAFT-ID",
+                "draft_name": "DRAFT-ID",
+                "draft_dir": str(draft_root / "DRAFT-ID"),
+                "track_count": 2,
+                "segment_count": 3,
+                "warnings": [],
+            }
+
+            def complete_export(command, **_kwargs):
+                output_path = Path(command[command.index("-OutputPath") + 1])
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"mp4")
+                return MagicMock(returncode=0, stdout="", stderr="")
+
+            run_compatibility_export.side_effect = complete_export
+
+            result = _run_native_export(
+                {"job_id": "job-id", "draft_key": {"calls": []}},
+                str(draft_root),
+                str(executable),
+                output_root,
+            )
+
+            self.assertEqual(result.read_bytes(), b"mp4")
+            run_pyjianying.assert_not_called()
+            self.assertIn("-RestartExisting", run_compatibility_export.call_args.args[0])
+
     def test_jianying_automation_uses_full_description_controls(self):
         script = (
             Path(__file__).resolve().parents[1]
@@ -457,6 +507,48 @@ class DesktopBridgeTests(unittest.TestCase):
             executable.parent.mkdir(parents=True)
             executable.write_bytes(b"MZ")
             self.assertEqual(detect_jianying_version(executable), "6.8.0.12345")
+
+    def test_prefers_newer_installed_jianying_over_persisted_old_executable(self):
+        with tempfile.TemporaryDirectory(prefix="jianying-upgrade-") as temporary:
+            apps = Path(temporary) / "JianyingPro" / "Apps"
+            old_executable = apps / "5.9.0.11632" / "JianyingPro.exe"
+            new_executable = apps / "11.2.5.12345" / "JianyingPro.exe"
+            old_executable.parent.mkdir(parents=True)
+            new_executable.parent.mkdir(parents=True)
+            old_executable.write_bytes(b"MZ")
+            new_executable.write_bytes(b"MZ")
+
+            selected = prefer_newest_jianying_executable(
+                old_executable,
+                [old_executable, new_executable],
+            )
+
+            self.assertEqual(selected, new_executable.resolve())
+
+    @patch(
+        "desktop_bridge.app.detect_jianying_executables",
+    )
+    @patch("desktop_bridge.app.detect_draft_roots", return_value=[])
+    def test_default_paths_upgrade_persisted_jianying_path(
+        self,
+        _detect_roots,
+        detect_executables,
+    ):
+        with tempfile.TemporaryDirectory(prefix="jianying-default-upgrade-") as temporary:
+            apps = Path(temporary) / "JianyingPro" / "Apps"
+            old_executable = apps / "5.9.0.11632" / "JianyingPro.exe"
+            new_executable = apps / "11.2.5.12345" / "JianyingPro.exe"
+            old_executable.parent.mkdir(parents=True)
+            new_executable.parent.mkdir(parents=True)
+            old_executable.write_bytes(b"MZ")
+            new_executable.write_bytes(b"MZ")
+            detect_executables.return_value = [new_executable, old_executable]
+
+            _, selected = bridge_app._detected_default_paths(
+                {"jianying_exe": str(old_executable)}
+            )
+
+            self.assertEqual(Path(selected), new_executable.resolve())
 
     def test_parses_browser_wake_protocol_without_executing_shell_text(self):
         parsed = parse_protocol_url(
