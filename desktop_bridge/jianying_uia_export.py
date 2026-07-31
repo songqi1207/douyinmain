@@ -471,6 +471,7 @@ def export_draft_uia(
     timeout: int = 1800,
     stage: StageCallback | None = None,
     editor_export_calibration: dict[str, float] | None = None,
+    export_confirm_calibration: dict[str, float] | None = None,
 ) -> Path:
     """Open ``draft_name`` in JianYing, export it, and return the task MP4."""
 
@@ -627,14 +628,38 @@ def export_draft_uia(
     source = _resolve_export_path(_full_description(path_value), draft_name)
     _emit(stage, "uia2_export_path_ready", f"path={source}")
 
-    confirm = export_window.TextControl(
-        searchDepth=8,
-        Compare=_description_matcher("ExportOkBtn", exact=True),
+    confirm_calibration = export_confirm_calibration or {}
+    confirm_x_ratio = confirm_calibration.get("x_from_right_ratio")
+    confirm_y_ratio = confirm_calibration.get("y_from_bottom_ratio")
+    has_confirm_calibration = (
+        confirm_x_ratio is not None
+        and confirm_y_ratio is not None
+        and 0.01 <= float(confirm_x_ratio) <= 0.6
+        and 0.0 <= float(confirm_y_ratio) <= 0.35
     )
-    if not confirm.Exists(10, 0.25):
-        raise JianyingUIAError("UIA2 没有找到导出确认按钮")
-    confirm.Click(simulateMove=False)
-    _emit(stage, "uia2_export_confirmed")
+    if has_confirm_calibration:
+        left, top, right, bottom = _window_rect(export_window)
+        width = max(1, right - left)
+        height = max(1, bottom - top)
+        confirm_x = int(right - (width * float(confirm_x_ratio)))
+        confirm_y = int(bottom - (height * float(confirm_y_ratio)))
+        _emit(
+            stage,
+            "uia2_export_confirm_calibration_loaded",
+            f"x_from_right_ratio={confirm_x_ratio} "
+            f"y_from_bottom_ratio={confirm_y_ratio} x={confirm_x} y={confirm_y}",
+        )
+        _click_point(confirm_x, confirm_y)
+        _emit(stage, "uia2_export_confirmed", "mode=calibration")
+    else:
+        confirm = export_window.TextControl(
+            searchDepth=8,
+            Compare=_description_matcher("ExportOkBtn", exact=True),
+        )
+        if not confirm.Exists(10, 0.25):
+            raise JianyingUIAError("UIA2 没有找到导出确认按钮")
+        confirm.Click(simulateMove=False)
+        _emit(stage, "uia2_export_confirmed", "mode=control")
     _minimize_jianying_window(export_window, stage, "export_wait")
 
     deadline = time.monotonic() + max(30, int(timeout))

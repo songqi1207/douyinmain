@@ -11,6 +11,8 @@
     [int]$ResourceWaitSeconds = 0,
     [double]$EditorExportXFromRightRatio = -1,
     [double]$EditorExportYFromTopRatio = -1,
+    [double]$ExportConfirmXFromRightRatio = -1,
+    [double]$ExportConfirmYFromBottomRatio = -1,
     [switch]$RestartExisting
 )
 
@@ -577,16 +579,37 @@ function Invoke-ExportDialogByCoordinate([int]$ProcessId, [string]$Name, [string
     $nameY = [int]($rect.Top + ($height * 0.14))
     $pathX = [int]($rect.Left + ($width * 0.80))
     $pathY = [int]($rect.Top + ($height * 0.195))
-    # JianYing 11 places blue "导出" immediately to the left of "取消".
-    # On the 960x1080 export window its center is about (762, 1040).
-    $confirmX = [int]($rect.Right - [Math]::Min(230, [Math]::Max(150, $width * 0.20)))
-    $confirmY = [int]($rect.Bottom - [Math]::Min(48, [Math]::Max(34, $height * 0.038)))
+    $confirmPoint = Get-ExportConfirmPoint $rect
+    $confirmX = $confirmPoint.X
+    $confirmY = $confirmPoint.Y
     Write-Stage "export_dialog_coordinate_fields" "name_x=$nameX name_y=$nameY path_x=$pathX path_y=$pathY confirm_x=$confirmX confirm_y=$confirmY"
     Set-TextByCoordinate $nameX $nameY $Name
     Set-TextByCoordinate $pathX $pathY $Directory
     Invoke-Point $confirmX $confirmY
     Start-Sleep -Milliseconds 300
     [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+}
+
+function Get-ExportConfirmPoint($Rect) {
+    $width = [Math]::Max(1, $Rect.Right - $Rect.Left)
+    $height = [Math]::Max(1, $Rect.Bottom - $Rect.Top)
+    $hasCalibration = (
+        $ExportConfirmXFromRightRatio -ge 0.01 -and $ExportConfirmXFromRightRatio -le 0.6 -and
+        $ExportConfirmYFromBottomRatio -ge 0.0 -and $ExportConfirmYFromBottomRatio -le 0.35
+    )
+    if ($hasCalibration) {
+        $x = [int]($Rect.Right - ($width * $ExportConfirmXFromRightRatio))
+        $y = [int]($Rect.Bottom - ($height * $ExportConfirmYFromBottomRatio))
+        Write-Stage "export_confirm_calibration_loaded" "x_from_right_ratio=$ExportConfirmXFromRightRatio y_from_bottom_ratio=$ExportConfirmYFromBottomRatio x=$x y=$y"
+        return @{ X = $x; Y = $y; Calibrated = $true }
+    }
+    # JianYing 11 places blue "导出" immediately to the left of "取消".
+    # On the 960x1080 export window its center is about (762, 1040).
+    return @{
+        X = [int]($Rect.Right - [Math]::Min(230, [Math]::Max(150, $width * 0.20)))
+        Y = [int]($Rect.Bottom - [Math]::Min(48, [Math]::Max(34, $height * 0.038)))
+        Calibrated = $false
+    }
 }
 
 function Get-CandidateOutputPaths {
@@ -1188,11 +1211,21 @@ $confirm = $dialogElements | Where-Object {
     @{Expression = {$_.Current.BoundingRectangle.Y}; Descending = $true}, `
     @{Expression = {$_.Current.BoundingRectangle.X}; Descending = $true} |
     Select-Object -First 1
-if (-not $confirm) {
-    $width = [Math]::Max(1, $exportRect.Width)
-    $height = [Math]::Max(1, $exportRect.Height)
-    $confirmX = [int]($exportRect.Right - [Math]::Min(230, [Math]::Max(150, $width * 0.20)))
-    $confirmY = [int]($exportRect.Bottom - [Math]::Min(48, [Math]::Max(34, $height * 0.038)))
+if (
+    $ExportConfirmXFromRightRatio -ge 0.01 -and $ExportConfirmXFromRightRatio -le 0.6 -and
+    $ExportConfirmYFromBottomRatio -ge 0.0 -and $ExportConfirmYFromBottomRatio -le 0.35
+) {
+    $confirmPoint = Get-ExportConfirmPoint $exportRect
+    $confirmX = $confirmPoint.X
+    $confirmY = $confirmPoint.Y
+    Write-Stage "export_confirm_coordinate_click" "x=$confirmX y=$confirmY mode=calibration"
+    Invoke-Point $confirmX $confirmY
+    Write-Stage "export_confirmed" "mode=calibration"
+}
+elseif (-not $confirm) {
+    $confirmPoint = Get-ExportConfirmPoint $exportRect
+    $confirmX = $confirmPoint.X
+    $confirmY = $confirmPoint.Y
     Write-Stage "export_confirm_coordinate_click" "x=$confirmX y=$confirmY"
     Invoke-Point $confirmX $confirmY
     Write-Stage "export_confirmed" "mode=coordinate_fallback"

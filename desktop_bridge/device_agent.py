@@ -29,7 +29,10 @@ from desktop_bridge.font_resources import (
     inspect_font_resources,
     required_font_resources,
 )
-from desktop_bridge.click_calibration import load_export_calibration
+from desktop_bridge.click_calibration import (
+    load_export_calibration,
+    load_export_confirm_calibration,
+)
 from desktop_bridge.helper_metadata import HELPER_VERSION
 from desktop_bridge.paths import app_data_dir
 
@@ -759,7 +762,9 @@ def _run_native_export_unlocked(
         "-ResourceWaitSeconds",
         str(resource_wait_seconds),
     ]
-    export_calibration = load_export_calibration(app_data_dir() / "settings.json")
+    settings_path = app_data_dir() / "settings.json"
+    export_calibration = load_export_calibration(settings_path)
+    export_confirm_calibration = load_export_confirm_calibration(settings_path)
     if export_calibration:
         command.extend(
             [
@@ -767,6 +772,15 @@ def _run_native_export_unlocked(
                 str(export_calibration["x_from_right_ratio"]),
                 "-EditorExportYFromTopRatio",
                 str(export_calibration["y_from_top_ratio"]),
+            ]
+        )
+    if export_confirm_calibration:
+        command.extend(
+            [
+                "-ExportConfirmXFromRightRatio",
+                str(export_confirm_calibration["x_from_right_ratio"]),
+                "-ExportConfirmYFromBottomRatio",
+                str(export_confirm_calibration["y_from_bottom_ratio"]),
             ]
         )
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -905,6 +919,7 @@ def _run_native_export_unlocked(
                     ),
                     stage=log_uia2_stage,
                     editor_export_calibration=export_calibration,
+                    export_confirm_calibration=export_confirm_calibration,
                 )
                 logger.info(
                     "jianying_uia2_fallback_finished job_id=%s size_bytes=%s",

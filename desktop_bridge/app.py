@@ -30,7 +30,11 @@ from desktop_bridge.device_agent import (
     pair_with_site,
     prepare_required_jianying_fonts,
 )
-from desktop_bridge.click_calibration import CALIBRATION_KEY, record_next_jianying_click
+from desktop_bridge.click_calibration import (
+    CALIBRATION_KEY,
+    CONFIRM_CALIBRATION_KEY,
+    record_jianying_export_clicks,
+)
 from desktop_bridge.helper_metadata import HELPER_PRODUCT_NAME, HELPER_VERSION
 from desktop_bridge.paths import app_data_dir
 from desktop_bridge.updater import download_and_launch_update
@@ -526,28 +530,35 @@ class DraftBridgeApp:
         from tkinter import messagebox
 
         confirmed = messagebox.askokcancel(
-            "校准剪映导出按钮",
+            "校准剪映的两个导出按钮",
             "请先让剪映停留在目标草稿编辑页。\n\n"
-            "点击“确定”后，助手会隐藏；请在 60 秒内手动点击一次右上角蓝色“导出”。\n"
-            "助手只记录这一次点击在剪映窗口中的相对坐标，不记录键盘或其他鼠标活动。\n"
+            "第 1 步：用左键点击编辑页右上角蓝色“导出”，打开导出窗口。\n"
+            "第 2 步：导出窗口出现后，用右键点击底部蓝色“导出”。\n\n"
+            "第二步使用右键，只记录位置，不会真正开始导出；助手不会记录其他鼠标活动。\n"
             "按 Esc 可以取消。",
         )
         if not confirmed:
             return
         self.calibrate_button.configure(state="disabled")
-        self.device_status_var.set("等待你点击剪映右上角的“导出”…")
+        self.device_status_var.set("等待两步校准：先左键右上角导出，再右键底部导出…")
         self.root.withdraw()
         threading.Thread(target=self._export_click_calibration_worker, daemon=True).start()
 
     def _export_click_calibration_worker(self) -> None:
         try:
-            calibration = record_next_jianying_click()
-            _save_settings({CALIBRATION_KEY: calibration})
-            self.settings[CALIBRATION_KEY] = calibration
+            editor_calibration, confirm_calibration = record_jianying_export_clicks()
+            _save_settings(
+                {
+                    CALIBRATION_KEY: editor_calibration,
+                    CONFIRM_CALIBRATION_KEY: confirm_calibration,
+                }
+            )
+            self.settings[CALIBRATION_KEY] = editor_calibration
+            self.settings[CONFIRM_CALIBRATION_KEY] = confirm_calibration
         except Exception as exc:
             self.root.after(0, self._finish_export_click_calibration, None, str(exc))
             return
-        self.root.after(0, self._finish_export_click_calibration, calibration, "")
+        self.root.after(0, self._finish_export_click_calibration, editor_calibration, "")
 
     def _finish_export_click_calibration(self, calibration: dict | None, error: str) -> None:
         from tkinter import messagebox
@@ -559,10 +570,10 @@ class DraftBridgeApp:
             self.device_status_var.set(f"导出按钮校准失败：{error}")
             messagebox.showerror("校准失败", error)
             return
-        self.device_status_var.set("剪映导出按钮位置已保存，后续任务将优先使用该位置")
+        self.device_status_var.set("剪映的两个导出按钮位置已保存，后续任务将优先使用校准位置")
         messagebox.showinfo(
             "校准完成",
-            "已保存本机剪映导出按钮位置。\n"
+            "已保存编辑页右上角和导出窗口底部的两个“导出”按钮位置。\n"
             "如果剪映已经打开导出窗口，可以点击“取消”返回编辑页。",
         )
 
