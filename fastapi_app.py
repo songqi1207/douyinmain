@@ -1106,6 +1106,7 @@ def api_draft_key_render_status(request: Request):
         "configured": configured,
         "device_online": device_online,
         "central_configured": central_configured,
+        "latest_helper_version": HELPER_VERSION,
         "devices": devices,
         "message": "本机剪映导出助手在线" if device_online else (
             "剪映原生导出服务可用" if central_configured else "请先配对并启动本机剪映导出助手"

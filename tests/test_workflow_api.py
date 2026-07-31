@@ -105,6 +105,12 @@ class WorkflowApiTests(unittest.TestCase):
                 hashlib.sha256(executable.read_bytes()).hexdigest(),
             )
 
+    def test_render_status_exposes_latest_helper_version(self):
+        response = self.client.get("/api/v1/draft-key-renders/status")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["latest_helper_version"], "1.4.37")
+
     def test_compatible_jianying_download_uses_verified_official_cdn(self):
         response = fastapi_app.api_download_compatible_jianying()
 
