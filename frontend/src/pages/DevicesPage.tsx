@@ -102,6 +102,12 @@ export function DevicesPage() {
     );
   }
 
+  function calibrateHelper() {
+    const query = new URLSearchParams({ site: window.location.origin });
+    window.location.href = `douyin-draft://calibrate?${query.toString()}`;
+    setMessage("正在打开助手的剪映导出按钮校准界面…");
+  }
+
   async function copyPairing() {
     if (!pairing) return;
     await navigator.clipboard.writeText(pairing.code);
@@ -152,6 +158,7 @@ export function DevicesPage() {
             <h2>下载 / 更新 AI 视频创作助手</h2>
             <p>当前最新版 {latestHelperVersion ? `v${latestHelperVersion}` : "检测中"}。已安装助手时可一键更新；未安装时请先下载安装包。</p>
             <button className="secondary-button" type="button" onClick={() => updateHelper()}><Download />一键更新最新版</button>
+            <button className="secondary-button" type="button" onClick={() => calibrateHelper()}><Laptop />校准导出按钮</button>
             <a
               className="subtle-link"
               href={`/api/v1/downloads/draft-bridge${latestHelperVersion ? `?v=${encodeURIComponent(latestHelperVersion)}` : ""}`}

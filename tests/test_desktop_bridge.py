@@ -78,6 +78,14 @@ class DesktopBridgeTests(unittest.TestCase):
 
         self.assertLess(source.index("self.root.withdraw()"), source.index("self._build_ui()"))
 
+    def test_headless_helper_can_open_explicit_click_calibration(self):
+        source = inspect.getsource(bridge_app.run_headless_agent)
+        handler_source = inspect.getsource(DraftBridgeApp._handle_protocol_url)
+
+        self.assertIn('get("action") == "calibrate"', source)
+        self.assertIn("start_export_click_calibration", source)
+        self.assertIn('action == "calibrate"', handler_source)
+
     @patch("pyJianYingDraft.JianyingController")
     def test_pyjianyingdraft_controller_exports_requested_draft(
         self,

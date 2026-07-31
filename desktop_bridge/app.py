@@ -168,6 +168,11 @@ def run_headless_agent(protocol_url: str = "") -> int:
                     agent.stop()
                     agent = None
                     time.sleep(0.5)
+                if parse_protocol_url(protocol_url).get("action") == "calibrate":
+                    application = DraftBridgeApp()
+                    application.root.after(350, application.start_export_click_calibration)
+                    application.run()
+                    return 0
                 settings = _load_settings()
                 settings, should_exit = _handle_headless_protocol(protocol_url, settings)
                 if should_exit:
@@ -375,6 +380,13 @@ class DraftBridgeApp:
             self.background_mode = True
             self.root.withdraw()
             self.start_update(site_url or str(self.settings.get("site_url") or ""))
+            return
+        if action == "calibrate":
+            self.background_mode = False
+            self.root.deiconify()
+            self.root.lift()
+            self.root.focus_force()
+            self.root.after(350, self.start_export_click_calibration)
             return
         current_site = str(self.settings.get("site_url") or "").rstrip("/")
         needs_pairing = pairing_code and (
