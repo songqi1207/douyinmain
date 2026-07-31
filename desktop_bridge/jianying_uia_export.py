@@ -333,16 +333,40 @@ def _get_window(auto):
     if not window.Exists(2, 0.2):
         raise JianyingUIAError("UIA2 没有找到剪映主页或编辑窗口")
 
+    def is_real_export_window(control: object) -> bool:
+        rect = _control_rect(control)
+        if not rect or (rect[2] - rect[0]) < 420 or (rect[3] - rect[1]) < 320:
+            return False
+        if "exportwindow" in str(getattr(control, "ClassName", "") or "").casefold():
+            return True
+        path_marker = control.TextControl(  # type: ignore[attr-defined]
+            searchDepth=8,
+            Compare=lambda item, _depth: (
+                "exportpath" in _full_description(item).casefold()
+                or any(
+                    token in str(getattr(item, "Name", "") or "").casefold()
+                    for token in ("导出至", "保存位置", "分辨率", "export path")
+                )
+            ),
+        )
+        return bool(path_marker.Exists(0))
+
+    export_window = window.WindowControl(
+        searchDepth=2,
+        Compare=lambda control, _depth: (
+            "ExportWindow".casefold() in str(control.ClassName or "").casefold()
+        ),
+    )
+    if export_window.Exists(0) and is_real_export_window(export_window):
+        return export_window, "pre_export"
     export_window = window.WindowControl(
         searchDepth=2,
         Compare=lambda control, _depth: (
             str(control.Name or "").strip().casefold().startswith("导出")
             or "export" in str(control.Name or "").strip().casefold()
-            or "ExportWindow".casefold()
-            in str(control.ClassName or "").casefold()
         ),
     )
-    if export_window.Exists(0):
+    if export_window.Exists(0) and is_real_export_window(export_window):
         return export_window, "pre_export"
     return window, state["value"]
 

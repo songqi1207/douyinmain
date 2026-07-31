@@ -450,23 +450,38 @@ function Get-ExportWindowRect([int]$ProcessId) {
 }
 
 function Get-ExportDialogRoot([int]$ProcessId) {
+    function Test-RealExportDialog($Element) {
+        try {
+            $rect = $Element.Current.BoundingRectangle
+            if ($rect.Width -lt 420 -or $rect.Height -lt 320) {
+                return $false
+            }
+            $className = [string]$Element.Current.ClassName
+            if ($className -match 'ExportWindow') {
+                return $true
+            }
+            $dialogText = Get-SubtreeText $Element 180
+            return $dialogText -match '(导出至|视频导出|音频导出|保存位置|分辨率|ExportPath|ExportOkBtn)'
+        }
+        catch {
+            return $false
+        }
+    }
+
     $rootWindow = Get-ProcessRoots $ProcessId | Where-Object {
-        $_.Current.ClassName -match 'ExportWindow' -or
-        (
-            $_.Current.Name -match '^\s*导出' -and
-            $_.Current.ClassName -notmatch 'HomePage'
-        )
+        ($_.Current.ClassName -match 'ExportWindow' -or
+            ($_.Current.Name -match '^\s*导出' -and $_.Current.ClassName -notmatch 'HomePage')) -and
+        (Test-RealExportDialog $_)
     } | Select-Object -First 1
     if ($rootWindow) {
         return $rootWindow
     }
     return Get-VisibleElements $ProcessId | Where-Object {
-        $_.Current.AutomationId -match 'ExportWindow_Container' -or
-        $_.Current.ClassName -match '(^|_)Export(_|$)|Export_QMLTYPE' -or
-        (
-            $_.Current.Name -match '^\s*导出\s*$' -and
-            $_.Current.ControlType.ProgrammaticName -match 'Window'
-        )
+        ($_.Current.AutomationId -match 'ExportWindow_Container' -or
+            $_.Current.ClassName -match '(^|_)Export(_|$)|Export_QMLTYPE' -or
+            ($_.Current.Name -match '^\s*导出\s*$' -and
+                $_.Current.ControlType.ProgrammaticName -match 'Window')) -and
+        (Test-RealExportDialog $_)
     } | Sort-Object `
         @{Expression = {$_.Current.BoundingRectangle.Width * $_.Current.BoundingRectangle.Height}; Descending = $true} |
         Select-Object -First 1

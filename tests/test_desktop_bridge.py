@@ -447,6 +447,8 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "editor_export_coordinate_click"', script)
         self.assertIn('Write-Stage "editor_export_control_point_click"', script)
         self.assertIn('Write-Stage "editor_export_control_click_unverified"', script)
+        self.assertIn("Test-RealExportDialog", script)
+        self.assertIn("$rect.Width -lt 420", script)
         self.assertIn("$width * 0.105", script)
         self.assertIn("$height * 0.023", script)
         self.assertIn('Write-Stage "export_confirm_control_ready"', script)
@@ -463,6 +465,8 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertNotIn(".SetTopmost()", uia_source)
         self.assertIn('"uia2_export_coordinate_click"', uia_source)
         self.assertIn('"uia2_export_control_point_click"', uia_source)
+        self.assertIn("is_real_export_window", uia_source)
+        self.assertIn("(rect[2] - rect[0]) < 420", uia_source)
         self.assertIn("width * 0.105", uia_source)
         self.assertIn("height * 0.023", uia_source)
 
