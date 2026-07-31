@@ -501,10 +501,10 @@ function Invoke-ExportDialogByCoordinate([int]$ProcessId, [string]$Name, [string
     $nameY = [int]($rect.Top + ($height * 0.14))
     $pathX = [int]($rect.Left + ($width * 0.80))
     $pathY = [int]($rect.Top + ($height * 0.195))
-    # JianYing 11 places the real confirmation button at the bottom-right.
-    # Never reuse a top title element named "导出" as the confirmation target.
-    $confirmX = [int]($rect.Right - [Math]::Min(120, [Math]::Max(75, $width * 0.08)))
-    $confirmY = [int]($rect.Bottom - [Math]::Min(50, [Math]::Max(38, $height * 0.05)))
+    # JianYing 11 places blue "导出" immediately to the left of "取消".
+    # On the 960x1080 export window its center is about (762, 1040).
+    $confirmX = [int]($rect.Right - [Math]::Min(230, [Math]::Max(150, $width * 0.20)))
+    $confirmY = [int]($rect.Bottom - [Math]::Min(48, [Math]::Max(34, $height * 0.038)))
     Write-Stage "export_dialog_coordinate_fields" "name_x=$nameX name_y=$nameY path_x=$pathX path_y=$pathY confirm_x=$confirmX confirm_y=$confirmY"
     Set-TextByCoordinate $nameX $nameY $Name
     Set-TextByCoordinate $pathX $pathY $Directory
@@ -1094,8 +1094,8 @@ $confirm = $dialogElements | Where-Object {
 if (-not $confirm) {
     $width = [Math]::Max(1, $exportRect.Width)
     $height = [Math]::Max(1, $exportRect.Height)
-    $confirmX = [int]($exportRect.Right - [Math]::Min(120, [Math]::Max(75, $width * 0.08)))
-    $confirmY = [int]($exportRect.Bottom - [Math]::Min(55, [Math]::Max(38, $height * 0.055)))
+    $confirmX = [int]($exportRect.Right - [Math]::Min(230, [Math]::Max(150, $width * 0.20)))
+    $confirmY = [int]($exportRect.Bottom - [Math]::Min(48, [Math]::Max(34, $height * 0.038)))
     Write-Stage "export_confirm_coordinate_click" "x=$confirmX y=$confirmY"
     Invoke-Point $confirmX $confirmY
     Write-Stage "export_confirmed" "mode=coordinate_fallback"
