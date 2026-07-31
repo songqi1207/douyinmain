@@ -309,8 +309,28 @@ def _window_rect(window: object) -> tuple[int, int, int, int]:
     return int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
 
 
-def _open_home_draft_by_coordinate(auto, window: object, stage: StageCallback | None):
+def _open_home_draft_by_coordinate(
+    auto,
+    window: object,
+    stage: StageCallback | None,
+    draft_name: str = "",
+):
     _force_foreground(window)
+    if draft_name:
+        left, top, right, bottom = _window_rect(window)
+        search_x = int(left + ((right - left) * 0.795))
+        search_y = int(top + ((bottom - top) * 0.600))
+        _emit(
+            stage,
+            "uia2_draft_search_coordinate_click",
+            f"x={search_x} y={search_y} query={draft_name}",
+        )
+        _click_point(search_x, search_y)
+        time.sleep(0.3)
+        auto.SendKeys("{Ctrl}a")
+        auto.SendKeys(draft_name)
+        time.sleep(2)
+        _emit(stage, "uia2_draft_search_applied", f"query={draft_name}")
     project_item = _first_home_project_item(window)
     if project_item is not None:
         _dismiss_process_popups(window, stage)
@@ -511,7 +531,7 @@ def export_draft_uia(
         if not draft_title.Exists(15, 0.25):
             _emit(stage, "uia2_draft_card_not_found", f"draft_name={draft_name}")
             _dismiss_process_popups(window, stage)
-            editor = _open_home_draft_by_coordinate(auto, window, stage)
+            editor = _open_home_draft_by_coordinate(auto, window, stage, draft_name)
             _emit(stage, "uia2_draft_opened", "mode=coordinate")
         else:
             draft_button = draft_title.GetParentControl()
@@ -524,7 +544,7 @@ def export_draft_uia(
             except JianyingUIAError:
                 _emit(stage, "uia2_draft_open_retry", f"draft_name={draft_name}")
                 _dismiss_process_popups(window, stage)
-                editor = _open_home_draft_by_coordinate(auto, window, stage)
+                editor = _open_home_draft_by_coordinate(auto, window, stage, draft_name)
                 mode = "coordinate_retry"
             _emit(stage, "uia2_draft_opened", f"mode={mode}")
     elif current_state == "edit":

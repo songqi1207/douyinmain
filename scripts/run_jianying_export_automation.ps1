@@ -180,10 +180,14 @@ function Wait-EditorRoot([int]$ProcessId, [int]$Seconds) {
     $deadline = (Get-Date).AddSeconds($Seconds)
     $lastDismiss = (Get-Date).AddSeconds(-10)
     while ((Get-Date) -lt $deadline) {
-        $root = Get-ProcessRoots $ProcessId | Where-Object {
-            $_.Current.ClassName -match 'MainWindow'
+        $roots = @(Get-ProcessRoots $ProcessId)
+        $homeRoot = $roots | Where-Object {
+            $_.Current.ClassName -match 'HomePage' -and -not $_.Current.IsOffscreen
         } | Select-Object -First 1
-        if ($root) {
+        $root = $roots | Where-Object {
+            $_.Current.ClassName -match 'MainWindow' -and -not $_.Current.IsOffscreen
+        } | Select-Object -First 1
+        if ($root -and -not $homeRoot) {
             return $root
         }
         if ((Get-Date) -ge $lastDismiss.AddSeconds(3)) {
@@ -483,6 +487,25 @@ function Invoke-EditorExportByCoordinate($Process) {
             Start-Sleep -Milliseconds 300
         }
     }
+}
+
+function Set-HomeDraftSearchByCoordinate($Process, [string]$Query) {
+    if (-not $Query) {
+        return
+    }
+    $rect = Get-WindowRect $Process
+    $width = [Math]::Max(1, $rect.Right - $rect.Left)
+    $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
+    # JianYing 11 local-drafts search icon is at about 79.5% width / 60% height.
+    $x = [int]($rect.Left + ($width * 0.795))
+    $y = [int]($rect.Top + ($height * 0.600))
+    Write-Stage "draft_search_coordinate_click" "x=$x y=$y query=$Query"
+    Invoke-Point $x $y
+    Start-Sleep -Milliseconds 300
+    [System.Windows.Forms.SendKeys]::SendWait("^a")
+    [System.Windows.Forms.SendKeys]::SendWait($Query)
+    Start-Sleep -Seconds 2
+    Write-Stage "draft_search_applied" "query=$Query"
 }
 
 function Get-ExportWindowRect([int]$ProcessId) {
@@ -975,6 +998,7 @@ $draft = $null
 if ($coordinateDraftFallback) {
     Dismiss-JianyingPopups $process.Id | Out-Null
     Clear-HomeSearchFields $process.Id | Out-Null
+    Set-HomeDraftSearchByCoordinate $process $DraftName
     Invoke-HomeDraftCardByCoordinate $process
     Start-Sleep -Seconds 8
 }
@@ -992,6 +1016,7 @@ else {
         Dismiss-JianyingPopups $process.Id | Out-Null
         Clear-HomeSearchFields $process.Id | Out-Null
         Start-Sleep -Milliseconds 400
+        Set-HomeDraftSearchByCoordinate $process $DraftName
         $projectItem = Get-FirstHomeProjectItem $process.Id
         if ($projectItem) {
             $draft = $projectItem
@@ -1068,9 +1093,7 @@ catch {
         throw "坐标点击后没有进入剪映草稿编辑页"
     }
     Dismiss-JianyingPopups $process.Id | Out-Null
-    $editorRoot = Get-ProcessRoots $process.Id | Where-Object {
-        $_.Current.ClassName -match 'MainWindow'
-    } | Select-Object -First 1
+    $editorRoot = Wait-EditorRoot $process.Id 2
     if (-not $editorRoot) {
         Write-Stage "draft_open_retry" "reason=still_on_home"
         $retryItem = Get-FirstHomeProjectItem $process.Id

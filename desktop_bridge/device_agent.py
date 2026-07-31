@@ -627,7 +627,10 @@ def _run_native_export_unlocked(
     report = import_draft_payload(
         task.get("draft_key"),
         draft_root=root,
-        force=True,
+        # Reuse an intact import when the same render is retried. Recreating it
+        # while JianYing still caches the old home card leaves a dead card that
+        # cannot be opened on JianYing 11.
+        force=False,
         progress=progress,
     )
     draft_name = str(report.get("draft_name") or "").strip()

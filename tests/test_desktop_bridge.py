@@ -502,6 +502,7 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "physical_click_sent"', script)
         self.assertIn('Write-Stage "window_click_sent"', script)
         self.assertIn('Write-Stage "editor_export_calibration_loaded"', script)
+        self.assertIn('Write-Stage "draft_search_applied"', script)
         self.assertIn('Write-Stage "export_confirm_calibration_loaded"', script)
         self.assertIn("$width * 0.105", script)
         self.assertIn("$height * 0.023", script)
@@ -524,6 +525,7 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn("_enable_dpi_awareness()", uia_source)
         self.assertIn('"uia2_export_window_message_click"', uia_source)
         self.assertIn('"uia2_export_calibration_loaded"', uia_source)
+        self.assertIn('"uia2_draft_search_applied"', uia_source)
         self.assertIn('"uia2_export_confirm_calibration_loaded"', uia_source)
         device_agent_source = (
             Path(__file__).resolve().parents[1]
