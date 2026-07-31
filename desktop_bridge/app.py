@@ -23,7 +23,12 @@ from desktop_bridge.draft_core import (
     load_payload_file,
     open_directory,
 )
-from desktop_bridge.device_agent import DeviceAgent, agent_log_path, pair_with_site
+from desktop_bridge.device_agent import (
+    DeviceAgent,
+    agent_log_path,
+    pair_with_site,
+    prepare_required_jianying_fonts,
+)
 from desktop_bridge.helper_metadata import HELPER_PRODUCT_NAME, HELPER_VERSION
 from desktop_bridge.paths import app_data_dir
 from desktop_bridge.updater import download_and_launch_update
@@ -251,6 +256,18 @@ class DraftBridgeApp:
         )
         self.ttk.Button(device, text="查看日志", command=self.open_device_logs).grid(
             row=3, column=4, padx=(10, 0), pady=(6, 0)
+        )
+        self.font_button = self.ttk.Button(
+            device,
+            text="检查并下载工作流字体",
+            command=self.start_font_prepare,
+        )
+        self.font_button.grid(
+            row=3,
+            column=0,
+            columnspan=2,
+            sticky="w",
+            pady=(6, 0),
         )
         self.ttk.Label(device, textvariable=self.device_status_var, foreground="#19714a").grid(
             row=2, column=0, columnspan=4, sticky="w", pady=(6, 0)
@@ -485,6 +502,61 @@ class DraftBridgeApp:
         path.parent.mkdir(parents=True, exist_ok=True)
         open_directory(path.parent)
 
+    def start_font_prepare(self) -> None:
+        draft_root = self.draft_root_var.get().strip()
+        jianying_exe = self.jianying_exe_var.get().strip()
+        if not draft_root or not Path(draft_root).is_dir():
+            self.show_error("没有检测到剪映草稿目录，请先选择正确目录")
+            return
+        if not jianying_exe or not Path(jianying_exe).is_file():
+            self.show_error("没有检测到剪映程序，请先选择 JianyingPro.exe")
+            return
+        self._persist_paths()
+        self.font_button.configure(state="disabled")
+        self.device_status_var.set("正在检查工作流字体…")
+        threading.Thread(
+            target=self._font_prepare_worker,
+            args=(draft_root, jianying_exe),
+            daemon=True,
+        ).start()
+
+    def _font_prepare_worker(self, draft_root: str, jianying_exe: str) -> None:
+        try:
+            report = prepare_required_jianying_fonts(
+                draft_root,
+                jianying_exe,
+                progress=self._set_device_status,
+            )
+        except Exception as exc:
+            self.root.after(0, self._finish_font_prepare_error, str(exc))
+            return
+        self.root.after(0, self._finish_font_prepare_success, report)
+
+    def _finish_font_prepare_error(self, message: str) -> None:
+        self.font_button.configure(state="normal")
+        self.device_status_var.set(f"字体准备失败：{message}")
+        self.background_mode = False
+        self.root.deiconify()
+        self.root.lift()
+        self.show_error(message)
+
+    def _finish_font_prepare_success(self, report: dict) -> None:
+        self.font_button.configure(state="normal")
+        downloaded = [str(item) for item in report.get("downloaded") or []]
+        already_available = [
+            str(item) for item in report.get("already_available") or []
+        ]
+        detail_lines = ["工作流所需字体已经全部可用。"]
+        if downloaded:
+            detail_lines.append("本次下载：" + "、".join(downloaded))
+        if already_available:
+            detail_lines.append("原本已有：" + "、".join(already_available))
+        message = "\n".join(detail_lines)
+        self.device_status_var.set(message.replace("\n", "；"))
+        from tkinter import messagebox
+
+        messagebox.showinfo("字体准备完成", message)
+
     def choose_draft_root(self) -> None:
         from tkinter import filedialog
 
@@ -634,6 +706,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--jianying-exe", help="JianyingPro.exe 路径")
     parser.add_argument("--background", action="store_true", help="后台启动网站剪映任务助手")
     parser.add_argument("--protocol", help="处理 douyin-draft:// 网页唤醒地址")
+    parser.add_argument(
+        "--prepare-fonts",
+        action="store_true",
+        help="通过剪映官方资源机制下载并验证全部工作流字体",
+    )
     parser.add_argument("--no-gui", action="store_true", help="命令行模式")
     args = parser.parse_args(argv)
 
@@ -653,6 +730,30 @@ def main(argv: list[str] | None = None) -> int:
             start_hidden=bool(args.background or protocol.get("action") in {"wake", "update"}),
             protocol_url=protocol_url,
         ).run()
+        return 0
+    if args.prepare_fonts:
+        roots = detect_draft_roots()
+        executables = detect_jianying_executables()
+        draft_root = args.draft_root or (str(roots[0]) if roots else "")
+        executable = args.jianying_exe or (
+            str(executables[0]) if executables else ""
+        )
+        if not draft_root or not executable:
+            print(
+                "没有检测到剪映草稿目录或 JianyingPro.exe，请传 --draft-root 和 --jianying-exe",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            report = prepare_required_jianying_fonts(
+                draft_root,
+                executable,
+                progress=lambda message: print(message, file=sys.stderr),
+            )
+        except BridgeError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
     if not args.key:
         parser.error("--no-gui 需要 --key")

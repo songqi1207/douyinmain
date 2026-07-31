@@ -21,6 +21,13 @@ from desktop_bridge.draft_core import (
     detect_jianying_version,
     import_draft_payload,
 )
+from desktop_bridge.font_resources import (
+    bind_cached_fonts,
+    build_font_preload_key,
+    font_resources_from_import_report,
+    inspect_font_resources,
+    required_font_resources,
+)
 from desktop_bridge.helper_metadata import HELPER_VERSION
 from desktop_bridge.paths import app_data_dir
 
@@ -28,6 +35,11 @@ from desktop_bridge.paths import app_data_dir
 StatusCallback = Callable[[str], None]
 logger = logging.getLogger("douyin.render_agent")
 logger.addHandler(logging.NullHandler())
+_JIANYING_OPERATION_LOCK = threading.RLock()
+
+
+class FontResourceUnavailable(BridgeError):
+    """Raised when Jianying did not download a required cloud font."""
 
 
 def agent_log_path() -> Path:
@@ -135,6 +147,7 @@ def _prime_jianying_cloud_resources(
     draft_name: str,
     wait_seconds: int,
     job_id: str,
+    ready_check: Callable[[], bool] | None = None,
 ) -> bool:
     """Open a draft once and let Jianying cache all cloud-backed materials."""
     settle_seconds = max(0, int(wait_seconds or 0))
@@ -197,7 +210,19 @@ def _prime_jianying_cloud_resources(
             settle_seconds,
             open_mode,
         )
-        time.sleep(settle_seconds)
+        if ready_check is None:
+            time.sleep(settle_seconds)
+        else:
+            settle_deadline = time.monotonic() + settle_seconds
+            while time.monotonic() < settle_deadline:
+                if ready_check():
+                    logger.info(
+                        "resource_preload_ready job_id=%s draft_name=%s",
+                        job_id,
+                        draft_name,
+                    )
+                    break
+                time.sleep(1)
         controller.get_window()
         controller.switch_to_home()
         logger.info(
@@ -223,6 +248,10 @@ def _run_pyjianying_export(
     timeout: int,
     job_id: str,
     resource_wait_seconds: int = 0,
+    *,
+    draft_dir: Path | str = "",
+    draft_root: Path | str = "",
+    font_resources: list[dict[str, str]] | None = None,
 ) -> Path:
     """Export through pyJianYingDraft before using our compatibility drivers."""
     skip_py_export = (
@@ -278,7 +307,37 @@ def _run_pyjianying_export(
         draft_name,
         resource_wait_seconds,
         job_id,
+        ready_check=(
+            lambda: all(
+                item.get("available")
+                for item in inspect_font_resources(
+                    font_resources,
+                    draft_root=draft_root,
+                )
+            )
+            if font_resources
+            else None
+        ),
     )
+    if font_resources:
+        font_binding = bind_cached_fonts(
+            draft_dir,
+            font_resources,
+            draft_root=draft_root,
+        )
+        missing_fonts = font_binding.get("missing") or []
+        if missing_fonts:
+            names = "、".join(str(item) for item in missing_fonts)
+            raise FontResourceUnavailable(
+                "剪映没有成功下载所需字体，已停止导出以避免替换成默认字体："
+                + names
+                + "。请在助手中点击“检查并下载工作流字体”，或升级剪映后重试。"
+            )
+        logger.info(
+            "font_cache_bound job_id=%s fonts=%s",
+            job_id,
+            ",".join(font_binding.get("bound") or []),
+        )
     logger.info(
         "pyjianying_export_started job_id=%s draft_name=%s timeout_seconds=%s",
         job_id,
@@ -344,7 +403,172 @@ def _run_pyjianying_export(
     return output_path
 
 
+def prepare_required_jianying_fonts(
+    draft_root: Path | str,
+    jianying_exe: Path | str,
+    *,
+    progress: StatusCallback | None = None,
+    wait_seconds: int = 180,
+) -> dict:
+    """Ask Jianying to download and cache every production workflow font."""
+    with _JIANYING_OPERATION_LOCK:
+        return _prepare_required_jianying_fonts_unlocked(
+            draft_root,
+            jianying_exe,
+            progress=progress,
+            wait_seconds=wait_seconds,
+        )
+
+
+def _prepare_required_jianying_fonts_unlocked(
+    draft_root: Path | str,
+    jianying_exe: Path | str,
+    *,
+    progress: StatusCallback | None = None,
+    wait_seconds: int = 180,
+) -> dict:
+    root = Path(draft_root).expanduser().resolve()
+    executable = Path(jianying_exe).expanduser().resolve()
+    if not root.is_dir():
+        raise BridgeError(f"剪映草稿目录不存在：{root}")
+    if not executable.is_file():
+        raise BridgeError(f"剪映程序不存在：{executable}")
+
+    resources = required_font_resources()
+    statuses = inspect_font_resources(resources, draft_root=root)
+    missing = [item for item in statuses if not item.get("available")]
+    if not missing:
+        if progress:
+            progress("工作流所需字体均已下载")
+        return {
+            "prepared": True,
+            "downloaded": [],
+            "already_available": [item["name"] for item in statuses],
+            "missing": [],
+            "statuses": statuses,
+        }
+
+    missing_names = "、".join(str(item["name"]) for item in missing)
+    if progress:
+        progress(f"正在创建字体准备草稿：{missing_names}")
+    report = import_draft_payload(
+        build_font_preload_key(missing),
+        draft_root=root,
+        force=False,
+        progress=progress,
+    )
+    draft_name = str(report.get("draft_name") or "").strip()
+    if not draft_name:
+        raise BridgeError("字体准备草稿创建失败：没有得到草稿名称")
+
+    try:
+        from pyJianYingDraft import JianyingController
+    except ImportError as exc:
+        raise BridgeError("助手缺少 pyJianYingDraft 字体准备组件") from exc
+
+    controller = None
+    last_error: Exception | None = None
+    try:
+        controller = JianyingController()
+    except Exception as exc:
+        last_error = exc
+
+    if controller is None:
+        if progress:
+            progress("正在启动剪映并准备下载字体")
+        subprocess.Popen(
+            [
+                str(executable),
+                "--force-renderer-accessibility",
+                "--enable-accessibility",
+            ],
+            cwd=str(executable.parent),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            try:
+                controller = JianyingController()
+                break
+            except Exception as exc:
+                last_error = exc
+                time.sleep(1)
+    if controller is None:
+        raise BridgeError(f"字体准备失败，助手没有找到剪映窗口：{last_error}")
+
+    settle_seconds = max(15, min(300, int(wait_seconds or 180)))
+    if progress:
+        progress(
+            f"剪映正在下载 {len(missing)} 个字体，最长等待 {settle_seconds} 秒"
+        )
+    opened = _prime_jianying_cloud_resources(
+        controller,
+        draft_name,
+        settle_seconds,
+        "font-preload",
+        ready_check=lambda: all(
+            item.get("available")
+            for item in inspect_font_resources(missing, draft_root=root)
+        ),
+    )
+    if not opened:
+        raise BridgeError("字体准备草稿无法在剪映中打开，请确认剪映停留在首页后重试")
+
+    binding = bind_cached_fonts(
+        report.get("draft_dir") or "",
+        missing,
+        draft_root=root,
+    )
+    final_statuses = inspect_font_resources(resources, draft_root=root)
+    still_missing = [
+        str(item["name"])
+        for item in final_statuses
+        if not item.get("available")
+    ]
+    if still_missing:
+        raise FontResourceUnavailable(
+            "以下字体未能通过剪映官方资源下载："
+            + "、".join(still_missing)
+            + "。当前剪映版本可能不支持这些字体，请升级剪映或先在剪映字体面板中手动下载。"
+        )
+
+    downloaded = [
+        str(item["name"])
+        for item in missing
+        if item.get("name") not in (binding.get("missing") or [])
+    ]
+    if progress:
+        progress("工作流字体准备完成：" + "、".join(downloaded))
+    return {
+        "prepared": True,
+        "downloaded": downloaded,
+        "already_available": [
+            item["name"] for item in statuses if item.get("available")
+        ],
+        "missing": [],
+        "statuses": final_statuses,
+        "draft_dir": report.get("draft_dir") or "",
+    }
+
+
 def _run_native_export(
+    task: dict,
+    draft_root: str,
+    jianying_exe: str,
+    output_dir: Path,
+    progress: StatusCallback | None = None,
+) -> Path:
+    with _JIANYING_OPERATION_LOCK:
+        return _run_native_export_unlocked(
+            task,
+            draft_root,
+            jianying_exe,
+            output_dir,
+            progress,
+        )
+
+
+def _run_native_export_unlocked(
     task: dict,
     draft_root: str,
     jianying_exe: str,
@@ -408,6 +632,7 @@ def _run_native_export(
             messages += f" 等 {len(quality_issues)} 项"
         raise BridgeError("成片质量检查未通过，已停止导出：" + messages)
     cloud_resources = report.get("cloud_resources") or []
+    font_resources = font_resources_from_import_report(report)
     resource_wait_seconds = _cloud_resource_wait_seconds(len(cloud_resources))
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -436,7 +661,12 @@ def _run_native_export(
             export_timeout,
             job_id,
             resource_wait_seconds=resource_wait_seconds,
+            draft_dir=report.get("draft_dir") or "",
+            draft_root=root,
+            font_resources=font_resources,
         )
+    except FontResourceUnavailable:
+        raise
     except Exception as exc:
         logger.warning(
             "pyjianying_export_failed job_id=%s fallback=compatibility_driver error=%s",
