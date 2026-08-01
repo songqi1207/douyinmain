@@ -27,10 +27,36 @@ import fastapi_app
 from fastapi_app import app
 import workflow_jobs
 from workflow_jobs import _post_coze_workflow, _provider_inputs, _run_coze
-from workflow_registry import get_workflow
+from workflow_registry import get_workflow, runtime_input_schema
 
 
 class WorkflowApiTests(unittest.TestCase):
+    def test_runtime_voice_inputs_use_concrete_voice_names(self):
+        with patch.dict(
+            os.environ,
+            {
+                "COZE_VOICE_OPTIONS_JSON": json.dumps(
+                    [
+                        {"label": "爽快思思 / Skye", "value": "7620288417930297386"},
+                        {"label": "自定义音色", "value": "voice-custom"},
+                    ],
+                    ensure_ascii=False,
+                )
+            },
+        ):
+            schema = runtime_input_schema({"code": "OWN03", "input_schema": []})
+
+        voice = next(field for field in schema if field["name"] == "yinse")
+        self.assertEqual(voice["label"], "默认配音音色")
+        self.assertEqual(voice["type"], "select")
+        self.assertEqual(
+            voice["options"],
+            [
+                {"label": "爽快思思 / Skye", "value": "7620288417930297386"},
+                {"label": "自定义音色", "value": "voice-custom"},
+            ],
+        )
+
     def test_public_job_message_hides_provider_internals(self):
         message = workflow_jobs._public_job_message(
             "开始调用扣子工作流（workflow_id=7664842340859691042，草稿生成第 1/2 次），"

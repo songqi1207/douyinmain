@@ -20,6 +20,10 @@ PROVIDER_CODES = DEMO_CODES | REFERENCE_TEMPLATE_CODES
 LOCAL_CODES = {"OWN01", "OWN02", "OWN03"}
 PUBLISHED_WORKFLOW_ENV_ALIASES = {"OWN03": "COZE_WORKFLOW_GOD"}
 WORKFLOW_INPUT_DEFAULTS_ENV = "WORKFLOW_INPUT_DEFAULTS_JSON"
+WORKFLOW_VOICE_OPTIONS_ENV = "COZE_VOICE_OPTIONS_JSON"
+DEFAULT_WORKFLOW_VOICE_OPTIONS = [
+    {"label": "爽快思思 / Skye", "value": "7620288417930297386"},
+]
 
 
 def published_workflow_id(code: str) -> str:
@@ -47,6 +51,33 @@ def configured_workflow_input_defaults() -> dict[str, dict]:
         if code and isinstance(raw_values, dict):
             result[code] = deepcopy(raw_values)
     return result
+
+
+def configured_workflow_voice_options() -> list[dict[str, str]]:
+    """Return display-name to Coze voice-ID mappings for workflow inputs."""
+
+    raw = (os.getenv(WORKFLOW_VOICE_OPTIONS_ENV) or "").strip()
+    if not raw:
+        return deepcopy(DEFAULT_WORKFLOW_VOICE_OPTIONS)
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return deepcopy(DEFAULT_WORKFLOW_VOICE_OPTIONS)
+    if not isinstance(payload, list):
+        return deepcopy(DEFAULT_WORKFLOW_VOICE_OPTIONS)
+
+    options: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        value = str(item.get("value") or item.get("id") or "").strip()
+        label = str(item.get("label") or item.get("name") or "").strip()
+        if not value or not label or value in seen:
+            continue
+        seen.add(value)
+        options.append({"label": label, "value": value})
+    return options or deepcopy(DEFAULT_WORKFLOW_VOICE_OPTIONS)
 
 
 def apply_workflow_input_defaults(code: str, inputs: dict) -> dict:
@@ -184,7 +215,15 @@ RUNTIME_INPUT_SCHEMAS = {
 
 def runtime_input_schema(workflow: dict) -> list[dict]:
     code = str(workflow.get("code") or "").upper()
-    return deepcopy(RUNTIME_INPUT_SCHEMAS.get(code, workflow.get("input_schema") or []))
+    schema = deepcopy(RUNTIME_INPUT_SCHEMAS.get(code, workflow.get("input_schema") or []))
+    voice_options = configured_workflow_voice_options()
+    for field in schema:
+        if field.get("name") not in {"voice_id", "yinse"}:
+            continue
+        field["label"] = "默认配音音色"
+        field["type"] = "select"
+        field["options"] = deepcopy(voice_options)
+    return schema
 
 
 LOCAL_WORKFLOWS = [

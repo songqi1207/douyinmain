@@ -85,8 +85,17 @@ const runtimeSettings = {
     },
     {
       code: "OWN03", name: "神话人物", category: "自有工作流", workflow_id: "33333333",
-      input_schema: [{ name: "shuliang", label: "默认分镜数量", type: "number" as const, default: 10, min: 1, max: 22 }],
-      input_defaults: { shuliang: 10 },
+      input_schema: [
+        { name: "shuliang", label: "默认分镜数量", type: "number" as const, default: 10, min: 1, max: 22 },
+        {
+          name: "yinse",
+          label: "默认配音音色",
+          type: "select" as const,
+          default: "7620288417930297386",
+          options: [{ label: "爽快思思 / Skye", value: "7620288417930297386" }],
+        },
+      ],
+      input_defaults: { shuliang: 10, yinse: "7620288417930297386" },
     },
   ],
 };
@@ -153,7 +162,9 @@ describe("StudioPage", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "配置神话人物输入参数" });
     const sceneCount = within(dialog).getByRole("spinbutton", { name: /默认分镜数量/ });
+    const voice = within(dialog).getByRole("combobox", { name: /默认配音音色/ });
     expect(sceneCount).toHaveValue(10);
+    expect(voice).toHaveDisplayValue("爽快思思 / Skye");
     fireEvent.change(sceneCount, { target: { value: "12" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "保存并立即生效" }));
 
@@ -162,7 +173,7 @@ describe("StudioPage", () => {
       workflow_inputs: {
         OWN01: { author: "佚名" },
         OWN02: { left: "未成年人禁止吸烟" },
-        OWN03: { shuliang: 12 },
+        OWN03: { shuliang: 12, yinse: "7620288417930297386" },
       },
     }));
     expect(await screen.findByText("神话人物输入参数已保存并立即生效")).toBeInTheDocument();
