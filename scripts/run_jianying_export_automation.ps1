@@ -325,6 +325,112 @@ function Invoke-Point([int]$X, [int]$Y) {
     Write-Stage "physical_click_sent" "requested_x=$X requested_y=$Y actual_x=$($actual.X) actual_y=$($actual.Y) cursor_moved=$moved"
 }
 
+function Invoke-SlowPoint([int]$X, [int]$Y) {
+    $moved = [JianyingNative]::SetCursorPos($X, $Y)
+    Start-Sleep -Milliseconds 180
+    [JianyingNative]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 120
+    [JianyingNative]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    $actual = New-Object JianyingNative+POINT
+    [JianyingNative]::GetCursorPos([ref]$actual) | Out-Null
+    Write-Stage "slow_physical_click_sent" "requested_x=$X requested_y=$Y actual_x=$($actual.X) actual_y=$($actual.Y) cursor_moved=$moved"
+}
+
+function Set-ElementWindowForeground($Element) {
+    if (-not $Element) {
+        return
+    }
+    try {
+        $handle = [IntPtr]$Element.Current.NativeWindowHandle
+        if ($handle -eq [IntPtr]::Zero) {
+            return
+        }
+        [JianyingNative]::ShowWindow($handle, 9) | Out-Null
+        [JianyingNative]::SetWindowPos($handle, [IntPtr](-1), 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0040) | Out-Null
+        Start-Sleep -Milliseconds 120
+        $foreground = [JianyingNative]::SetForegroundWindow($handle)
+        Start-Sleep -Milliseconds 350
+        [JianyingNative]::SetWindowPos($handle, [IntPtr](-2), 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0040) | Out-Null
+        Write-Stage "export_dialog_foreground_requested" "handle=$handle result=$foreground"
+    }
+    catch {
+        Write-Stage "export_dialog_foreground_failed" "error=$($_.Exception.Message)"
+    }
+}
+
+function Test-ExportConfirmationAccepted([int]$ProcessId) {
+    if (Test-Path -LiteralPath $OutputPath) {
+        return $true
+    }
+    $currentRoot = Get-ExportDialogRoot $ProcessId
+    if (-not $currentRoot) {
+        return $true
+    }
+    try {
+        $text = Get-SubtreeText $currentRoot 240
+        return $text -match '(正在导出|导出中|导出成功|取消导出|剩余时间)'
+    }
+    catch {
+        return $false
+    }
+}
+
+function Wait-ExportConfirmationAccepted([int]$ProcessId, [int]$Milliseconds = 3500) {
+    $deadline = (Get-Date).AddMilliseconds($Milliseconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-ExportConfirmationAccepted $ProcessId) {
+            return $true
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    return $false
+}
+
+function Invoke-ExportConfirmationReliably([int]$ProcessId, $ExportRoot, [int]$X, [int]$Y) {
+    Set-ElementWindowForeground $ExportRoot
+
+    $confirm = Get-VisibleElementsUnder $ExportRoot | Where-Object {
+        $description = Get-FullDescription $_
+        $rect = $_.Current.BoundingRectangle
+        $centerY = $rect.Y + ($rect.Height / 2)
+        ($description -match '(^|:)ExportOkBtn($|:)' -or
+            ($_.Current.Name -match '^\s*(导出|Export)\s*$' -and
+                $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)' -and
+                $centerY -ge ($ExportRoot.Current.BoundingRectangle.Y + ($ExportRoot.Current.BoundingRectangle.Height * 0.55)))) -and
+            $rect.Width -gt 20 -and $rect.Height -gt 15
+    } | Sort-Object `
+        @{Expression = {if ((Get-FullDescription $_) -match '(^|:)ExportOkBtn($|:)') { 1 } else { 0 }}; Descending = $true}, `
+        @{Expression = {$_.Current.BoundingRectangle.Y}; Descending = $true} |
+        Select-Object -First 1
+
+    if ($confirm) {
+        Write-Stage "export_confirm_attempt" "mode=control"
+        try {
+            Invoke-Element $confirm
+            if (Wait-ExportConfirmationAccepted $ProcessId 3500) {
+                Write-Stage "export_confirm_accepted" "mode=control"
+                return
+            }
+        }
+        catch {
+            Write-Stage "export_confirm_control_failed" "error=$($_.Exception.Message)"
+        }
+    }
+
+    for ($attempt = 1; $attempt -le 2; $attempt += 1) {
+        Set-ElementWindowForeground $ExportRoot
+        Write-Stage "export_confirm_attempt" "mode=slow_physical attempt=$attempt x=$X y=$Y"
+        Invoke-SlowPoint $X $Y
+        if (Wait-ExportConfirmationAccepted $ProcessId 4000) {
+            Write-Stage "export_confirm_accepted" "mode=slow_physical attempt=$attempt"
+            return
+        }
+    }
+
+    Write-Stage "export_confirm_not_accepted" "x=$X y=$Y"
+    throw "剪映导出窗口已经打开，但底部[导出]按钮没有响应；窗口已保留，请重新校准弹窗底部的[导出]按钮位置"
+}
+
 function Invoke-WindowMessagePoint($Process, [int]$X, [int]$Y) {
     $clientPoint = New-Object JianyingNative+POINT
     $clientPoint.X = $X
@@ -595,6 +701,8 @@ function Set-TextByCoordinate([int]$X, [int]$Y, [string]$Value) {
 }
 
 function Invoke-ExportDialogByCoordinate([int]$ProcessId, [string]$Name, [string]$Directory) {
+    $exportRoot = Get-ExportDialogRoot $ProcessId
+    Set-ElementWindowForeground $exportRoot
     $rect = Get-ExportWindowRect $ProcessId
     $width = [Math]::Max(1, $rect.Right - $rect.Left)
     $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
@@ -608,9 +716,7 @@ function Invoke-ExportDialogByCoordinate([int]$ProcessId, [string]$Name, [string
     Write-Stage "export_dialog_coordinate_fields" "name_x=$nameX name_y=$nameY path_x=$pathX path_y=$pathY confirm_x=$confirmX confirm_y=$confirmY"
     Set-TextByCoordinate $nameX $nameY $Name
     Set-TextByCoordinate $pathX $pathY $Directory
-    Invoke-Point $confirmX $confirmY
-    Start-Sleep -Milliseconds 300
-    [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+    Invoke-ExportConfirmationReliably $ProcessId $exportRoot $confirmX $confirmY
 }
 
 function Get-ExportConfirmPoint($Rect) {
@@ -1234,32 +1340,18 @@ $confirm = $dialogElements | Where-Object {
     @{Expression = {$_.Current.BoundingRectangle.Y}; Descending = $true}, `
     @{Expression = {$_.Current.BoundingRectangle.X}; Descending = $true} |
     Select-Object -First 1
-if (
-    $ExportConfirmXFromRightRatio -ge 0.01 -and $ExportConfirmXFromRightRatio -le 0.6 -and
-    $ExportConfirmYFromBottomRatio -ge 0.0 -and $ExportConfirmYFromBottomRatio -le 0.35
-) {
-    $confirmPoint = Get-ExportConfirmPoint $exportRect
-    $confirmX = $confirmPoint.X
-    $confirmY = $confirmPoint.Y
-    Write-Stage "export_confirm_coordinate_click" "x=$confirmX y=$confirmY mode=calibration"
-    Invoke-Point $confirmX $confirmY
-    Write-Stage "export_confirmed" "mode=calibration"
-}
-elseif (-not $confirm) {
-    $confirmPoint = Get-ExportConfirmPoint $exportRect
-    $confirmX = $confirmPoint.X
-    $confirmY = $confirmPoint.Y
-    Write-Stage "export_confirm_coordinate_click" "x=$confirmX y=$confirmY"
-    Invoke-Point $confirmX $confirmY
-    Write-Stage "export_confirmed" "mode=coordinate_fallback"
-}
-else {
+$confirmPoint = Get-ExportConfirmPoint $exportRect
+$confirmX = $confirmPoint.X
+$confirmY = $confirmPoint.Y
+if ($confirm) {
     $confirmDescription = Get-FullDescription $confirm
     $confirmRect = $confirm.Current.BoundingRectangle
     Write-Stage "export_confirm_control_ready" "type=$($confirm.Current.ControlType.ProgrammaticName) x=$($confirmRect.X) y=$($confirmRect.Y) description=$confirmDescription"
-    Invoke-Element $confirm
-    Write-Stage "export_confirmed" "mode=control"
 }
+Write-Stage "export_confirm_reliable_click" "x=$confirmX y=$confirmY calibrated=$($confirmPoint.Calibrated)"
+Write-Stage "export_confirm_coordinate_click" "x=$confirmX y=$confirmY mode=verified_retry"
+Invoke-ExportConfirmationReliably $process.Id $exportRoot $confirmX $confirmY
+Write-Stage "export_confirmed" "mode=verified"
 Minimize-JianyingWindow $process "export_wait"
 }
 
