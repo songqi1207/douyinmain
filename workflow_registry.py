@@ -22,7 +22,48 @@ PUBLISHED_WORKFLOW_ENV_ALIASES = {"OWN03": "COZE_WORKFLOW_GOD"}
 WORKFLOW_INPUT_DEFAULTS_ENV = "WORKFLOW_INPUT_DEFAULTS_JSON"
 WORKFLOW_VOICE_OPTIONS_ENV = "COZE_VOICE_OPTIONS_JSON"
 DEFAULT_WORKFLOW_VOICE_OPTIONS = [
-    {"label": "爽快思思 / Skye", "value": "7620288417930297386"},
+    {"label": "爽快思思 / Skye（当前默认）", "value": "7620288417930297386"},
+    {"label": "渊博小叔", "value": "7426720361733177353"},
+    {"label": "悬疑解说", "value": "7468512265134932019"},
+    {"label": "磁性解说男声", "value": "7468512265151528987"},
+    {"label": "深夜播客", "value": "7426720361733029897"},
+    {"label": "高冷御姐", "value": "7426720361733160969"},
+    {"label": "甜美悦悦", "value": "7426725529589694491"},
+    {"label": "知性女声", "value": "7468512265134899251"},
+    {"label": "知性温婉", "value": "7468518753626521637"},
+    {"label": "爽快思思", "value": "7426720361753903141"},
+    {"label": "Skye", "value": "7426720361753919525"},
+    {"label": "解说小明", "value": "7426725529589645339"},
+    {"label": "心灵鸡汤", "value": "7426725529681657907"},
+    {"label": "鸡汤妹妹", "value": "7468512265151561755"},
+    {"label": "温暖阿虎", "value": "7426720361753952293"},
+    {"label": "暖心体贴", "value": "7468518753626587173"},
+    {"label": "阳光青年", "value": "7426720361733193737"},
+    {"label": "活力小哥", "value": "7468512265151758363"},
+    {"label": "儒雅才俊", "value": "7468518753626800165"},
+    {"label": "学霸男同桌", "value": "7468518920446541862"},
+    {"label": "霸气青叔", "value": "7468512265151725595"},
+    {"label": "傲娇霸总", "value": "7426720361733210121"},
+    {"label": "擎苍（音色 1979）", "value": "7468512265151741979"},
+    {"label": "擎苍（音色 4662）", "value": "7481299960424644662"},
+    {"label": "潇洒随性", "value": "7468518753626751013"},
+    {"label": "东方浩然", "value": "7426725529589628955"},
+    {"label": "京腔侃爷", "value": "7426720361753870373"},
+    {"label": "湾区大叔", "value": "7426720361732915209"},
+    {"label": "湾湾小何", "value": "7426720361753968677"},
+    {"label": "猴哥", "value": "7468512265134850099"},
+    {"label": "古风少御", "value": "7481299960424693814"},
+    {"label": "天才童声", "value": "7468512265134817331"},
+    {"label": "樱桃丸子", "value": "7468512265151512603"},
+    {"label": "佩奇猪", "value": "7468512265134882867"},
+    {"label": "撒娇学妹", "value": "7426720361733062665"},
+    {"label": "柔美女友", "value": "7426720361733046281"},
+    {"label": "魅力女友", "value": "7426720361733013513"},
+    {"label": "邻家女孩", "value": "7426720361733144585"},
+    {"label": "Amanda", "value": "7496857918554308649"},
+    {"label": "Cutey", "value": "7468512265151692827"},
+    {"label": "Dryw", "value": "7496857918554275881"},
+    {"label": "Smith", "value": "7496857918554292265"},
 ]
 
 
@@ -66,8 +107,8 @@ def configured_workflow_voice_options() -> list[dict[str, str]]:
     if not isinstance(payload, list):
         return deepcopy(DEFAULT_WORKFLOW_VOICE_OPTIONS)
 
-    options: list[dict[str, str]] = []
-    seen: set[str] = set()
+    options = deepcopy(DEFAULT_WORKFLOW_VOICE_OPTIONS)
+    seen = {item["value"] for item in options}
     for item in payload:
         if not isinstance(item, dict):
             continue
@@ -77,7 +118,7 @@ def configured_workflow_voice_options() -> list[dict[str, str]]:
             continue
         seen.add(value)
         options.append({"label": label, "value": value})
-    return options or deepcopy(DEFAULT_WORKFLOW_VOICE_OPTIONS)
+    return options
 
 
 def apply_workflow_input_defaults(code: str, inputs: dict) -> dict:

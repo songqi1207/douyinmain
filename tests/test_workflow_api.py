@@ -49,12 +49,14 @@ class WorkflowApiTests(unittest.TestCase):
         voice = next(field for field in schema if field["name"] == "yinse")
         self.assertEqual(voice["label"], "默认配音音色")
         self.assertEqual(voice["type"], "select")
-        self.assertEqual(
+        self.assertGreaterEqual(len(voice["options"]), 42)
+        self.assertIn(
+            {"label": "悬疑解说", "value": "7468512265134932019"},
             voice["options"],
-            [
-                {"label": "爽快思思 / Skye", "value": "7620288417930297386"},
-                {"label": "自定义音色", "value": "voice-custom"},
-            ],
+        )
+        self.assertIn(
+            {"label": "自定义音色", "value": "voice-custom"},
+            voice["options"],
         )
 
     def test_public_job_message_hides_provider_internals(self):
