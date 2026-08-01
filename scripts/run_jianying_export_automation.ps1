@@ -701,22 +701,18 @@ function Set-TextByCoordinate([int]$X, [int]$Y, [string]$Value) {
     Start-Sleep -Milliseconds 250
 }
 
-function Invoke-ExportDialogByCoordinate([int]$ProcessId, [string]$Name, [string]$Directory) {
+function Invoke-ExportDialogByCoordinate([int]$ProcessId) {
     $exportRoot = Get-ExportDialogRoot $ProcessId
     Set-ElementWindowForeground $exportRoot
     $rect = Get-ExportWindowRect $ProcessId
-    $width = [Math]::Max(1, $rect.Right - $rect.Left)
-    $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
-    $nameX = [int]($rect.Left + ($width * 0.80))
-    $nameY = [int]($rect.Top + ($height * 0.14))
-    $pathX = [int]($rect.Left + ($width * 0.80))
-    $pathY = [int]($rect.Top + ($height * 0.195))
     $confirmPoint = Get-ExportConfirmPoint $rect
     $confirmX = $confirmPoint.X
     $confirmY = $confirmPoint.Y
-    Write-Stage "export_dialog_coordinate_fields" "name_x=$nameX name_y=$nameY path_x=$pathX path_y=$pathY confirm_x=$confirmX confirm_y=$confirmY"
-    Set-TextByCoordinate $nameX $nameY $Name
-    Set-TextByCoordinate $pathX $pathY $Directory
+    # JianYing 11 does not expose the QML edit fields through UI Automation.
+    # Clicking the apparent path field opens a folder picker and prevents the
+    # final export click. Keep the dialog's existing title/path and click only
+    # the bottom-right export button; output discovery covers default folders.
+    Write-Stage "export_dialog_coordinate_confirm_only" "confirm_x=$confirmX confirm_y=$confirmY"
     Invoke-ExportConfirmationReliably $ProcessId $exportRoot $confirmX $confirmY
 }
 
@@ -1276,8 +1272,8 @@ $pathEdit = $edits | Where-Object {
 Write-Stage "export_dialog_ready" "editable_fields=$($edits.Count)"
 
 if ($edits.Count -eq 0) {
-    Invoke-ExportDialogByCoordinate $process.Id $outputName $outputDirectory
-    Write-Stage "export_confirmed" "mode=coordinate"
+    Invoke-ExportDialogByCoordinate $process.Id
+    Write-Stage "export_confirmed" "mode=coordinate_confirm_only"
     Minimize-JianyingWindow $process "export_wait"
 }
 else {

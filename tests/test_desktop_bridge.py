@@ -502,6 +502,8 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "physical_click_sent"', script)
         self.assertIn('Write-Stage "slow_physical_click_sent"', script)
         self.assertIn("Invoke-ExportConfirmationReliably", script)
+        self.assertIn('Write-Stage "export_dialog_coordinate_confirm_only"', script)
+        self.assertNotIn('Write-Stage "export_dialog_coordinate_fields"', script)
         self.assertIn('Write-Stage "export_confirm_accepted"', script)
         self.assertIn('Write-Stage "export_confirm_not_accepted"', script)
         self.assertIn('Write-Stage "window_click_sent"', script)
