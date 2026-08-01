@@ -149,7 +149,7 @@ export function RuntimeSettingsPage() {
           <span className="page-icon"><Settings /></span>
           <div>
             <h1>运行配置</h1>
-            <p>集中管理服务器米核 Key、Coze 工作流 ID 和每个工作流的默认输入参数，仅管理员可访问。</p>
+            <p>集中管理服务器生成服务 Key、工作流 ID 和每个工作流的默认输入参数，仅管理员可访问。</p>
           </div>
         </div>
 
@@ -163,7 +163,7 @@ export function RuntimeSettingsPage() {
             <section className="runtime-secret-card">
               <div className="runtime-card-heading">
                 <span><KeyRound /></span>
-                <div><h2>米核 Key</h2><p>当前状态：{settings.mihe_key.configured ? `已配置 ${settings.mihe_key.masked}` : "未配置"}</p></div>
+                <div><h2>图片生成服务 Key</h2><p>当前状态：{settings.mihe_key.configured ? `已配置 ${settings.mihe_key.masked}` : "未配置"}</p></div>
               </div>
               <label>
                 <span>替换为新 Key</span>
@@ -183,7 +183,7 @@ export function RuntimeSettingsPage() {
                   checked={clearMiheKey}
                   onChange={(event) => setClearMiheKey(event.target.checked)}
                 />
-                <span>清除当前米核 Key</span>
+                <span>清除当前图片生成服务 Key</span>
               </label>
             </section>
 
@@ -209,7 +209,7 @@ export function RuntimeSettingsPage() {
                         ...previous,
                         [item.code]: event.target.value.replace(/\D/g, ""),
                       }))}
-                      placeholder="输入 Coze 工作流 ID"
+                      placeholder="输入工作流 ID"
                     />
                   </label>
                 ))}

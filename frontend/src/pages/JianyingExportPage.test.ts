@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildSampleDraftKey, extractDraftKeyJson } from "./JianyingExportPage";
 
 describe("extractDraftKeyJson", () => {
-  it("accepts nested Coze output", () => {
+  it("accepts nested service output", () => {
     const key = { kind: "jianying_draft_key", calls: [{ tool: "add_images" }] };
     expect(extractDraftKeyJson({ output: JSON.stringify({ draft_key: JSON.stringify(key) }) })).toEqual(key);
   });

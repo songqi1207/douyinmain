@@ -130,7 +130,7 @@ export function CatalogPage() {
   return (
     <Layout>
       <main className="catalog-page page-width">
-        <section className="hero-copy"><span className="eyebrow">WORKFLOW LIBRARY</span><h1>工作流商店</h1><p>探索更多创作能力，或把成熟工作流下载到自己的扣子空间。</p></section>
+        <section className="hero-copy"><span className="eyebrow">WORKFLOW LIBRARY</span><h1>工作流商店</h1><p>探索更多创作能力，或下载成熟工作流供自己使用。</p></section>
         <section className="toolbar-panel expanded-toolbar">
           <div className="category-tabs" role="tablist" aria-label="工作流分类">
             {categories.map((item) => <button type="button" className={category === item.name ? "active" : ""} key={item.name} onClick={() => setCategory(item.name)}>{item.name}<em>{item.count}</em></button>)}

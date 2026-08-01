@@ -340,7 +340,7 @@ export function StudioPage() {
                 {busy ? <span className="spin-ring" /> : <Sparkles />}
                 {busy ? "正在创建任务" : !user ? "登录后开始创作" : !ready ? "完成准备后生成" : "一键生成视频"}
               </button>
-              <p className="privacy-note"><ShieldCheck />不会向浏览器发送 Coze、米核或渲染密钥</p>
+              <p className="privacy-note"><ShieldCheck />不会向浏览器发送生成服务或渲染密钥</p>
             </form>
 
             <aside className="workspace-status">

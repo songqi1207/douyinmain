@@ -111,7 +111,7 @@ export function HelpPage() {
           <details open><summary>为什么一键生成按钮还不能点击？</summary><p>请依次检查账号是否已登录、临时密码是否已修改、对应工作流是否发布，以及剪映设备是否在线。</p></details>
           <details><summary>刷新页面会丢失任务吗？</summary><p>不会。任务在服务器持续执行，首页会恢复最近一次任务，全部历史都保存在创作记录。</p></details>
           <details><summary>为什么需要 Windows 助手？</summary><p>助手负责在你的电脑上创建剪映草稿并原生导出 MP4。首次配对后，网页可以自动唤醒。</p></details>
-          <details><summary>能看到 Coze 或米核密钥吗？</summary><p>不能。所有第三方 Token、工作流 ID 和渲染参数只在服务器读取。</p></details>
+          <details><summary>能看到生成服务密钥吗？</summary><p>不能。所有第三方 Token、工作流 ID 和渲染参数只在服务器读取。</p></details>
           <details><summary>还可以手工上传 draft_key 吗？</summary><p>可以，在<Link to="/jianying-export">手工剪映导出</Link>页面粘贴或上传 JSON。</p></details>
         </section>
       </main>

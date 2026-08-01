@@ -271,7 +271,7 @@ LOCAL_WORKFLOWS = [
     {
         "code": "OWN01",
         "name": "每天认识一本书",
-        "description": "输入书名、作者和画面方向，生成可直接导入扣子的书单荐书工作流文件。",
+        "description": "输入书名、作者和画面方向，生成可直接使用的书单荐书工作流文件。",
         "tags": ["自有", "书单", "起号"],
         "stats": {"views": 0, "favorites": 0, "downloads": 0},
         "created_at": "2026-07-19T00:00:00+08:00",

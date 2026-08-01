@@ -1215,7 +1215,7 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
     details = []
     if missing_ids:
         labelled = [
-            f"{call_id}（扣子节点「{skipped_titles[call_id]}」输出为空）"
+            f"{call_id}（内容生成节点「{skipped_titles[call_id]}」输出为空）"
             if skipped_titles.get(call_id)
             else call_id
             for call_id in missing_ids

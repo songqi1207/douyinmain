@@ -36,7 +36,7 @@ export function extractDraftKeyJson(value: unknown): Record<string, unknown> {
     try {
       return extractDraftKeyJson(nested);
     } catch {
-      // Continue through common Coze wrappers.
+      // Continue through common nested service wrappers.
     }
   }
   throw new Error("没有找到包含 calls 数组的 draft_key");
@@ -173,7 +173,7 @@ export function JianyingExportPage() {
         </div>
         <div className="jianying-export-layout">
           <section className="generator-panel">
-            <div className="section-title"><span>提交 draft_key</span><small>支持标准 JSON 和扣子嵌套输出</small></div>
+            <div className="section-title"><span>提交 draft_key</span><small>支持标准 JSON 和嵌套输出</small></div>
             <form onSubmit={(event) => void submit(event)}>
               <button className="secondary-button draft-key-sample-button" type="button" onClick={fillSampleDraftKey}><FileJson />填入测试 draft_key</button>
               <label className="draft-key-upload"><span><UploadCloud />选择 JSON 文件</span><input type="file" accept=".json,application/json" onChange={(event) => void loadFile(event.target.files?.[0])} /><small>{fileName || "最大 5MB，文件只提交到本站后台"}</small></label>

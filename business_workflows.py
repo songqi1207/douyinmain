@@ -187,7 +187,7 @@ def find_workflow_downloads(category, code):
             downloads.append(
                 {
                     "kind": "package",
-                    "label": "下载扣子导入包 ZIP",
+                    "label": "下载工作流导入包 ZIP",
                     "filename": package.name,
                     "path": package,
                     "mime": "application/zip",

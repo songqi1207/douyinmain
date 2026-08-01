@@ -126,7 +126,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
           <div>
             <strong>相关平台</strong>
-            <a href="https://www.coze.cn/user/4237988494589307?access_entrance=plugin_detail&sub_tab=plugins&tab=user_product" target="_blank" rel="noreferrer">扣子插件</a>
             <a href="https://ai.laobaiai.top/" target="_blank" rel="noreferrer">AI 爆款创作平台</a>
           </div>
         </div>

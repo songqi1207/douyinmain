@@ -496,7 +496,7 @@ def api_update_admin_runtime_settings(
             if len(mihe_key) > 512:
                 raise HTTPException(
                     status_code=422,
-                    detail={"code": "invalid_mihe_key", "message": "米核 Key 长度不能超过 512 个字符"},
+                    detail={"code": "invalid_mihe_key", "message": "图片生成服务 Key 长度不能超过 512 个字符"},
                 )
             updates["MIHE_KEY"] = mihe_key
 
