@@ -159,6 +159,11 @@ export function DevicesPage() {
   }
 
   function updateHelper() {
+    if (helperUpdate?.percent === 95 && !helperUpdate.running) {
+      window.location.href = `/api/v1/downloads/draft-bridge${latestHelperVersion ? `?v=${encodeURIComponent(latestHelperVersion)}` : ""}`;
+      setMessage("安装包已开始下载。下载完成后请双击运行，无需卸载旧版或重新配对。");
+      return;
+    }
     const query = new URLSearchParams({ site: window.location.origin });
     const onlineCurrent = status.devices.some((device) => (
       device.online
@@ -248,7 +253,11 @@ export function DevicesPage() {
             <p>当前最新版 {latestHelperVersion ? `v${latestHelperVersion}` : "检测中"}。已安装助手时可一键更新；未安装时请先下载安装包。</p>
             <button className="secondary-button" disabled={Boolean(helperUpdate?.running)} type="button" onClick={() => updateHelper()}>
               {helperUpdate?.running ? <LoaderCircle className="spin" /> : <Download />}
-              {helperUpdate?.running ? `正在更新 ${helperUpdate.percent}%` : "一键更新最新版"}
+              {helperUpdate?.running
+                ? `正在更新 ${helperUpdate.percent}%`
+                : helperUpdate?.percent === 95
+                  ? "下载安装包并修复"
+                  : "一键更新最新版"}
             </button>
             {helperUpdate && (
               <div className={`helper-update-progress ${helperUpdate.percent === 100 ? "complete" : ""}`} aria-live="polite">
