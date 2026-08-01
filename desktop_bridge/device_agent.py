@@ -150,7 +150,7 @@ def _cloud_resource_wait_seconds(resource_count: int) -> int:
 def _font_verification_enabled() -> bool:
     """Return whether missing-font cache checks should block video export."""
     return (
-        os.getenv("DEVICE_JIANYING_ENFORCE_FONT_RESOURCES") or "1"
+        os.getenv("DEVICE_JIANYING_ENFORCE_FONT_RESOURCES") or "0"
     ).strip().lower() in {"1", "true", "yes", "on"}
 
 

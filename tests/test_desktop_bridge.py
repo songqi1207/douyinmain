@@ -55,15 +55,15 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertEqual(_draft_search_query("EAB8433A-C232-4C5C-B10D"), "EAB")
         self.assertEqual(_draft_search_query("named-draft"), "named-draft")
 
-    def test_font_verification_blocks_missing_fonts_by_default(self):
+    def test_font_verification_is_non_blocking_by_default(self):
         with patch.dict(os.environ, {}, clear=True):
-            self.assertTrue(_font_verification_enabled())
+            self.assertFalse(_font_verification_enabled())
         with patch.dict(
             os.environ,
-            {"DEVICE_JIANYING_ENFORCE_FONT_RESOURCES": "0"},
+            {"DEVICE_JIANYING_ENFORCE_FONT_RESOURCES": "1"},
             clear=True,
         ):
-            self.assertFalse(_font_verification_enabled())
+            self.assertTrue(_font_verification_enabled())
 
     def test_jianying_export_click_calibration_uses_relative_window_coordinates(self):
         calibration = normalize_export_click(1145, 17, (0, 0, 1280, 800))
