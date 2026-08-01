@@ -833,6 +833,27 @@ def _run_native_export_unlocked(
         "-ResourceWaitSeconds",
         str(resource_wait_seconds),
     ]
+    enable_one_click_enhance = (
+        os.getenv("DEVICE_JIANYING_ENABLE_ONE_CLICK_ENHANCE") or "1"
+    ).strip().lower() not in {"0", "false", "no", "off"}
+    if enable_one_click_enhance:
+        command.extend(
+            [
+                "-EnableOneClickEnhance",
+                "-NoOutputTimeoutSeconds",
+                str(
+                    max(
+                        600,
+                        int(
+                            os.getenv(
+                                "DEVICE_JIANYING_ENHANCE_NO_OUTPUT_TIMEOUT_SECONDS"
+                            )
+                            or 600
+                        ),
+                    )
+                ),
+            ]
+        )
     settings_path = app_data_dir() / "settings.json"
     export_calibration = load_export_calibration(settings_path)
     export_confirm_calibration = load_export_confirm_calibration(settings_path)

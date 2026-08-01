@@ -13,6 +13,7 @@
     [double]$EditorExportYFromTopRatio = -1,
     [double]$ExportConfirmXFromRightRatio = -1,
     [double]$ExportConfirmYFromBottomRatio = -1,
+    [switch]$EnableOneClickEnhance,
     [switch]$RestartExisting
 )
 
@@ -53,6 +54,7 @@ Write-Stage "automation_started" "timeout_seconds=$TimeoutSeconds"
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 $fullDescriptionProperty = [System.Windows.Automation.AutomationProperty]::LookupById(30159)
 Add-Type @"
 using System;
@@ -799,6 +801,97 @@ function Get-ExportConfirmPoint($Rect) {
     }
 }
 
+function Get-ScreenPointBrightness([int]$X, [int]$Y) {
+    $bitmap = New-Object System.Drawing.Bitmap 1, 1
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    try {
+        $graphics.CopyFromScreen(
+            $X,
+            $Y,
+            0,
+            0,
+            (New-Object System.Drawing.Size 1, 1),
+            [System.Drawing.CopyPixelOperation]::SourceCopy
+        )
+        $color = $bitmap.GetPixel(0, 0)
+        return [int](($color.R + $color.G + $color.B) / 3)
+    }
+    catch {
+        return -1
+    }
+    finally {
+        $graphics.Dispose()
+        $bitmap.Dispose()
+    }
+}
+
+function Get-OneClickEnhanceVisualState($Rect) {
+    $width = [Math]::Max(1, $Rect.Right - $Rect.Left)
+    $height = [Math]::Max(1, $Rect.Bottom - $Rect.Top)
+    $leftX = [int]($Rect.Left + ($width * 0.931))
+    $rightX = [int]($Rect.Left + ($width * 0.963))
+    $sampleY = [int]($Rect.Top + ($height * 0.318))
+    $leftBrightness = Get-ScreenPointBrightness $leftX $sampleY
+    $rightBrightness = Get-ScreenPointBrightness $rightX $sampleY
+    Write-Stage "one_click_enhance_visual_state" "left=$leftBrightness right=$rightBrightness y=$sampleY"
+    if ($leftBrightness -lt 0 -or $rightBrightness -lt 0) {
+        return "unknown"
+    }
+    if ($rightBrightness -ge ($leftBrightness + 18)) {
+        return "on"
+    }
+    if ($leftBrightness -ge ($rightBrightness + 18)) {
+        return "off"
+    }
+    return "unknown"
+}
+
+function Enable-OneClickEnhanceInDialog([int]$ProcessId, $ExportRoot) {
+    $toggle = Get-VisibleElementsUnder $ExportRoot | Where-Object {
+        ($_.Current.Name + " " + $_.Current.AutomationId + " " + (Get-FullDescription $_)) -match '(一键超清|智能超清|Enhance)'
+    } | Select-Object -First 1
+    if ($toggle) {
+        try {
+            $togglePattern = $null
+            if ($toggle.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$togglePattern)) {
+                if ($togglePattern.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On) {
+                    Write-Stage "one_click_enhance_enabled" "mode=toggle_pattern state=already_on"
+                    return
+                }
+                $togglePattern.Toggle()
+                Start-Sleep -Milliseconds 700
+                if ($togglePattern.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On) {
+                    Write-Stage "one_click_enhance_enabled" "mode=toggle_pattern state=on"
+                    return
+                }
+            }
+        }
+        catch {
+            Write-Stage "one_click_enhance_control_failed" "error=$($_.Exception.Message)"
+        }
+    }
+
+    $rect = Get-ExportWindowRect $ProcessId
+    $width = [Math]::Max(1, $rect.Right - $rect.Left)
+    $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
+    $toggleX = [int]($rect.Left + ($width * 0.947))
+    $toggleY = [int]($rect.Top + ($height * 0.318))
+    $before = Get-OneClickEnhanceVisualState $rect
+    if ($before -eq "on") {
+        Write-Stage "one_click_enhance_enabled" "mode=visual state=already_on x=$toggleX y=$toggleY"
+        return
+    }
+    Write-Stage "one_click_enhance_click" "mode=coordinate state_before=$before x=$toggleX y=$toggleY"
+    Set-ElementWindowForeground $ExportRoot
+    Invoke-SlowPoint $toggleX $toggleY
+    Start-Sleep -Milliseconds 900
+    $after = Get-OneClickEnhanceVisualState $rect
+    if ($after -eq "off") {
+        throw "剪映的一键超清开关没有成功开启，已停止导出"
+    }
+    Write-Stage "one_click_enhance_enabled" "mode=coordinate state_after=$after x=$toggleX y=$toggleY"
+}
+
 function Get-CandidateOutputPaths {
     $directories = @(
         $outputDirectory,
@@ -1331,6 +1424,12 @@ $pathEdit = $edits | Where-Object {
     ($_.Current.Name + " " + $_.Current.AutomationId + " " + (Get-FullDescription $_)) -match '(保存至|保存位置|输出|路径|目录|文件夹|location|folder|path|ExportPath)'
 } | Select-Object -First 1
 Write-Stage "export_dialog_ready" "editable_fields=$($edits.Count)"
+
+if ($EnableOneClickEnhance) {
+    $NoOutputTimeoutSeconds = [Math]::Max($NoOutputTimeoutSeconds, 600)
+    Enable-OneClickEnhanceInDialog $process.Id $exportRoot
+    Write-Stage "one_click_enhance_wait_extended" "no_output_timeout_seconds=$NoOutputTimeoutSeconds"
+}
 
 if ($edits.Count -eq 0) {
     Invoke-ExportDialogByCoordinate $process.Id

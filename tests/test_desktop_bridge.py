@@ -474,6 +474,8 @@ class DesktopBridgeTests(unittest.TestCase):
             self.assertIn("-RestartExisting", run_compatibility_export.call_args.args[0])
             command = run_compatibility_export.call_args.args[0]
             self.assertEqual(command[command.index("-ResourceWaitSeconds") + 1], "0")
+            self.assertIn("-EnableOneClickEnhance", command)
+            self.assertEqual(command[command.index("-NoOutputTimeoutSeconds") + 1], "600")
 
     def test_jianying_automation_uses_full_description_controls(self):
         script = (
@@ -505,6 +507,10 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "export_window_message_click_sent"', script)
         self.assertIn("Invoke-ExportConfirmationReliably", script)
         self.assertIn('Write-Stage "export_dialog_coordinate_confirm_only"', script)
+        self.assertIn('Write-Stage "one_click_enhance_enabled"', script)
+        self.assertIn('Write-Stage "one_click_enhance_wait_extended"', script)
+        self.assertIn("$width * 0.947", script)
+        self.assertIn("$height * 0.318", script)
         self.assertNotIn('Write-Stage "export_dialog_coordinate_fields"', script)
         self.assertIn('Write-Stage "export_confirm_accepted"', script)
         self.assertIn('Write-Stage "export_confirm_unverified"', script)
