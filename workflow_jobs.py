@@ -648,6 +648,7 @@ def _configured_visible_text(env_name: str, default: str) -> str:
 
 
 _BOOK_AUTHOR_PLACEHOLDERS = {"", "佚名", "未知", "未知作者", "unknown", "anonymous"}
+_DOUBAN_BOOK_SUGGEST_URL = "https://book.douban.com/j/subject_suggest"
 _WIKIDATA_API_URL = "https://www.wikidata.org/w/api.php"
 
 
@@ -677,6 +678,24 @@ def _wikidata_entity_id(claim: dict[str, Any]) -> str:
     return str(value.get("id") or "") if isinstance(value, dict) else ""
 
 
+def _douban_suggestion_author(title: str, payload: Any) -> str:
+    normalized_title = _normalized_book_title(title)
+    if not normalized_title or not isinstance(payload, list):
+        return ""
+    for item in payload:
+        if (
+            not isinstance(item, dict)
+            or str(item.get("type") or "").lower() != "b"
+            or _normalized_book_title(item.get("title")) != normalized_title
+        ):
+            continue
+        author = str(item.get("author_name") or "").strip()
+        author = re.sub(r"^(?:\[[^\]]{1,8}\]\s*)+", "", author).strip()
+        if author:
+            return author
+    return ""
+
+
 @lru_cache(maxsize=256)
 def _lookup_book_author(title: str) -> str:
     """Look up a book author through Wikidata; return empty on uncertainty."""
@@ -689,6 +708,19 @@ def _lookup_book_author(title: str) -> str:
     }
     session = requests.Session()
     session.trust_env = False
+    try:
+        douban_response = session.get(
+            _DOUBAN_BOOK_SUGGEST_URL,
+            params={"q": title},
+            headers={**headers, "Referer": "https://book.douban.com/"},
+            timeout=(3, 6),
+        )
+        douban_response.raise_for_status()
+        douban_author = _douban_suggestion_author(title, douban_response.json())
+        if douban_author:
+            return douban_author
+    except (requests.RequestException, TypeError, ValueError):
+        logger.info("douban_book_author_lookup_unavailable title=%r", title)
     try:
         search_response = session.get(
             _WIKIDATA_API_URL,

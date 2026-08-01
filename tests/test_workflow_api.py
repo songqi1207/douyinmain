@@ -558,6 +558,17 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(params["author"], "余华")
         lookup_author.assert_called_once_with("活着")
 
+    def test_douban_book_suggestion_uses_exact_book_and_strips_country(self):
+        author = workflow_jobs._douban_suggestion_author(
+            "克林索尔的最后夏天",
+            [
+                {"title": "克林索尔的最后夏天", "type": "m", "author_name": "电影导演"},
+                {"title": "克林索尔的最后夏天", "type": "b", "author_name": "[德] 赫尔曼·黑塞"},
+            ],
+        )
+
+        self.assertEqual(author, "赫尔曼·黑塞")
+
     def test_published_book_replaces_encoding_damaged_default_author(self):
         with (
             patch.dict(os.environ, {"BOOK_DEFAULT_AUTHOR": "??"}),
