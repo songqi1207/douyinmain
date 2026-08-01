@@ -78,6 +78,8 @@ export function DevicesPage() {
   const [message, setMessage] = useState("");
   const [helperUpdate, setHelperUpdate] = useState<HelperUpdateProgress | null>(null);
   const latestHelperVersion = capabilityText(status.latest_helper_version);
+  const helperRecoveryRequired = status.devices.length > 0 && !status.device_online;
+  const helperDownloadUrl = `/api/v1/downloads/draft-bridge${latestHelperVersion ? `?v=${encodeURIComponent(latestHelperVersion)}` : ""}`;
 
   async function refresh() {
     try {
@@ -159,8 +161,8 @@ export function DevicesPage() {
   }
 
   function updateHelper() {
-    if (helperUpdate?.percent === 95 && !helperUpdate.running) {
-      window.location.href = `/api/v1/downloads/draft-bridge${latestHelperVersion ? `?v=${encodeURIComponent(latestHelperVersion)}` : ""}`;
+    if (helperRecoveryRequired || (helperUpdate?.percent === 95 && !helperUpdate.running)) {
+      window.location.href = helperDownloadUrl;
       setMessage("安装包已开始下载。下载完成后请双击运行，无需卸载旧版或重新配对。");
       return;
     }
@@ -255,7 +257,7 @@ export function DevicesPage() {
               {helperUpdate?.running ? <LoaderCircle className="spin" /> : <Download />}
               {helperUpdate?.running
                 ? `正在更新 ${helperUpdate.percent}%`
-                : helperUpdate?.percent === 95
+                : helperRecoveryRequired || helperUpdate?.percent === 95
                   ? "下载安装包并修复"
                   : "一键更新最新版"}
             </button>
@@ -268,7 +270,7 @@ export function DevicesPage() {
             <button className="secondary-button" type="button" onClick={() => calibrateHelper()}><Laptop />校准导出按钮</button>
             <a
               className="subtle-link"
-              href={`/api/v1/downloads/draft-bridge${latestHelperVersion ? `?v=${encodeURIComponent(latestHelperVersion)}` : ""}`}
+              href={helperDownloadUrl}
             >下载安装包</a>
           </article>
           <article>
