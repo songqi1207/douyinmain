@@ -9,8 +9,9 @@ from utils.audio_probe import probe_audio_duration
 from utils.local_media_generation import generated_local_path_from_url
 
 
-_SPLIT_RE = re.compile(r"[。！？!?；;\n\r]+")
-_TRIM_CHARS = " \t\r\n,，。！？!?；;\"'“”‘’《》"
+_SPLIT_RE = re.compile(r"[。.!！？?；;\n\r]+")
+_CLAUSE_SPLIT_RE = re.compile(r"([，,、：:…]+)")
+_TRIM_CHARS = " \t\r\n,.，。！？!?；;\"'“”‘’《》"
 
 
 def _to_number(value, default=0):
@@ -36,6 +37,60 @@ def _normalize_timeline_items(items):
     return normalized
 
 
+def _split_long_semantic_sentence(text, max_len):
+    """Split one sentence only at explicit language boundaries.
+
+    ``max_len`` is deliberately a soft visual limit.  If Chinese copy has no
+    punctuation, keeping one longer caption (which Jianying can wrap) is less
+    damaging than cutting a word or phrase at an arbitrary character index.
+    """
+
+    sentence = str(text or "").strip(_TRIM_CHARS)
+    if not sentence or len(sentence) <= max_len:
+        return [sentence] if sentence else []
+
+    tokens = _CLAUSE_SPLIT_RE.split(sentence)
+    clauses = []
+    for index in range(0, len(tokens), 2):
+        clause = tokens[index].strip(_TRIM_CHARS)
+        separator = tokens[index + 1] if index + 1 < len(tokens) else ""
+        if clause:
+            clauses.append((clause, separator[:1]))
+
+    # There is no semantic pause to use.  English can still be wrapped at word
+    # boundaries; unpunctuated Chinese stays together and is visually wrapped
+    # later by the Jianying text renderer.
+    if len(clauses) <= 1:
+        if re.search(r"\s", sentence):
+            words = sentence.split()
+            lines = []
+            current = ""
+            for word in words:
+                candidate = f"{current} {word}".strip()
+                if current and len(candidate) > max_len:
+                    lines.append(current)
+                    current = word
+                else:
+                    current = candidate
+            if current:
+                lines.append(current)
+            return lines
+        return [sentence]
+
+    result = []
+    current = ""
+    for clause, separator in clauses:
+        candidate = f"{current}{clause}"
+        if current and len(candidate) > max_len:
+            result.append(current.rstrip("，,、：:…"))
+            current = clause + separator
+        else:
+            current = candidate + separator
+    if current:
+        result.append(current.rstrip("，,、：:…"))
+    return [item for item in result if item]
+
+
 def split_text_segments(text, min_len=8, max_len=28):
     raw = str(text or "").strip()
     if not raw:
@@ -47,26 +102,23 @@ def split_text_segments(text, min_len=8, max_len=28):
     if not parts:
         return []
 
-    merged = []
+    semantic_parts = []
     for part in parts:
+        semantic_parts.extend(_split_long_semantic_sentence(part, max_len))
+
+    merged = []
+    for part in semantic_parts:
         if not merged:
             merged.append(part)
             continue
-        if len(part) < min_len or len(merged[-1]) < min_len:
+        if (
+            (len(part) < min_len or len(merged[-1]) < min_len)
+            and len(merged[-1]) + len(part) + 1 <= max_len
+        ):
             merged[-1] = f"{merged[-1]}，{part}"
         else:
             merged.append(part)
-
-    final = []
-    for item in merged:
-        if len(item) <= max_len:
-            final.append(item)
-            continue
-        start = 0
-        while start < len(item):
-            final.append(item[start:start + max_len])
-            start += max_len
-    return final
+    return merged
 
 
 def merge_timelines(pre_timeline, main_timeline, gap_us=0, skip_us=0):
