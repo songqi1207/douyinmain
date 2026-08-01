@@ -15,6 +15,7 @@ import {
 import { Link, NavLink, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth";
+import { JobNotifications } from "./JobNotifications";
 
 const NAV_ITEMS = [
   { to: "/", label: "开始创作", icon: Sparkles, end: true },
@@ -63,6 +64,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="auth-nav">
           {user ? (
             <>
+              <JobNotifications />
               {user.role === "admin" && <Link to="/admin/runtime-settings"><Settings size={14} />运行配置</Link>}
               {user.role === "admin" && <Link to="/admin/registrations">注册审核</Link>}
               <Link

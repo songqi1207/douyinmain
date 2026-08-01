@@ -38,6 +38,16 @@ button { color: inherit; }
 .auth-nav > a, .auth-nav button { min-height: 34px; display: inline-flex; align-items: center; gap: 5px; border: 0; padding: 0 8px; color: #b1afa9; background: transparent; cursor: pointer; }
 .auth-nav .register-link { border: 1px solid #665137; border-radius: 999px; padding: 0 14px; color: #e3bd78; }
 .auth-nav a:hover, .auth-nav button:hover { color: #f0cd87; }
+.auth-nav .job-notification-toggle.active { color: #f0cd87; }
+.job-notification-toast { position: fixed; top: 76px; right: 22px; z-index: 1200; width: min(390px, calc(100vw - 32px)); display: grid; grid-template-columns: 34px 1fr 24px; gap: 10px; align-items: start; padding: 14px; border: 1px solid #66502d; border-radius: 12px; color: #eee8dd; background: #201b14; box-shadow: 0 18px 60px rgba(0, 0, 0, .4); }
+.job-notification-toast.success { border-color: #355d38; background: #162619; }
+.job-notification-toast.error { border-color: #713a35; background: #2b1716; }
+.job-notification-toast > span { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; color: #f0cd87; background: rgba(240, 205, 135, .12); }
+.job-notification-toast > span svg { width: 17px; }
+.job-notification-toast strong { display: block; margin: 1px 0 4px; font-size: 14px; }
+.job-notification-toast p { margin: 0; color: #b8b1a5; font-size: 12px; line-height: 1.55; }
+.job-notification-toast > button { width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; color: #9f988d; background: transparent; cursor: pointer; }
+.job-notification-toast > button svg { width: 15px; }
 
 .home-page { padding-bottom: 90px; }
 .home-hero { min-height: 520px; display: flex; align-items: center; flex-direction: column; justify-content: center; text-align: center; }
