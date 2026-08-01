@@ -304,6 +304,126 @@ def font_resources_from_import_report(report: dict[str, Any]) -> list[dict[str, 
     return resources
 
 
+def fallback_missing_fonts_to_default(
+    draft_dir: Path | str,
+    resources: Iterable[dict[str, Any]],
+    *,
+    draft_root: Path | str = "",
+    cache_roots: Iterable[Path | str] | None = None,
+) -> dict[str, Any]:
+    """Remove unavailable cloud-font bindings so Jianying uses its default font.
+
+    Merely skipping font verification is not enough: Jianying 11 can keep an
+    unresolved cloud resource ID in the text material and render the whole text
+    segment transparently.  This fallback is intentionally limited to resources
+    that are absent both from Jianying's cache and from the imported draft.
+    """
+    target_dir = Path(draft_dir).expanduser().resolve()
+    content_path = target_dir / "draft_content.json"
+    selected = list(resources)
+    statuses = inspect_font_resources(
+        selected,
+        draft_root=draft_root,
+        draft_dir=target_dir,
+        cache_roots=cache_roots,
+    )
+    missing = [item for item in statuses if not item.get("available")]
+    missing_names = sorted(
+        {
+            str(item.get("name") or item.get("resource_id") or "").strip()
+            for item in missing
+            if str(item.get("name") or item.get("resource_id") or "").strip()
+        }
+    )
+    if not missing_names:
+        return {"fallback": [], "changed_materials": 0, "updated": False}
+    if not content_path.is_file():
+        return {
+            "fallback": missing_names,
+            "changed_materials": 0,
+            "updated": False,
+            "encrypted_or_missing_draft": True,
+        }
+
+    try:
+        content = json.loads(content_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "fallback": missing_names,
+            "changed_materials": 0,
+            "updated": False,
+            "encrypted_or_missing_draft": True,
+        }
+
+    missing_ids = {
+        str(item.get("resource_id") or "").strip()
+        for item in missing
+        if str(item.get("resource_id") or "").strip()
+    }
+    missing_names_folded = {name.casefold() for name in missing_names}
+    changed_materials = 0
+    for material in (content.get("materials") or {}).get("texts") or []:
+        if not isinstance(material, dict):
+            continue
+        material_name = str(
+            material.get("font_name") or material.get("font_title") or ""
+        ).strip()
+        material_id = str(material.get("font_resource_id") or "").strip()
+        material_matches = bool(
+            (material_id and material_id in missing_ids)
+            or (material_name and material_name.casefold() in missing_names_folded)
+        )
+        try:
+            text_content = json.loads(str(material.get("content") or "{}"))
+        except json.JSONDecodeError:
+            continue
+
+        changed = False
+        for style in text_content.get("styles") or []:
+            if not isinstance(style, dict):
+                continue
+            font = style.get("font")
+            if not isinstance(font, dict):
+                continue
+            font_id = str(font.get("id") or font.get("resource_id") or "").strip()
+            if (font_id and font_id in missing_ids) or (not font_id and material_matches):
+                style.pop("font", None)
+                changed = True
+
+        if not (changed or material_matches):
+            continue
+        material["content"] = json.dumps(
+            text_content,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        for key in (
+            "font_name",
+            "font_path",
+            "font_resource_id",
+            "font_source_platform",
+            "font_title",
+            "fonts",
+        ):
+            material.pop(key, None)
+        changed_materials += 1
+
+    if changed_materials:
+        temporary = content_path.with_suffix(".json.font-fallback.tmp")
+        temporary.write_text(
+            json.dumps(content, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        temporary.replace(content_path)
+
+    return {
+        "fallback": missing_names,
+        "changed_materials": changed_materials,
+        "updated": changed_materials > 0,
+        "encrypted_or_missing_draft": False,
+    }
+
+
 def build_font_preload_key(
     resources: Iterable[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:

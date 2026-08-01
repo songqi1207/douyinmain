@@ -12,6 +12,7 @@ from desktop_bridge.device_agent import (
 from desktop_bridge.font_resources import (
     bind_cached_fonts,
     build_font_preload_key,
+    fallback_missing_fonts_to_default,
     find_bound_font,
     find_cached_font,
     inspect_font_resources,
@@ -137,6 +138,106 @@ class JianyingFontResourceTests(unittest.TestCase):
 
         self.assertFalse(statuses[0]["available"])
         self.assertEqual(statuses[0]["cached_path"], "")
+
+    def test_unavailable_cloud_font_falls_back_to_jianying_default(self):
+        with tempfile.TemporaryDirectory(prefix="jianying-font-fallback-") as temporary:
+            root = Path(temporary)
+            draft_root = root / "User Data" / "Projects" / "com.lveditor.draft"
+            draft_dir = draft_root / "DRAFT-ID"
+            draft_dir.mkdir(parents=True)
+            resource_id = "6912033793700270606"
+            content_path = draft_dir / "draft_content.json"
+            content_path.write_text(
+                json.dumps(
+                    {
+                        "materials": {
+                            "texts": [
+                                {
+                                    "id": "text-1",
+                                    "font_name": "毛笔行楷",
+                                    "font_resource_id": resource_id,
+                                    "font_path": "D:",
+                                    "fonts": [{"resource_id": resource_id}],
+                                    "content": json.dumps(
+                                        {
+                                            "styles": [
+                                                {
+                                                    "font": {
+                                                        "id": resource_id,
+                                                        "path": "D:",
+                                                    },
+                                                    "size": 12,
+                                                }
+                                            ],
+                                            "text": "真正的自由",
+                                        },
+                                        ensure_ascii=False,
+                                    ),
+                                }
+                            ]
+                        }
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = fallback_missing_fonts_to_default(
+                draft_dir,
+                [{"name": "毛笔行楷", "resource_id": resource_id}],
+                draft_root=draft_root,
+                cache_roots=[root / "empty-cache"],
+            )
+            material = json.loads(content_path.read_text(encoding="utf-8"))["materials"]["texts"][0]
+            style = json.loads(material["content"])["styles"][0]
+
+            self.assertEqual(result["fallback"], ["毛笔行楷"])
+            self.assertEqual(result["changed_materials"], 1)
+            self.assertNotIn("font", style)
+            self.assertNotIn("font_name", material)
+            self.assertNotIn("font_resource_id", material)
+            self.assertNotIn("fonts", material)
+
+    def test_available_cloud_font_is_not_replaced(self):
+        with tempfile.TemporaryDirectory(prefix="jianying-font-no-fallback-") as temporary:
+            root = Path(temporary)
+            draft_dir = root / "draft"
+            draft_dir.mkdir()
+            resource_id = "6912033793700270606"
+            font_path = root / "毛笔行楷.ttf"
+            font_path.write_bytes(b"OTTO" + b"\0" * 2048)
+            content_path = draft_dir / "draft_content.json"
+            content_path.write_text(
+                json.dumps(
+                    {
+                        "materials": {
+                            "texts": [
+                                {
+                                    "font_name": "毛笔行楷",
+                                    "font_resource_id": resource_id,
+                                    "font_path": str(font_path),
+                                    "content": json.dumps(
+                                        {"styles": [{"font": {"id": resource_id, "path": str(font_path)}}], "text": "字幕"},
+                                        ensure_ascii=False,
+                                    ),
+                                }
+                            ]
+                        }
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = fallback_missing_fonts_to_default(
+                draft_dir,
+                [{"name": "毛笔行楷", "resource_id": resource_id}],
+                cache_roots=[root / "empty-cache"],
+            )
+            material = json.loads(content_path.read_text(encoding="utf-8"))["materials"]["texts"][0]
+
+            self.assertFalse(result["updated"])
+            self.assertEqual(material["font_resource_id"], resource_id)
 
     def test_recognizes_font_downloaded_and_bound_by_jianying_11(self):
         with tempfile.TemporaryDirectory(prefix="jianying-bound-font-") as temporary:

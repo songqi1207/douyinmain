@@ -25,6 +25,7 @@ from desktop_bridge.draft_core import (
 from desktop_bridge.font_resources import (
     bind_cached_fonts,
     build_font_preload_key,
+    fallback_missing_fonts_to_default,
     font_resources_from_import_report,
     inspect_font_resources,
     required_font_resources,
@@ -749,11 +750,24 @@ def _run_native_export_unlocked(
             progress=progress,
         )
     else:
+        referenced_fonts = font_resources_from_import_report(report)
+        fallback = fallback_missing_fonts_to_default(
+            report.get("draft_dir") or "",
+            referenced_fonts,
+            draft_root=root,
+        )
         font_resources = []
         logger.info(
-            "font_verification_skipped job_id=%s reason=user_configuration",
+            "font_verification_skipped job_id=%s reason=user_configuration fallback_fonts=%s changed_materials=%s",
             task.get("job_id"),
+            ",".join(fallback.get("fallback") or []),
+            fallback.get("changed_materials", 0),
         )
+        if fallback.get("fallback") and progress:
+            progress(
+                "以下字体在本机不可用，已自动改用剪映默认字体："
+                + "、".join(fallback["fallback"])
+            )
     resource_wait_seconds = _cloud_resource_wait_seconds(len(cloud_resources))
 
     output_dir.mkdir(parents=True, exist_ok=True)
