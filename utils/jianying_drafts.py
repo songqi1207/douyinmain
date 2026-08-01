@@ -259,6 +259,14 @@ def _sort_tracks(draft: dict[str, Any]) -> None:
     indexed_tracks = list(enumerate(draft.get("tracks", [])))
     indexed_tracks.sort(key=lambda pair: (_TRACK_RANK.get(str(pair[1].get("type", "")), 99), pair[0]))
     draft["tracks"] = [track for _, track in indexed_tracks]
+    # Jianying 11 expects render_index to be the zero-based position of the
+    # sorted track, exactly as pyJianYingDraft writes it. Large or sparse
+    # per-segment values may leave only the first text track renderable even
+    # though every later caption remains visible in the editor timeline.
+    for render_index, track in enumerate(draft["tracks"]):
+        for segment in track.get("segments") or []:
+            segment["render_index"] = render_index
+            segment["track_render_index"] = 0
 
 
 def _duration_to_us(value: Any) -> int:

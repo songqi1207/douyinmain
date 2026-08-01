@@ -18,6 +18,41 @@ from utils.jianying_drafts import (
 
 
 class JianyingTextMaterialTests(unittest.TestCase):
+    def test_caption_tracks_use_contiguous_render_indexes_after_sorting(self):
+        with tempfile.TemporaryDirectory() as draft_root, patch.dict(
+            os.environ, {"JIANYING_DRAFT_ROOT": draft_root}
+        ):
+            created = create_draft(1080, 1920, "字幕轨道层级测试")
+            append_captions(
+                created["draft_id"],
+                [{"text": "第一句", "start": 0, "end": 1_000_000}],
+                track_name="opening",
+                render_index=15_000,
+            )
+            append_captions(
+                created["draft_id"],
+                [{"text": "第二句", "start": 1_000_000, "end": 2_000_000}],
+                track_name="body",
+                render_index=30_000,
+            )
+            content = json.loads(
+                (Path(created["draft_dir"]) / "draft_content.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(
+            [track["segments"][0]["render_index"] for track in content["tracks"]],
+            [0, 1],
+        )
+        self.assertTrue(
+            all(
+                segment["track_render_index"] == 0
+                for track in content["tracks"]
+                for segment in track["segments"]
+            )
+        )
+
     def test_caption_text_restores_single_and_double_escaped_line_breaks(self):
         expected = "《三国演义》\n\n罗贯中著"
 
