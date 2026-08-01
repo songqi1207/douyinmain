@@ -36,6 +36,7 @@ from desktop_bridge.click_calibration import (
     record_jianying_export_clicks,
 )
 from desktop_bridge.helper_metadata import HELPER_PRODUCT_NAME, HELPER_VERSION
+from desktop_bridge.interaction_recorder import record_jianying_interactions
 from desktop_bridge.paths import app_data_dir
 from desktop_bridge.updater import download_and_launch_update
 from desktop_bridge.windows_integration import (
@@ -286,6 +287,12 @@ class DraftBridgeApp:
             command=self.start_export_click_calibration,
         )
         self.calibrate_button.grid(row=3, column=2, columnspan=2, sticky="w", pady=(6, 0))
+        self.record_button = self.ttk.Button(
+            device,
+            text="录制剪映手动操作",
+            command=self.start_interaction_recording,
+        )
+        self.record_button.grid(row=4, column=0, columnspan=2, sticky="w", pady=(6, 0))
         self.ttk.Label(device, textvariable=self.device_status_var, foreground="#19714a").grid(
             row=2, column=0, columnspan=4, sticky="w", pady=(6, 0)
         )
@@ -575,6 +582,49 @@ class DraftBridgeApp:
             "校准完成",
             "已保存编辑页右上角和导出窗口底部的两个“导出”按钮位置。\n"
             "如果剪映已经打开导出窗口，可以点击“取消”返回编辑页。",
+        )
+
+    def start_interaction_recording(self) -> None:
+        from tkinter import messagebox
+
+        confirmed = messagebox.askokcancel(
+            "录制剪映手动操作",
+            "开始后助手会隐藏，请在剪映中完整手动操作一次。\n\n"
+            "可以包括：关闭草稿异常弹窗、打开目标草稿、点击一键超清、点击两个导出按钮。\n"
+            "操作完成后按 F8 结束录制。\n\n"
+            "只记录剪映窗口内的鼠标点击、控件信息和窗口截图；不会记录键盘输入内容。",
+        )
+        if not confirmed:
+            return
+        self.record_button.configure(state="disabled")
+        self.device_status_var.set("正在录制剪映手动操作；完成后按 F8…")
+        self.root.withdraw()
+        threading.Thread(target=self._interaction_recording_worker, daemon=True).start()
+
+    def _interaction_recording_worker(self) -> None:
+        try:
+            report_path = record_jianying_interactions(app_data_dir() / "diagnostics")
+        except Exception as exc:
+            self.root.after(0, self._finish_interaction_recording, "", str(exc))
+            return
+        self.root.after(0, self._finish_interaction_recording, str(report_path), "")
+
+    def _finish_interaction_recording(self, report_path: str, error: str) -> None:
+        from tkinter import messagebox
+
+        self.root.deiconify()
+        self.root.lift()
+        self.record_button.configure(state="normal")
+        if error:
+            self.device_status_var.set(f"剪映操作录制失败：{error}")
+            messagebox.showerror("录制失败", error)
+            return
+        path = Path(report_path)
+        self.device_status_var.set(f"剪映操作已录制：{path.parent.name}")
+        open_directory(path.parent)
+        messagebox.showinfo(
+            "录制完成",
+            f"已保存操作报告和逐步截图：\n{path}\n\n现在可以把录制完成告诉维护人员。",
         )
 
     def start_font_prepare(self) -> None:

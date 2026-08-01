@@ -37,6 +37,7 @@ from desktop_bridge.draft_core import (
 )
 from desktop_bridge.paths import app_data_dir
 from desktop_bridge.jianying_uia_export import _draft_search_query
+from desktop_bridge.interaction_recorder import normalize_recorded_point
 from desktop_bridge.click_calibration import (
     normalize_export_click,
     normalize_export_confirm_click,
@@ -51,6 +52,23 @@ from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_interaction_recorder_uses_window_relative_coordinates(self):
+        point = normalize_recorded_point(1800, 900, (1000, 100, 2000, 1100))
+
+        self.assertEqual(point["window_x"], 800)
+        self.assertEqual(point["window_y"], 800)
+        self.assertEqual(point["x_ratio"], 0.8)
+        self.assertEqual(point["y_ratio"], 0.8)
+        self.assertEqual(point["x_from_right_ratio"], 0.2)
+        self.assertEqual(point["y_from_bottom_ratio"], 0.2)
+
+    def test_helper_exposes_full_jianying_interaction_recording(self):
+        source = inspect.getsource(DraftBridgeApp)
+
+        self.assertIn("录制剪映手动操作", source)
+        self.assertIn("record_jianying_interactions", source)
+        self.assertIn("完成后按 F8", source)
+
     def test_uuid_draft_search_uses_first_three_characters(self):
         self.assertEqual(_draft_search_query("EAB8433A-C232-4C5C-B10D"), "EAB")
         self.assertEqual(_draft_search_query("named-draft"), "named-draft")

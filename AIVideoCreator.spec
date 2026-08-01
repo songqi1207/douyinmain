@@ -51,6 +51,7 @@ a = Analysis(
     ] + pyjianying_datas,
     hiddenimports=[
         "PIL.Image",
+        "PIL.ImageGrab",
         "requests",
         "uiautomation",
         "comtypes",
