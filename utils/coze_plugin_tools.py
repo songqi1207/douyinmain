@@ -12,6 +12,7 @@ from utils.local_media_generation import generated_local_path_from_url
 _SPLIT_RE = re.compile(r"[。.!！？?；;\n\r]+")
 _CLAUSE_SPLIT_RE = re.compile(r"([，,、：:…]+)")
 _TRIM_CHARS = " \t\r\n,.，。！？!?；;\"'“”‘’《》"
+_LINE_CONNECTORS = ("那", "这", "会", "像", "让", "在", "而", "但", "却", "也", "就", "即便")
 
 
 def _to_number(value, default=0):
@@ -89,6 +90,43 @@ def _split_long_semantic_sentence(text, max_len):
     if current:
         result.append(current.rstrip("，,、：:…"))
     return [item for item in result if item]
+
+
+def _wrap_semantic_caption_lines(text, max_len):
+    """Wrap one caption page without turning its lines into timed pages."""
+
+    limit = max(4, int(max_len or 1))
+    wrapped = []
+    for source_line in str(text or "").splitlines() or [""]:
+        remaining = source_line.strip()
+        while len(remaining) > limit:
+            target = min(limit, max(4, round(len(remaining) / 2)))
+            candidates = []
+            for index, character in enumerate(remaining):
+                cut = index + 1
+                if character in "，,、：:…" and 4 <= cut <= limit:
+                    candidates.append(cut)
+            for connector in _LINE_CONNECTORS:
+                start = 4
+                while True:
+                    index = remaining.find(connector, start)
+                    if index < 0:
+                        break
+                    if 4 <= index <= limit:
+                        candidates.append(index)
+                    start = index + len(connector)
+            if re.search(r"\s", remaining):
+                candidates.extend(
+                    index + 1
+                    for index, character in enumerate(remaining[:limit])
+                    if character.isspace() and index >= 3
+                )
+            cut = min(candidates, key=lambda value: abs(value - target)) if candidates else target
+            wrapped.append(remaining[:cut].rstrip())
+            remaining = remaining[cut:].lstrip()
+        if remaining or not wrapped:
+            wrapped.append(remaining)
+    return "\n".join(line for line in wrapped if line)
 
 
 def split_text_segments(text, min_len=8, max_len=28):
@@ -358,9 +396,15 @@ def build_wenan_timeline_range(timelines, wenan):
 
 
 def align_text_to_audio(text, audio_url, max_chars_per_line=14):
-    segments = split_text_segments(text, min_len=1, max_len=_to_number(max_chars_per_line, 14) or 14)
+    line_limit = _to_number(max_chars_per_line, 14) or 14
+    segments = split_text_segments(text, min_len=1, max_len=line_limit)
     if not segments:
         return {"texts": [], "timelines": [], "data": {"duration": 0, "audio_url": str(audio_url or "")}}
+
+    display_segments = [
+        _wrap_semantic_caption_lines(segment, line_limit)
+        for segment in segments
+    ]
 
     target = str(generated_local_path_from_url(audio_url) or str(audio_url or "").strip())
     duration_us = max(0, int(round(probe_audio_duration(target) * 1_000_000)))
@@ -377,9 +421,9 @@ def align_text_to_audio(text, audio_url, max_chars_per_line=14):
         timelines.append({"start": cursor, "end": max(cursor, next_cursor)})
         cursor = next_cursor
 
-    pairs = [{"text": segments[idx], "start": timelines[idx]["start"], "end": timelines[idx]["end"]} for idx in range(len(segments))]
+    pairs = [{"text": display_segments[idx], "start": timelines[idx]["start"], "end": timelines[idx]["end"]} for idx in range(len(segments))]
     return {
-        "texts": segments,
+        "texts": display_segments,
         "timelines": timelines,
         "data": {"audio_url": str(audio_url or "").strip(), "duration": round(duration_us / 1_000_000, 3), "segments": pairs},
     }
