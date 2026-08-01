@@ -341,12 +341,11 @@ def reject_registration_application(application_id: str, reviewer_id: str) -> di
 def ensure_configured_admin() -> None:
     email = (os.getenv("SITE_ADMIN_EMAIL") or "").strip().lower()
     password = os.getenv("SITE_ADMIN_PASSWORD") or ""
-    if not email and not password:
+    if not email:
         return
     email = _normalize_email(email)
-    if len(password) < 10:
+    if password and len(password) < 10:
         raise RuntimeError("SITE_ADMIN_PASSWORD 至少需要 10 个字符")
-    salt = secrets.token_bytes(16)
     now = time.time()
     with _connect() as db:
         db.execute(
@@ -359,12 +358,22 @@ def ensure_configured_admin() -> None:
             (email, email),
         ).fetchone()
         if row:
-            db.execute(
-                """UPDATE users SET email = ?, role = 'admin', active = 1,
-                   password_hash = ?, password_salt = ?, must_change_password = 0 WHERE id = ?""",
-                (email, _hash_password(password, salt), salt.hex(), row["id"]),
-            )
+            if password:
+                salt = secrets.token_bytes(16)
+                db.execute(
+                    """UPDATE users SET email = ?, role = 'admin', active = 1,
+                       password_hash = ?, password_salt = ?, must_change_password = 0 WHERE id = ?""",
+                    (email, _hash_password(password, salt), salt.hex(), row["id"]),
+                )
+            else:
+                db.execute(
+                    "UPDATE users SET email = ?, role = 'admin', active = 1 WHERE id = ?",
+                    (email, row["id"]),
+                )
         else:
+            if not password:
+                raise RuntimeError("管理员账号不存在，首次创建时必须配置 SITE_ADMIN_PASSWORD")
+            salt = secrets.token_bytes(16)
             db.execute(
                 """INSERT INTO users
                    (id, username, email, password_hash, password_salt, role, active, must_change_password, created_at)

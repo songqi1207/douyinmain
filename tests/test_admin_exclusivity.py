@@ -18,13 +18,20 @@ class AdminExclusivityTests(unittest.TestCase):
                     site_accounts.os.environ,
                     {
                         "SITE_ADMIN_EMAIL": "owner@example.test",
-                        "SITE_ADMIN_PASSWORD": "owner-password-123",
+                        "SITE_ADMIN_PASSWORD": "",
                     },
                 ),
             ):
                 site_accounts.init_site_database()
                 db = sqlite3.connect(database)
                 try:
+                    db.execute(
+                        """INSERT INTO users
+                           (id, username, email, password_hash, password_salt, role, active,
+                            must_change_password, created_at)
+                           VALUES ('owner', 'owner@example.test', 'owner@example.test',
+                                   'unchanged-hash', '00', 'user', 1, 0, 1)"""
+                    )
                     db.execute(
                         """INSERT INTO users
                            (id, username, email, password_hash, password_salt, role, active,
@@ -45,6 +52,14 @@ class AdminExclusivityTests(unittest.TestCase):
                     db.close()
                 self.assertEqual(roles["owner@example.test"], "admin")
                 self.assertEqual(roles["rogue@example.test"], "user")
+                db = sqlite3.connect(database)
+                try:
+                    owner_hash = db.execute(
+                        "SELECT password_hash FROM users WHERE email = 'owner@example.test'"
+                    ).fetchone()[0]
+                finally:
+                    db.close()
+                self.assertEqual(owner_hash, "unchanged-hash")
                 gc.collect()
 
 
