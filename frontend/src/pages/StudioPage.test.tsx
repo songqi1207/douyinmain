@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Job, Workflow } from "../types";
 import { StudioPage } from "./StudioPage";
@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   fetchWorkflows: vi.fn(),
   retryJob: vi.fn(),
 }));
+const authState = vi.hoisted(() => ({ role: "user" }));
 
 vi.mock("../api", async (importOriginal) => {
   const original = await importOriginal<typeof import("../api")>();
@@ -26,7 +27,7 @@ vi.mock("../auth", () => ({
       id: "user-1",
       username: "creator",
       email: "creator@example.test",
-      role: "user",
+      role: authState.role,
       must_change_password: false,
     },
     workflow_favorites: [],
@@ -68,7 +69,10 @@ const queuedJob: Job = {
 };
 
 describe("StudioPage", () => {
+  afterEach(() => cleanup());
+
   beforeEach(() => {
+    authState.role = "user";
     localStorage.clear();
     api.fetchWorkflows.mockResolvedValue({ items: workflows, total: 3 });
     api.fetchDraftKeyRenderStatus.mockResolvedValue({
@@ -113,5 +117,17 @@ describe("StudioPage", () => {
     });
     render(<MemoryRouter><StudioPage /></MemoryRouter>);
     expect(await screen.findByText("需要完成一次配对")).toBeInTheDocument();
+  });
+
+  it("links administrators directly to the selected workflow input settings", async () => {
+    authState.role = "admin";
+    render(<MemoryRouter><StudioPage /></MemoryRouter>);
+    await screen.findAllByText("已发布");
+    fireEvent.click(screen.getByRole("tab", { name: /神话人物/ }));
+
+    expect(screen.getByRole("link", { name: "配置神话人物输入参数" })).toHaveAttribute(
+      "href",
+      "/admin/runtime-settings?workflow=OWN03#workflow-inputs",
+    );
   });
 });

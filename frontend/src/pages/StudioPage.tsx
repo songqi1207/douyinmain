@@ -5,6 +5,7 @@ import {
   Laptop,
   LockKeyhole,
   Play,
+  Settings,
   ShieldCheck,
   Sparkles,
   WandSparkles,
@@ -289,7 +290,20 @@ export function StudioPage() {
           <div className="workspace-grid">
             <form className="studio-form" onSubmit={(event) => void submit(event)}>
               <div className="studio-form-label">
-                <span>主题内容</span><small>示例：{selected.example}</small>
+                <span>主题内容</span>
+                <div>
+                  <small>示例：{selected.example}</small>
+                  {user?.role === "admin" && (
+                    <Link
+                      className="studio-input-config"
+                      to={`/admin/runtime-settings?workflow=${selectedCode}#workflow-inputs`}
+                      aria-label={`配置${selected.label}输入参数`}
+                      title={`配置${selected.label}输入参数`}
+                    >
+                      <Settings />
+                    </Link>
+                  )}
+                </div>
               </div>
               <textarea
                 autoFocus

@@ -1,6 +1,6 @@
 import { Check, KeyRound, LoaderCircle, Save, Settings, SlidersHorizontal, Trash2 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { ApiError, fetchRuntimeSettings, updateRuntimeSettings } from "../api";
 import { useAuth } from "../auth";
@@ -24,6 +24,8 @@ function workflowInputValues(workflows: RuntimeWorkflowSetting[]) {
 export function RuntimeSettingsPage() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedWorkflowCode = (searchParams.get("workflow") || "").trim().toUpperCase();
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
   const [miheKey, setMiheKey] = useState("");
   const [clearMiheKey, setClearMiheKey] = useState(false);
@@ -44,7 +46,9 @@ export function RuntimeSettingsPage() {
       setWorkflowIds(Object.fromEntries(result.workflows.map((item) => [item.code, item.workflow_id])));
       setWorkflowInputs(workflowInputValues(result.workflows));
       setSelectedWorkflowCode((previous) =>
-        result.workflows.some((item) => item.code === previous)
+        result.workflows.some((item) => item.code === requestedWorkflowCode)
+          ? requestedWorkflowCode
+          : result.workflows.some((item) => item.code === previous)
           ? previous
           : result.workflows[0]?.code || "",
       );
@@ -71,6 +75,14 @@ export function RuntimeSettingsPage() {
     }
     void load();
   }, [authLoading, user?.id, user?.role]);
+
+  useEffect(() => {
+    if (!settings || !requestedWorkflowCode) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("workflow-inputs")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [settings, requestedWorkflowCode]);
 
   const visibleWorkflows = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -204,7 +216,7 @@ export function RuntimeSettingsPage() {
               </div>
             </section>
 
-            <section className="runtime-workflow-card runtime-input-card">
+            <section className="runtime-workflow-card runtime-input-card" id="workflow-inputs">
               <div className="runtime-card-heading">
                 <span><SlidersHorizontal /></span>
                 <div>

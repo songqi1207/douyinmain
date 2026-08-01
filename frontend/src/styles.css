@@ -605,7 +605,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .studio-form { display: grid; align-content: start; gap: 13px; padding: 24px; }
 .studio-form-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .studio-form-label > span { font-weight: 650; }
+.studio-form-label > div { display: flex; align-items: center; gap: 7px; }
 .studio-form-label small { color: #776f64; font-size: 11px; }
+.studio-input-config { width: 27px; height: 27px; display: grid; place-items: center; flex: 0 0 27px; border: 1px solid #494137; border-radius: 7px; color: #a99677; background: #171512; }
+.studio-input-config:hover { color: #f0ca83; border-color: #80643c; background: #231d14; }
+.studio-input-config svg { width: 14px; height: 14px; }
 .studio-form textarea { width: 100%; min-height: 125px; resize: vertical; border: 1px solid #464038; border-radius: 12px; padding: 15px; outline: 0; color: #f4f0e8; background: #10100f; font-size: 17px; line-height: 1.65; }
 .studio-form textarea:focus { border-color: #a67a3e; box-shadow: 0 0 0 3px rgba(180, 131, 62, .1); }
 .input-meta { display: flex; justify-content: space-between; gap: 12px; color: #6f6a62; font-size: 10px; }
@@ -832,7 +836,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .workflow-choice-grid button { grid-template-columns: 42px 1fr 20px; padding: 12px; }
   .choice-icon { width: 40px; height: 40px; }
   .studio-form { padding: 17px 13px; }
-  .studio-form-label { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .studio-form-label { align-items: center; flex-direction: row; gap: 8px; }
+  .studio-form-label > div { min-width: 0; }
+  .studio-form-label small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .studio-form textarea { min-height: 112px; font-size: 15px; }
   .input-meta span:last-child { display: none; }
   .readiness-grid { grid-template-columns: 1fr; }
