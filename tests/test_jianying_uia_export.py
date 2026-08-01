@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from desktop_bridge.jianying_uia_export import (
+    _draft_search_query,
     JianyingUIAError,
     _description_matcher,
     _double_click_control,
@@ -37,6 +38,13 @@ class _FakeClickableControl:
 
 
 class JianyingUIAExportTests(unittest.TestCase):
+    def test_uuid_draft_search_uses_unique_prefix(self):
+        self.assertEqual(
+            _draft_search_query("EAB8433A-C232-4C5C-B10D-9EDCB3A5D69C"),
+            "EAB8433A",
+        )
+        self.assertEqual(_draft_search_query("神话故事草稿"), "神话故事草稿")
+
     def test_full_description_matcher_uses_qml_property(self):
         exact = _description_matcher(
             "HomePageDraftTitle:ABC",

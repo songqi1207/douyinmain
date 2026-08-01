@@ -96,6 +96,13 @@ def _first_draft_card_point(left: int, top: int, right: int, bottom: int) -> tup
     return int(int(left) + (width * 0.255)), int(int(top) + (height * 0.775))
 
 
+def _draft_search_query(draft_name: str) -> str:
+    prefix, separator, _rest = str(draft_name or "").partition("-")
+    if separator and len(prefix) == 8 and all(character in "0123456789abcdefABCDEF" for character in prefix):
+        return prefix
+    return str(draft_name or "")
+
+
 def _draft_card_candidate_points(left: int, top: int, right: int, bottom: int) -> list[tuple[int, int]]:
     width = max(1, int(right) - int(left))
     height = max(1, int(bottom) - int(top))
@@ -317,20 +324,25 @@ def _open_home_draft_by_coordinate(
 ):
     _force_foreground(window)
     if draft_name:
+        search_query = _draft_search_query(draft_name)
         left, top, right, bottom = _window_rect(window)
         search_x = int(left + ((right - left) * 0.795))
         search_y = int(top + ((bottom - top) * 0.672))
         _emit(
             stage,
             "uia2_draft_search_coordinate_click",
-            f"x={search_x} y={search_y} query={draft_name}",
+            f"x={search_x} y={search_y} query={search_query} draft_name={draft_name}",
         )
         _click_point(search_x, search_y)
         time.sleep(0.3)
         auto.SendKeys("{Ctrl}a")
-        auto.SendKeys(draft_name)
+        auto.SendKeys(search_query)
         time.sleep(2)
-        _emit(stage, "uia2_draft_search_applied", f"query={draft_name}")
+        _emit(
+            stage,
+            "uia2_draft_search_applied",
+            f"query={search_query} draft_name={draft_name}",
+        )
     project_item = _first_home_project_item(window)
     if project_item is not None:
         _dismiss_process_popups(window, stage)

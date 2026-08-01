@@ -508,6 +508,7 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "editor_export_calibration_loaded"', script)
         self.assertIn('Write-Stage "draft_search_applied"', script)
         self.assertIn("$height * 0.672", script)
+        self.assertIn("$Query.Substring(0, 8)", script)
         self.assertIn('Write-Stage "export_confirm_calibration_loaded"', script)
         self.assertIn("$width * 0.105", script)
         self.assertIn("$height * 0.023", script)
