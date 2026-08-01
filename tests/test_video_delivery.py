@@ -43,8 +43,9 @@ class VideoDeliveryTests(unittest.TestCase):
             self.assertEqual(result, destination.resolve())
             self.assertIn("libx264", command)
             self.assertEqual(command[command.index("-crf") + 1], "20")
-            self.assertEqual(command[command.index("-preset") + 1], "slow")
+            self.assertEqual(command[command.index("-preset") + 1], "medium")
             self.assertEqual(command[command.index("-b:a") + 1], "128k")
+            self.assertIn("-map_metadata", command)
             self.assertIn("+faststart", command)
 
     def test_compress_video_uses_a_unique_work_file_for_each_attempt(self):
@@ -90,6 +91,25 @@ class VideoDeliveryTests(unittest.TestCase):
             self.assertEqual(put.call_args.args[0], "https://worker.test/exports/job-device-web.mp4")
             self.assertEqual(put.call_args.kwargs["headers"]["Authorization"], "Bearer server-secret")
             self.assertEqual(put.call_args.kwargs["headers"]["Content-Type"], "video/mp4")
+
+    def test_publish_falls_back_to_lossless_remux_when_compression_fails(self):
+        with tempfile.TemporaryDirectory(prefix="video-remux-fallback-") as temporary:
+            source = Path(temporary) / "source.mp4"
+            source.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"x" * 4096)
+            with (
+                patch.object(
+                    video_delivery,
+                    "compress_video_for_web",
+                    side_effect=video_delivery.VideoDeliveryError("encode failed"),
+                ),
+                patch.object(video_delivery, "remux_video_for_web", return_value=source) as remux,
+                patch.object(video_delivery, "upload_video_to_r2", return_value="https://cdn.test/video.mp4"),
+            ):
+                result = video_delivery.publish_device_video("job-id", source)
+
+            self.assertEqual(result[0], "https://cdn.test/video.mp4")
+            self.assertEqual(result[3], "remuxed")
+            remux.assert_called_once()
 
     def test_completed_device_job_can_reference_r2_url(self):
         job = {

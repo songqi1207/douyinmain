@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
 from pathlib import Path
 from urllib.parse import quote
 from uuid import uuid4
@@ -13,6 +14,9 @@ import requests
 
 class VideoDeliveryError(RuntimeError):
     """Raised when the optional compressed R2 delivery path fails."""
+
+
+_DELIVERY_LOCK = threading.Lock()
 
 
 def r2_export_configured() -> bool:
@@ -57,7 +61,7 @@ def compress_video_for_web(source: Path, destination: Path) -> Path:
     temporary = destination.with_name(
         f".{destination.stem}.{uuid4().hex}.encoding.mp4"
     )
-    preset = (os.getenv("R2_EXPORT_VIDEO_PRESET") or "slow").strip() or "slow"
+    preset = (os.getenv("R2_EXPORT_VIDEO_PRESET") or "medium").strip() or "medium"
     audio_bitrate = (os.getenv("R2_EXPORT_AUDIO_BITRATE") or "128k").strip() or "128k"
     command = [
         os.getenv("FFMPEG_BINARY") or "ffmpeg",
@@ -71,6 +75,12 @@ def compress_video_for_web(source: Path, destination: Path) -> Path:
         "0:v:0",
         "-map",
         "0:a:0?",
+        "-map_metadata",
+        "-1",
+        "-map_chapters",
+        "-1",
+        "-sn",
+        "-dn",
         "-c:v",
         "libx264",
         "-preset",
@@ -104,7 +114,10 @@ def compress_video_for_web(source: Path, destination: Path) -> Path:
     if completed.returncode != 0 or not temporary.is_file():
         detail = (completed.stderr or completed.stdout or "").strip()[-500:]
         temporary.unlink(missing_ok=True)
-        raise VideoDeliveryError("视频压缩失败" + (f"：{detail}" if detail else ""))
+        raise VideoDeliveryError(
+            f"视频压缩失败（FFmpeg 退出码 {completed.returncode}）"
+            + (f"：{detail}" if detail else "")
+        )
     if temporary.stat().st_size < 12:
         temporary.unlink(missing_ok=True)
         raise VideoDeliveryError("视频压缩结果为空")
@@ -113,11 +126,74 @@ def compress_video_for_web(source: Path, destination: Path) -> Path:
             temporary.unlink(missing_ok=True)
             raise VideoDeliveryError("视频压缩结果不是有效的 MP4")
 
-    # A derivative that is larger than the JianYing source gives no delivery
-    # benefit. In that rare case upload the already-compatible source instead.
-    if temporary.stat().st_size >= source.stat().st_size:
+    os.replace(temporary, destination)
+    return destination
+
+
+def remux_video_for_web(source: Path, destination: Path) -> Path:
+    """Losslessly strip unsupported metadata and move MP4 indexes to the front."""
+
+    source = Path(source).resolve()
+    destination = Path(destination).resolve()
+    if not source.is_file():
+        raise VideoDeliveryError("导出原片不存在，无法优化")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(
+        f".{destination.stem}.{uuid4().hex}.remuxing.mp4"
+    )
+    command = [
+        os.getenv("FFMPEG_BINARY") or "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-ignore_unknown",
+        "-err_detect",
+        "ignore_err",
+        "-i",
+        str(source),
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a:0?",
+        "-map_metadata",
+        "-1",
+        "-map_chapters",
+        "-1",
+        "-sn",
+        "-dn",
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        str(temporary),
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_positive_int("R2_EXPORT_REMUX_TIMEOUT_SECONDS", 600),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
         temporary.unlink(missing_ok=True)
-        return source
+        raise VideoDeliveryError(f"视频快速优化无法完成：{exc}") from exc
+    if completed.returncode != 0 or not temporary.is_file():
+        detail = (completed.stderr or completed.stdout or "").strip()[-500:]
+        temporary.unlink(missing_ok=True)
+        raise VideoDeliveryError(
+            f"视频快速优化失败（FFmpeg 退出码 {completed.returncode}）"
+            + (f"：{detail}" if detail else "")
+        )
+    if temporary.stat().st_size < 12:
+        temporary.unlink(missing_ok=True)
+        raise VideoDeliveryError("视频快速优化结果为空")
+    with temporary.open("rb") as stream:
+        if b"ftyp" not in stream.read(64):
+            temporary.unlink(missing_ok=True)
+            raise VideoDeliveryError("视频快速优化结果不是有效 MP4")
     os.replace(temporary, destination)
     return destination
 
@@ -160,17 +236,23 @@ def upload_video_to_r2(source: Path, object_name: str) -> str:
     return f"{public_base}/{quote(safe_name)}"
 
 
-def publish_device_video(job_id: str, source: Path) -> tuple[str, int, int]:
+def publish_device_video(job_id: str, source: Path) -> tuple[str, int, int, str]:
     """Compress one device MP4, upload it, and return URL and byte counts."""
 
     source = Path(source).resolve()
     output = source.with_name(f".{job_id}-device-web.{uuid4().hex}.mp4")
     original_size = source.stat().st_size
     selected = source
-    try:
-        selected = compress_video_for_web(source, output)
-        public_url = upload_video_to_r2(selected, f"{job_id}-device-web.mp4")
-        return public_url, original_size, selected.stat().st_size
-    finally:
-        if output != source:
-            output.unlink(missing_ok=True)
+    delivery_mode = "compressed"
+    with _DELIVERY_LOCK:
+        try:
+            try:
+                selected = compress_video_for_web(source, output)
+            except VideoDeliveryError:
+                delivery_mode = "remuxed"
+                selected = remux_video_for_web(source, output)
+            public_url = upload_video_to_r2(selected, f"{job_id}-device-web.mp4")
+            return public_url, original_size, selected.stat().st_size, delivery_mode
+        finally:
+            if output != source:
+                output.unlink(missing_ok=True)
