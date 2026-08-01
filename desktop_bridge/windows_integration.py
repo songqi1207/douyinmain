@@ -134,6 +134,26 @@ def install_for_current_user(arguments: list[str]) -> bool:
     return False
 
 
+def wait_for_replaced_process(process_id: int, timeout_ms: int = 20_000) -> None:
+    """Wait until the old helper releases its single-instance mutex.
+
+    The downloaded updater used to relaunch the installed build immediately.
+    On slower Windows machines that build could observe the old mutex, exit,
+    and then leave no helper running once the old process closed.
+    """
+    if os.name != "nt" or process_id <= 0 or process_id == os.getpid():
+        return
+    kernel32 = ctypes.windll.kernel32
+    synchronize = 0x00100000
+    handle = kernel32.OpenProcess(synchronize, False, int(process_id))
+    if not handle:
+        return
+    try:
+        kernel32.WaitForSingleObject(handle, max(0, int(timeout_ms)))
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def acquire_single_instance() -> bool:
     """Return False when another GUI/background instance already owns the mutex."""
     global _mutex_handle

@@ -49,7 +49,12 @@ def download_and_launch_update(site_url: str) -> Path:
 
     os.replace(partial, temporary)
     subprocess.Popen(
-        [str(temporary), "--background"],
+        [
+            str(temporary),
+            "--background",
+            "--replace-pid",
+            str(os.getpid()),
+        ],
         cwd=str(temporary.parent),
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )

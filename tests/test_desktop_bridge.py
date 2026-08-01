@@ -731,7 +731,26 @@ class DesktopBridgeTests(unittest.TestCase):
                 timeout=(20, 180),
             )
             response.raise_for_status.assert_called_once()
-            self.assertEqual(popen.call_args.args[0], [str(downloaded), "--background"])
+            self.assertEqual(
+                popen.call_args.args[0],
+                [str(downloaded), "--background", "--replace-pid", str(os.getpid())],
+            )
+
+    def test_update_handoff_waits_for_old_windows_process(self):
+        kernel32 = MagicMock()
+        kernel32.OpenProcess.return_value = 123
+        fake_ctypes = MagicMock()
+        fake_ctypes.windll.kernel32 = kernel32
+        with (
+            patch.object(windows_integration.os, "name", "nt"),
+            patch.object(windows_integration.os, "getpid", return_value=99),
+            patch.object(windows_integration, "ctypes", fake_ctypes),
+        ):
+            windows_integration.wait_for_replaced_process(42, timeout_ms=15_000)
+
+        kernel32.OpenProcess.assert_called_once_with(0x00100000, False, 42)
+        kernel32.WaitForSingleObject.assert_called_once_with(123, 15_000)
+        kernel32.CloseHandle.assert_called_once_with(123)
 
     def test_frozen_helper_self_installs_and_relaunches_from_user_directory(self):
         with tempfile.TemporaryDirectory(prefix="bridge-self-install-") as temporary:

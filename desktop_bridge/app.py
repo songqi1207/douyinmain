@@ -781,6 +781,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--jianying-exe", help="JianyingPro.exe 路径")
     parser.add_argument("--background", action="store_true", help="后台启动网站剪映任务助手")
     parser.add_argument("--protocol", help="处理 douyin-draft:// 网页唤醒地址")
+    parser.add_argument("--replace-pid", type=int, default=0, help=argparse.SUPPRESS)
     parser.add_argument(
         "--prepare-fonts",
         action="store_true",
@@ -791,6 +792,21 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.no_gui:
         relaunch_arguments = list(argv if argv is not None else sys.argv[1:])
+        if args.replace_pid:
+            from desktop_bridge.windows_integration import wait_for_replaced_process
+
+            wait_for_replaced_process(args.replace_pid)
+            cleaned_arguments: list[str] = []
+            skip_next = False
+            for argument in relaunch_arguments:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if argument == "--replace-pid":
+                    skip_next = True
+                    continue
+                cleaned_arguments.append(argument)
+            relaunch_arguments = cleaned_arguments
         if install_for_current_user(relaunch_arguments):
             return 0
         protocol_url = str(args.protocol or "")

@@ -50,10 +50,14 @@ function updateProgressAt(elapsedSeconds: number): Pick<HelperUpdateProgress, "p
       running: true,
     };
   }
-  if (elapsedSeconds < 120) {
+  if (elapsedSeconds < 100) {
     return { percent: 95, phase: "正在等待新版助手重新连接", running: true };
   }
-  return { percent: 95, phase: "等待超时，请重试或下载安装包", running: false };
+  return {
+    percent: 95,
+    phase: "新版助手未重新连接，请点击下方“下载安装包”并运行一次",
+    running: false,
+  };
 }
 
 function jianyingStatus(capabilities: Record<string, unknown>): string {
