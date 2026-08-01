@@ -42,9 +42,11 @@ class VideoDeliveryTests(unittest.TestCase):
             command = run.call_args.args[0]
             self.assertEqual(result, destination.resolve())
             self.assertIn("libx264", command)
-            self.assertEqual(command[command.index("-crf") + 1], "20")
+            self.assertEqual(command[command.index("-crf") + 1], "23")
             self.assertEqual(command[command.index("-preset") + 1], "medium")
-            self.assertEqual(command[command.index("-b:a") + 1], "128k")
+            self.assertEqual(command[command.index("-b:a") + 1], "96k")
+            self.assertEqual(command[command.index("-maxrate") + 1], "1200k")
+            self.assertIn("fps=30", command[command.index("-vf") + 1])
             self.assertIn("-map_metadata", command)
             self.assertIn("+faststart", command)
 
@@ -103,12 +105,17 @@ class VideoDeliveryTests(unittest.TestCase):
                     side_effect=video_delivery.VideoDeliveryError("encode failed"),
                 ),
                 patch.object(video_delivery, "remux_video_for_web", return_value=source) as remux,
-                patch.object(video_delivery, "upload_video_to_r2", return_value="https://cdn.test/video.mp4"),
+                patch.object(
+                    video_delivery,
+                    "upload_video_to_r2",
+                    side_effect=["https://cdn.test/original.mp4", "https://cdn.test/preview.mp4"],
+                ),
             ):
                 result = video_delivery.publish_device_video("job-id", source)
 
-            self.assertEqual(result[0], "https://cdn.test/video.mp4")
-            self.assertEqual(result[3], "remuxed")
+            self.assertEqual(result[0], "https://cdn.test/original.mp4")
+            self.assertEqual(result[1], "https://cdn.test/original.mp4")
+            self.assertEqual(result[4], "original_fallback")
             remux.assert_called_once()
 
     def test_completed_device_job_can_reference_r2_url(self):
@@ -154,11 +161,13 @@ class VideoDeliveryTests(unittest.TestCase):
                 "job-id",
                 "job-id-device.mp4",
                 "https://cdn.test/exports/job-id-device-web.mp4",
+                "https://cdn.test/exports/job-id-device-original.mp4",
             )
 
         self.assertTrue(promoted)
         results = json.loads(update.call_args.kwargs["results_json"])
         self.assertEqual(results[0]["url"], "https://cdn.test/exports/job-id-device-web.mp4")
+        self.assertEqual(results[0]["download_url"], "https://cdn.test/exports/job-id-device-original.mp4")
 
 
 if __name__ == "__main__":

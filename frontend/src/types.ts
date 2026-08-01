@@ -36,6 +36,7 @@ export type JobResult = {
   type: "image" | "video" | "draft";
   format?: "draft_key" | "workflow_template";
   url: string;
+  download_url?: string;
   poster_url?: string | null;
   downloadable: boolean;
   remote_draft_id?: string;

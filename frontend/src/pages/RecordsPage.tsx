@@ -155,7 +155,7 @@ export function RecordsPage() {
                           {preview?.jobId === job.id && preview.url === result.url ? "收起视频" : "播放视频"}
                         </button>
                       )}
-                      <a href={result.url} target="_blank" rel="noreferrer" download={result.downloadable || undefined}>
+                      <a href={result.download_url || result.url} target="_blank" rel="noreferrer" download={result.downloadable || undefined}>
                         <Download />下载结果 {index + 1}
                       </a>
                     </span>

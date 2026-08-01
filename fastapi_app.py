@@ -970,24 +970,24 @@ def api_render_agent_claim(request: Request):
 
 def _publish_device_video_in_background(job_id: str, result_name: str, destination: Path) -> None:
     try:
-        result_url, original_bytes, published_bytes, delivery_mode = publish_device_video(job_id, destination)
+        result_url, download_url, original_bytes, published_bytes, delivery_mode = publish_device_video(job_id, destination)
     except (OSError, VideoDeliveryError) as exc:
         logger.warning("r2_video_delivery_failed job_id=%s error=%s", job_id, exc)
         append_job_log(job_id, f"R2 视频处理失败，已自动保留站点原片：{exc}", level="warning")
         return
 
-    if not promote_device_render_result(job_id, result_name, result_url):
+    if not promote_device_render_result(job_id, result_name, result_url, download_url):
         logger.warning("r2_video_result_not_promoted job_id=%s url=%s", job_id, result_url)
         append_job_log(job_id, "R2 视频已经上传，但任务结果已变化，站点原片予以保留", level="warning")
         return
 
-    if delivery_mode == "remuxed":
-        append_job_log(job_id, "视频压缩未完成，已自动无损优化并上传到 R2")
+    if delivery_mode == "original_fallback":
+        append_job_log(job_id, "网页预览版生成失败，已自动使用 R2 高清原片")
     else:
         saved_percent = max(0, round((1 - (published_bytes / max(1, original_bytes))) * 100))
         append_job_log(
             job_id,
-            f"视频已压缩并上传到 R2（{original_bytes} → {published_bytes} 字节，减少 {saved_percent}%）",
+            f"网页流畅预览版与高清下载版已上传到 R2（预览版减少 {saved_percent}%）",
         )
     destination.unlink(missing_ok=True)
 

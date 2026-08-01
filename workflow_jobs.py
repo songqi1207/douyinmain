@@ -2119,7 +2119,12 @@ def complete_device_render_job(
     return True
 
 
-def promote_device_render_result(job_id: str, result_name: str, result_url: str) -> bool:
+def promote_device_render_result(
+    job_id: str,
+    result_name: str,
+    result_url: str,
+    download_url: str = "",
+) -> bool:
     """Replace a completed job's local video URL after background delivery."""
 
     job = get_job(job_id)
@@ -2137,6 +2142,8 @@ def promote_device_render_result(job_id: str, result_name: str, result_url: str)
             return True
         if current_url == local_url:
             result["url"] = hosted_url
+            if str(download_url or "").strip():
+                result["download_url"] = str(download_url).strip()
             changed = True
     if not changed:
         return False

@@ -162,7 +162,7 @@ export function Results({ job, compact = false }: { job: Job; compact?: boolean 
             )}
             <div className="result-actions">
               <span>结果 {index + 1}</span>
-              <a href={result.url} target="_blank" rel="noreferrer" download={result.downloadable || undefined}>
+              <a href={result.download_url || result.url} target="_blank" rel="noreferrer" download={result.downloadable || undefined}>
                 <Download size={14} />{result.type === "video" ? "下载视频" : "打开 / 下载"}
               </a>
             </div>

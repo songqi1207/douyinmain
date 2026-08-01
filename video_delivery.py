@@ -50,8 +50,15 @@ def _crf() -> int:
         return 20
 
 
+def _preview_crf() -> int:
+    try:
+        return min(30, max(18, int(os.getenv("R2_EXPORT_PREVIEW_CRF") or 23)))
+    except ValueError:
+        return 23
+
+
 def compress_video_for_web(source: Path, destination: Path) -> Path:
-    """Create a browser-compatible, visually lossless H.264 derivative."""
+    """Create a low-bandwidth H.264 preview for smooth browser playback."""
 
     source = Path(source).resolve()
     destination = Path(destination).resolve()
@@ -62,7 +69,9 @@ def compress_video_for_web(source: Path, destination: Path) -> Path:
         f".{destination.stem}.{uuid4().hex}.encoding.mp4"
     )
     preset = (os.getenv("R2_EXPORT_VIDEO_PRESET") or "medium").strip() or "medium"
-    audio_bitrate = (os.getenv("R2_EXPORT_AUDIO_BITRATE") or "128k").strip() or "128k"
+    audio_bitrate = (os.getenv("R2_EXPORT_PREVIEW_AUDIO_BITRATE") or "96k").strip() or "96k"
+    video_bitrate = (os.getenv("R2_EXPORT_PREVIEW_MAXRATE") or "1200k").strip() or "1200k"
+    video_buffer = (os.getenv("R2_EXPORT_PREVIEW_BUFSIZE") or "2400k").strip() or "2400k"
     command = [
         os.getenv("FFMPEG_BINARY") or "ffmpeg",
         "-y",
@@ -83,10 +92,20 @@ def compress_video_for_web(source: Path, destination: Path) -> Path:
         "-dn",
         "-c:v",
         "libx264",
+        "-vf",
+        "scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2,fps=30",
         "-preset",
         preset,
         "-crf",
-        str(_crf()),
+        str(_preview_crf()),
+        "-maxrate",
+        video_bitrate,
+        "-bufsize",
+        video_buffer,
+        "-g",
+        "60",
+        "-keyint_min",
+        "60",
         "-profile:v",
         "high",
         "-pix_fmt",
@@ -236,23 +255,38 @@ def upload_video_to_r2(source: Path, object_name: str) -> str:
     return f"{public_base}/{quote(safe_name)}"
 
 
-def publish_device_video(job_id: str, source: Path) -> tuple[str, int, int, str]:
-    """Compress one device MP4, upload it, and return URL and byte counts."""
+def publish_device_video(job_id: str, source: Path) -> tuple[str, str, int, int, str]:
+    """Upload a full-quality download plus a low-bandwidth browser preview."""
 
     source = Path(source).resolve()
-    output = source.with_name(f".{job_id}-device-web.{uuid4().hex}.mp4")
+    delivery_id = uuid4().hex[:12]
+    preview_output = source.with_name(f".{job_id}-device-preview.{delivery_id}.mp4")
+    download_output = source.with_name(f".{job_id}-device-original.{delivery_id}.mp4")
     original_size = source.stat().st_size
-    selected = source
-    delivery_mode = "compressed"
+    preview_source = source
+    download_source = source
+    delivery_mode = "preview"
     with _DELIVERY_LOCK:
         try:
             try:
-                selected = compress_video_for_web(source, output)
+                download_source = remux_video_for_web(source, download_output)
             except VideoDeliveryError:
-                delivery_mode = "remuxed"
-                selected = remux_video_for_web(source, output)
-            public_url = upload_video_to_r2(selected, f"{job_id}-device-web.mp4")
-            return public_url, original_size, selected.stat().st_size, delivery_mode
+                download_source = source
+            download_url = upload_video_to_r2(
+                download_source,
+                f"{job_id}-device-original-{delivery_id}.mp4",
+            )
+            try:
+                preview_source = compress_video_for_web(source, preview_output)
+                preview_url = upload_video_to_r2(
+                    preview_source,
+                    f"{job_id}-device-preview-{delivery_id}.mp4",
+                )
+            except VideoDeliveryError:
+                delivery_mode = "original_fallback"
+                preview_source = download_source
+                preview_url = download_url
+            return preview_url, download_url, original_size, preview_source.stat().st_size, delivery_mode
         finally:
-            if output != source:
-                output.unlink(missing_ok=True)
+            preview_output.unlink(missing_ok=True)
+            download_output.unlink(missing_ok=True)
