@@ -751,6 +751,11 @@ def _run_native_export_unlocked(
         )
     else:
         referenced_fonts = font_resources_from_import_report(report)
+        font_binding = bind_cached_fonts(
+            report.get("draft_dir") or "",
+            referenced_fonts,
+            draft_root=root,
+        )
         fallback = fallback_missing_fonts_to_default(
             report.get("draft_dir") or "",
             referenced_fonts,
@@ -758,8 +763,9 @@ def _run_native_export_unlocked(
         )
         font_resources = []
         logger.info(
-            "font_verification_skipped job_id=%s reason=user_configuration fallback_fonts=%s changed_materials=%s",
+            "font_verification_skipped job_id=%s reason=user_configuration bound_fonts=%s fallback_fonts=%s changed_materials=%s",
             task.get("job_id"),
+            ",".join(font_binding.get("bound") or []),
             ",".join(fallback.get("fallback") or []),
             fallback.get("changed_materials", 0),
         )

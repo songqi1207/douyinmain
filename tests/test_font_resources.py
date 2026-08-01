@@ -14,7 +14,9 @@ from desktop_bridge.font_resources import (
     build_font_preload_key,
     fallback_missing_fonts_to_default,
     find_bound_font,
+    find_bound_font_in_draft_library,
     find_cached_font,
+    find_system_font,
     inspect_font_resources,
     jianying_font_cache_roots,
     required_font_resources,
@@ -139,6 +141,7 @@ class JianyingFontResourceTests(unittest.TestCase):
         self.assertFalse(statuses[0]["available"])
         self.assertEqual(statuses[0]["cached_path"], "")
 
+    @patch.dict("os.environ", {"WINDIR": ""})
     def test_unavailable_cloud_font_falls_back_to_jianying_default(self):
         with tempfile.TemporaryDirectory(prefix="jianying-font-fallback-") as temporary:
             root = Path(temporary)
@@ -278,6 +281,82 @@ class JianyingFontResourceTests(unittest.TestCase):
             self.assertEqual(bound, downloaded.resolve())
             self.assertTrue(statuses[0]["available"])
             self.assertEqual(statuses[0]["source"], "draft_binding")
+
+    def test_reuses_font_bound_in_another_jianying_draft(self):
+        with tempfile.TemporaryDirectory(prefix="jianying-draft-library-font-") as temporary:
+            draft_root = Path(temporary) / "Projects" / "com.lveditor.draft"
+            source_draft = draft_root / "SOURCE"
+            target_draft = draft_root / "TARGET"
+            source_draft.mkdir(parents=True)
+            target_draft.mkdir()
+            resource_id = "6807742980271641102"
+            downloaded = Path(temporary) / "downloaded-font"
+            downloaded.write_bytes(b"OTTO" + b"\0" * 2048)
+            (source_draft / "draft_content.json").write_text(
+                json.dumps(
+                    {
+                        "materials": {
+                            "texts": [
+                                {
+                                    "font_name": "Source Serif",
+                                    "font_resource_id": resource_id,
+                                    "font_path": str(downloaded),
+                                    "content": json.dumps({"styles": []}),
+                                }
+                            ]
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            target_content = {
+                "materials": {
+                    "texts": [
+                        {
+                            "content": json.dumps(
+                                {
+                                    "styles": [
+                                        {"font": {"id": resource_id, "path": ""}}
+                                    ],
+                                    "text": "caption",
+                                }
+                            )
+                        }
+                    ]
+                }
+            }
+            target_path = target_draft / "draft_content.json"
+            target_path.write_text(json.dumps(target_content), encoding="utf-8")
+
+            found = find_bound_font_in_draft_library(
+                resource_id,
+                name="Source Serif",
+                draft_root=draft_root,
+                exclude_dir=target_draft,
+            )
+            result = bind_cached_fonts(
+                target_draft,
+                [{"name": "Source Serif", "resource_id": resource_id}],
+                draft_root=draft_root,
+                cache_roots=[Path(temporary) / "empty-cache"],
+            )
+            updated = json.loads(target_path.read_text(encoding="utf-8"))
+            style = json.loads(updated["materials"]["texts"][0]["content"])["styles"][0]
+
+            self.assertEqual(found, downloaded.resolve())
+            self.assertEqual(result["bound"], ["Source Serif"])
+            self.assertEqual(style["font"]["path"], str(downloaded.resolve()))
+
+    def test_finds_known_windows_system_font(self):
+        with tempfile.TemporaryDirectory(prefix="windows-fonts-") as temporary:
+            windows_dir = Path(temporary)
+            installed = windows_dir / "Fonts" / "STXINGKA.TTF"
+            installed.parent.mkdir()
+            installed.write_bytes(b"\x00\x01\x00\x00" + b"\0" * 2048)
+            with patch.dict("os.environ", {"WINDIR": str(windows_dir)}):
+                found = find_system_font("6912033793700270606")
+
+            self.assertEqual(found, installed.resolve())
 
     @patch("desktop_bridge.device_agent.bind_cached_fonts")
     @patch("desktop_bridge.device_agent._prepare_required_jianying_fonts_unlocked")

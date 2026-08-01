@@ -58,6 +58,12 @@ _FONT_SIGNATURES = (
     b"wOF2",
 )
 
+_SYSTEM_FONT_FILES: dict[str, tuple[str, ...]] = {
+    # Windows ships this face under the English filename even when Jianying
+    # exposes it through the workflow-facing Chinese alias.
+    "6912033793700270606": ("STXINGKA.TTF", "STXINGKA.TTC"),
+}
+
 
 def required_font_resources() -> list[dict[str, Any]]:
     """Return a caller-safe copy of the production font catalogue."""
@@ -246,6 +252,120 @@ def find_bound_font(
     return None
 
 
+def _resource_names(resource: dict[str, Any]) -> list[str]:
+    resource_id = str(resource.get("resource_id") or "").strip()
+    names = [resource.get("name"), *(resource.get("aliases") or [])]
+    for known in REQUIRED_WORKFLOW_FONTS:
+        if str(known.get("resource_id") or "").strip() == resource_id:
+            names.extend([known.get("name"), *(known.get("aliases") or [])])
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in names:
+        name = str(value or "").strip()
+        folded = name.casefold()
+        if name and folded not in seen:
+            seen.add(folded)
+            result.append(name)
+    return result
+
+
+def find_bound_font_in_draft_library(
+    resource_id: str,
+    *,
+    name: str = "",
+    aliases: Iterable[str] | None = None,
+    draft_root: Path | str = "",
+    exclude_dir: Path | str = "",
+) -> Path | None:
+    """Reuse a font Jianying already downloaded for another local draft."""
+    if not str(draft_root or "").strip():
+        return None
+    root = Path(draft_root).expanduser().resolve()
+    if not root.is_dir():
+        return None
+    excluded = (
+        Path(exclude_dir).expanduser().resolve()
+        if str(exclude_dir or "").strip()
+        else None
+    )
+    try:
+        limit = max(1, int(os.getenv("DEVICE_FONT_DRAFT_SCAN_LIMIT") or 256))
+    except ValueError:
+        limit = 256
+    try:
+        candidates = sorted(
+            (item for item in root.iterdir() if item.is_dir() and item != excluded),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        )[:limit]
+    except OSError:
+        return None
+    for draft_dir in candidates:
+        available = find_bound_font(
+            resource_id,
+            name=name,
+            aliases=aliases,
+            draft_dir=draft_dir,
+        )
+        if available is not None:
+            return available
+    return None
+
+
+def find_system_font(resource_id: str) -> Path | None:
+    """Locate a known Windows-installed equivalent for a Jianying font."""
+    windows_dir = str(os.getenv("WINDIR") or "").strip()
+    if not windows_dir:
+        return None
+    font_dir = Path(windows_dir).expanduser() / "Fonts"
+    for filename in _SYSTEM_FONT_FILES.get(str(resource_id or "").strip(), ()):
+        candidate = font_dir / filename
+        if _looks_like_font_file(candidate):
+            return candidate.resolve()
+    return None
+
+
+def _find_reusable_font(
+    resource: dict[str, Any],
+    *,
+    draft_root: Path | str = "",
+    draft_dir: Path | str = "",
+    cache_roots: Iterable[Path | str] | None = None,
+) -> tuple[Path | None, str]:
+    resource_id = str(resource.get("resource_id") or "").strip()
+    names = _resource_names(resource)
+    name = names[0] if names else resource_id
+    aliases = names[1:]
+    cached = find_cached_font(
+        resource_id,
+        cache_roots=cache_roots,
+        draft_root=draft_root,
+    )
+    if cached is not None:
+        return cached, "legacy_cache"
+    bound = find_bound_font(
+        resource_id,
+        name=name,
+        aliases=aliases,
+        draft_dir=draft_dir,
+    )
+    if bound is not None:
+        return bound, "draft_binding"
+    library = find_bound_font_in_draft_library(
+        resource_id,
+        name=name,
+        aliases=aliases,
+        draft_root=draft_root,
+        exclude_dir=draft_dir,
+    )
+    if library is not None:
+        return library, "draft_library"
+    installed = find_system_font(resource_id)
+    if installed is not None:
+        return installed, "system_font"
+    return None, ""
+
+
 def inspect_font_resources(
     resources: Iterable[dict[str, Any]] | None = None,
     *,
@@ -259,18 +379,12 @@ def inspect_font_resources(
     for resource in selected:
         resource_id = str(resource.get("resource_id") or "").strip()
         name = str(resource.get("name") or resource_id).strip()
-        cached = find_cached_font(
-            resource_id,
-            cache_roots=cache_roots,
+        available_path, source = _find_reusable_font(
+            resource,
             draft_root=draft_root,
-        )
-        bound = None if cached else find_bound_font(
-            resource_id,
-            name=name,
-            aliases=resource.get("aliases") or [],
             draft_dir=draft_dir,
+            cache_roots=cache_roots,
         )
-        available_path = cached or bound
         statuses.append(
             {
                 **resource,
@@ -278,7 +392,7 @@ def inspect_font_resources(
                 "resource_id": resource_id,
                 "available": available_path is not None,
                 "cached_path": str(available_path or ""),
-                "source": "legacy_cache" if cached else ("draft_binding" if bound else ""),
+                "source": source,
             }
         )
     return statuses
@@ -508,18 +622,12 @@ def bind_cached_fonts(
     for resource in resources:
         resource_id = str(resource.get("resource_id") or "").strip()
         name = str(resource.get("name") or resource_id).strip()
-        cached = find_cached_font(
-            resource_id,
-            cache_roots=cache_roots,
+        cached, _ = _find_reusable_font(
+            resource,
             draft_root=draft_root,
+            draft_dir=target_dir,
+            cache_roots=cache_roots,
         )
-        if cached is None:
-            cached = find_bound_font(
-                resource_id,
-                name=name,
-                aliases=resource.get("aliases") or [],
-                draft_dir=target_dir,
-            )
         if cached is None:
             missing.append(name)
             continue
