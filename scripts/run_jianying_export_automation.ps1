@@ -895,7 +895,8 @@ function Enable-OneClickEnhanceInDialog([int]$ProcessId, $ExportRoot) {
         return
     }
     if ($before -ne "off") {
-        throw "无法确认剪映一键超清开关状态，已停止坐标点击以避免误操作"
+        Write-Stage "one_click_enhance_skipped" "reason=unknown_state action=continue_without_enhance"
+        return
     }
     Write-Stage "one_click_enhance_click" "mode=coordinate state_before=$before x=$toggleX y=$toggleY"
     Set-ElementWindowForeground $ExportRoot
@@ -903,7 +904,12 @@ function Enable-OneClickEnhanceInDialog([int]$ProcessId, $ExportRoot) {
     Start-Sleep -Milliseconds 900
     $after = Get-OneClickEnhanceVisualState $rect
     if ($after -eq "off") {
-        throw "剪映的一键超清开关没有成功开启，已停止导出"
+        Write-Stage "one_click_enhance_skipped" "reason=toggle_rejected action=continue_without_enhance"
+        return
+    }
+    if ($after -ne "on") {
+        Write-Stage "one_click_enhance_skipped" "reason=unverified_state action=continue_without_enhance"
+        return
     }
     Write-Stage "one_click_enhance_enabled" "mode=coordinate state_after=$after x=$toggleX y=$toggleY"
 }

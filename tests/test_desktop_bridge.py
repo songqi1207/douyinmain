@@ -523,6 +523,9 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn("[Console]::Out.WriteLine($message)", script)
         self.assertIn("$ExportRoot.Current.BoundingRectangle", script)
         self.assertIn('if ($before -ne "off")', script)
+        self.assertIn('Write-Stage "one_click_enhance_skipped"', script)
+        self.assertIn("action=continue_without_enhance", script)
+        self.assertNotIn("一键超清开关没有成功开启，已停止导出", script)
         enhance_body = script.split("function Enable-OneClickEnhanceInDialog", 1)[1].split(
             "function Get-CandidateOutputPaths", 1
         )[0]
