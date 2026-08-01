@@ -52,6 +52,19 @@ from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_device_agent_bypasses_system_proxy_for_large_video_uploads(self):
+        from desktop_bridge.device_agent import DeviceAgent
+
+        agent = DeviceAgent(
+            site_url="http://video.example.test",
+            device_id="device-1",
+            device_token="token-1",
+            draft_root="C:/drafts",
+            jianying_exe="C:/JianyingPro.exe",
+        )
+
+        self.assertFalse(agent._session.trust_env)
+
     def test_interaction_recorder_uses_window_relative_coordinates(self):
         point = normalize_recorded_point(1800, 900, (1000, 100, 2000, 1100))
 

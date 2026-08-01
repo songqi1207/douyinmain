@@ -1154,6 +1154,10 @@ class DeviceAgent:
         self._thread: threading.Thread | None = None
         self._heartbeat_thread: threading.Thread | None = None
         self._session = requests.Session()
+        # Video uploads must go straight to the paired site.  Inheriting a
+        # Windows/browser proxy can return a gateway 502 before the request
+        # ever reaches our nginx server, especially for 100MB+ MP4 bodies.
+        self._session.trust_env = False
         self._session.headers.update({"Authorization": f"Bearer {self.device_token}"})
         self.output_dir = (app_data_dir() / "output").resolve()
 
@@ -1225,6 +1229,7 @@ class DeviceAgent:
 
     def _heartbeat_loop(self) -> None:
         session = requests.Session()
+        session.trust_env = False
         session.headers.update({"Authorization": f"Bearer {self.device_token}"})
         announced = False
         while not self._stop.is_set():
@@ -1262,14 +1267,39 @@ class DeviceAgent:
                 self._set_status,
             )
             self._set_status("剪映导出完成，正在把视频传回网站…")
-            with output_path.open("rb") as stream:
-                response = self._request(
-                    "POST",
-                    f"/api/v1/render-agent/jobs/{job_id}/complete",
-                    files={"video": (output_path.name, stream, "video/mp4")},
-                    timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
-                )
-            response.raise_for_status()
+            upload_attempts = max(
+                1,
+                min(5, int(os.getenv("DEVICE_RESULT_UPLOAD_ATTEMPTS") or 3)),
+            )
+            last_upload_error: requests.RequestException | None = None
+            for attempt in range(1, upload_attempts + 1):
+                try:
+                    with output_path.open("rb") as stream:
+                        response = self._request(
+                            "POST",
+                            f"/api/v1/render-agent/jobs/{job_id}/complete",
+                            files={"video": (output_path.name, stream, "video/mp4")},
+                            timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
+                        )
+                    response.raise_for_status()
+                    last_upload_error = None
+                    break
+                except requests.RequestException as exc:
+                    last_upload_error = exc
+                    logger.warning(
+                        "device_result_upload_failed job_id=%s attempt=%s/%s error=%s",
+                        job_id,
+                        attempt,
+                        upload_attempts,
+                        exc,
+                    )
+                    if attempt < upload_attempts:
+                        self._set_status(
+                            f"视频回传失败，正在自动重试（{attempt}/{upload_attempts}）…"
+                        )
+                        self._stop.wait(min(15, attempt * 5))
+            if last_upload_error is not None:
+                raise last_upload_error
             logger.info("device_task_completed job_id=%s", job_id)
             self._set_status("视频已传回网站，可以直接预览和下载")
         except Exception as exc:
