@@ -699,6 +699,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .device-onboarding .secondary-button svg { width: 14px; }
 .device-onboarding .subtle-link { margin-top: 10px; color: #817d75; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
 .device-onboarding .subtle-link:hover { color: #dfba77; }
+.helper-update-progress { width: 100%; margin-top: 12px; color: #a9a49a; font-size: 12px; }
+.helper-update-progress > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.helper-update-progress strong { color: #dfba77; font-variant-numeric: tabular-nums; }
+.helper-update-progress progress { width: 100%; height: 7px; overflow: hidden; border: 0; border-radius: 999px; appearance: none; background: #2b2a27; }
+.helper-update-progress progress::-webkit-progress-bar { border-radius: 999px; background: #2b2a27; }
+.helper-update-progress progress::-webkit-progress-value { border-radius: 999px; background: linear-gradient(90deg, #b47c35, #f0cd82); transition: width .35s ease; }
+.helper-update-progress progress::-moz-progress-bar { border-radius: 999px; background: linear-gradient(90deg, #b47c35, #f0cd82); }
+.helper-update-progress.complete span, .helper-update-progress.complete strong { color: #72c58b; }
 .pairing-display { display: grid; grid-template-columns: 1.3fr 1fr auto; align-items: center; gap: 12px; padding: 17px; margin-bottom: 15px; border: 1px solid #725735; border-radius: 13px; background: #211a11; }
 .pairing-display > div { min-width: 0; display: grid; gap: 5px; }
 .pairing-display span { color: #756e63; font-size: 10px; }

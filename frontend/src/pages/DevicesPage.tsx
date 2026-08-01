@@ -24,6 +24,38 @@ function capabilityText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+type HelperUpdateProgress = {
+  percent: number;
+  phase: string;
+  running: boolean;
+  startedAt: number;
+  targetVersion: string;
+};
+
+function updateProgressAt(elapsedSeconds: number): Pick<HelperUpdateProgress, "percent" | "phase" | "running"> {
+  if (elapsedSeconds < 4) {
+    return { percent: 8 + Math.round(elapsedSeconds * 3), phase: "正在唤醒本机助手", running: true };
+  }
+  if (elapsedSeconds < 45) {
+    return {
+      percent: Math.min(75, 20 + Math.round((elapsedSeconds - 4) * 1.35)),
+      phase: "正在下载最新版助手",
+      running: true,
+    };
+  }
+  if (elapsedSeconds < 80) {
+    return {
+      percent: Math.min(92, 76 + Math.round((elapsedSeconds - 45) * 0.45)),
+      phase: "正在安装并重启助手",
+      running: true,
+    };
+  }
+  if (elapsedSeconds < 120) {
+    return { percent: 95, phase: "正在等待新版助手重新连接", running: true };
+  }
+  return { percent: 95, phase: "等待超时，请重试或下载安装包", running: false };
+}
+
 function jianyingStatus(capabilities: Record<string, unknown>): string {
   const version = capabilityText(capabilities.jianying_version);
   if (version) return `剪映 v${version}`;
@@ -40,6 +72,7 @@ export function DevicesPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [helperUpdate, setHelperUpdate] = useState<HelperUpdateProgress | null>(null);
   const latestHelperVersion = capabilityText(status.latest_helper_version);
 
   async function refresh() {
@@ -64,6 +97,34 @@ export function DevicesPage() {
     const timer = window.setInterval(() => void refresh(), 5000);
     return () => window.clearInterval(timer);
   }, [loading, user?.id, user?.must_change_password]);
+
+  useEffect(() => {
+    if (!helperUpdate?.running) return;
+    const timer = window.setInterval(() => {
+      setHelperUpdate((current) => {
+        if (!current?.running) return current;
+        const elapsedSeconds = (Date.now() - current.startedAt) / 1000;
+        return { ...current, ...updateProgressAt(elapsedSeconds) };
+      });
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [helperUpdate?.startedAt, helperUpdate?.running]);
+
+  useEffect(() => {
+    if (!helperUpdate?.running || !helperUpdate.targetVersion) return;
+    const updatedDevice = status.devices.find((device) => (
+      device.online
+      && capabilityText(device.capabilities.helper_version) === helperUpdate.targetVersion
+    ));
+    if (!updatedDevice) return;
+    setHelperUpdate((current) => current ? {
+      ...current,
+      percent: 100,
+      phase: `更新完成，助手 v${current.targetVersion} 已重新连接`,
+      running: false,
+    } : current);
+    setMessage(`AI 视频创作助手已更新到 v${helperUpdate.targetVersion} 并重新上线`);
+  }, [helperUpdate?.running, helperUpdate?.targetVersion, status.devices]);
 
   async function createPairing() {
     setBusy(true);
@@ -95,6 +156,30 @@ export function DevicesPage() {
 
   function updateHelper() {
     const query = new URLSearchParams({ site: window.location.origin });
+    const onlineCurrent = status.devices.some((device) => (
+      device.online
+      && latestHelperVersion
+      && capabilityText(device.capabilities.helper_version) === latestHelperVersion
+    ));
+    if (onlineCurrent) {
+      setHelperUpdate({
+        percent: 100,
+        phase: `当前已是最新版 v${latestHelperVersion}`,
+        running: false,
+        startedAt: Date.now(),
+        targetVersion: latestHelperVersion,
+      });
+      setMessage(`当前助手已经是最新版 v${latestHelperVersion}`);
+      return;
+    }
+    setError("");
+    setHelperUpdate({
+      percent: 8,
+      phase: "正在唤醒本机助手",
+      running: true,
+      startedAt: Date.now(),
+      targetVersion: latestHelperVersion,
+    });
     window.location.href = `douyin-draft://update?${query.toString()}`;
     setMessage(
       "正在打开 AI 视频创作助手。请在浏览器询问时选择“打开”；更新完成约需 1 分钟。"
@@ -157,7 +242,16 @@ export function DevicesPage() {
             <span><Download /></span>
             <h2>下载 / 更新 AI 视频创作助手</h2>
             <p>当前最新版 {latestHelperVersion ? `v${latestHelperVersion}` : "检测中"}。已安装助手时可一键更新；未安装时请先下载安装包。</p>
-            <button className="secondary-button" type="button" onClick={() => updateHelper()}><Download />一键更新最新版</button>
+            <button className="secondary-button" disabled={Boolean(helperUpdate?.running)} type="button" onClick={() => updateHelper()}>
+              {helperUpdate?.running ? <LoaderCircle className="spin" /> : <Download />}
+              {helperUpdate?.running ? `正在更新 ${helperUpdate.percent}%` : "一键更新最新版"}
+            </button>
+            {helperUpdate && (
+              <div className={`helper-update-progress ${helperUpdate.percent === 100 ? "complete" : ""}`} aria-live="polite">
+                <div><span>{helperUpdate.phase}</span><strong>{helperUpdate.percent}%</strong></div>
+                <progress max="100" value={helperUpdate.percent} aria-label="助手更新进度" />
+              </div>
+            )}
             <button className="secondary-button" type="button" onClick={() => calibrateHelper()}><Laptop />校准导出按钮</button>
             <a
               className="subtle-link"
