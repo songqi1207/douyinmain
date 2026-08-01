@@ -143,6 +143,32 @@ def test_quality_check_detects_text_overlap_and_clipping() -> None:
     assert "text_out_of_bounds" in codes
 
 
+def test_quality_check_allows_long_text_with_safe_forced_line_wrap() -> None:
+    content = _base_content()
+    material = content["materials"]["texts"][0]
+    material["content"] = json.dumps(
+        {"text": "long caption " * 20, "styles": [{"size": 14}]},
+    )
+    material.update(
+        {
+            "line_feed": 1,
+            "line_max_width": 0.82,
+            "force_apply_line_max_width": True,
+        }
+    )
+
+    assert "text_may_be_clipped" not in _codes(content)
+
+
+def test_quality_check_still_rejects_long_text_without_forced_line_wrap() -> None:
+    content = _base_content()
+    content["materials"]["texts"][0]["content"] = json.dumps(
+        {"text": "long caption " * 20, "styles": [{"size": 14}]},
+    )
+
+    assert "text_may_be_clipped" in _codes(content)
+
+
 def test_quality_check_detects_short_shot_and_fast_text_animation() -> None:
     content = _base_content()
     content["tracks"][0]["segments"].append(_segment("video-2", 5_000_000, 200_000))
@@ -216,6 +242,12 @@ class DraftQualityTests(unittest.TestCase):
 
     def test_detects_short_shot_and_fast_text_animation(self) -> None:
         test_quality_check_detects_short_shot_and_fast_text_animation()
+
+    def test_allows_long_text_with_safe_forced_line_wrap(self) -> None:
+        test_quality_check_allows_long_text_with_safe_forced_line_wrap()
+
+    def test_still_rejects_long_text_without_forced_line_wrap(self) -> None:
+        test_quality_check_still_rejects_long_text_without_forced_line_wrap()
 
     def test_allows_fast_decorative_slide_text(self) -> None:
         test_quality_check_allows_fast_decorative_slide_text()

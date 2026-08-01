@@ -135,6 +135,19 @@ def _text_units(value: str) -> int:
     return sum(1 if char.isspace() or ord(char) < 128 else 2 for char in value)
 
 
+def _has_safe_forced_line_wrap(material: dict[str, Any], *, x: float) -> bool:
+    """Return whether JianYing will constrain and wrap this text safely.
+
+    Generated text materials set all three layout fields below.  In that case
+    the raw source line can be much longer than the rendered line because
+    JianYing performs the wrapping itself.
+    """
+    if not material.get("force_apply_line_max_width") or not material.get("line_feed"):
+        return False
+    line_max_width = _number(material.get("line_max_width"), 0.0)
+    return 0.0 < line_max_width <= max(0.1, 0.90 - abs(x))
+
+
 def _check_caption_sync(
     caption_rows: list[tuple[str, dict[str, Any]]],
     voice_rows: list[tuple[str, dict[str, Any]]],
@@ -336,6 +349,8 @@ def _check_text_layout(
             material = texts.get(str(segment.get("material_id"))) or {}
             text, font_size = _text_payload(material)
             if not text.strip():
+                continue
+            if _has_safe_forced_line_wrap(material, x=x):
                 continue
             width_factor = max(0.5, canvas_width / 1080.0)
             safe_units = max(
