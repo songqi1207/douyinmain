@@ -602,9 +602,9 @@ function Set-HomeDraftSearchByCoordinate($Process, [string]$Query) {
     $rect = Get-WindowRect $Process
     $width = [Math]::Max(1, $rect.Right - $rect.Left)
     $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
-    # JianYing 11 local-drafts search icon is at about 79.5% width / 60% height.
+    # JianYing 11.2 local-drafts search icon is at about 79.5% width / 67.2% height.
     $x = [int]($rect.Left + ($width * 0.795))
-    $y = [int]($rect.Top + ($height * 0.600))
+    $y = [int]($rect.Top + ($height * 0.672))
     Write-Stage "draft_search_coordinate_click" "x=$x y=$y query=$Query"
     Invoke-Point $x $y
     Start-Sleep -Milliseconds 300

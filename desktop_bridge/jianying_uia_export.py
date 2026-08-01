@@ -319,7 +319,7 @@ def _open_home_draft_by_coordinate(
     if draft_name:
         left, top, right, bottom = _window_rect(window)
         search_x = int(left + ((right - left) * 0.795))
-        search_y = int(top + ((bottom - top) * 0.600))
+        search_y = int(top + ((bottom - top) * 0.672))
         _emit(
             stage,
             "uia2_draft_search_coordinate_click",
