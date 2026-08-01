@@ -153,6 +153,32 @@ describe("StudioPage", () => {
     expect(await screen.findByText("需要完成一次配对")).toBeInTheDocument();
   });
 
+  it("keeps the recent creation progress in sync with the active job", async () => {
+    const staleRecentJob: Job = {
+      ...queuedJob,
+      status: "rendering",
+      stage: "device_waiting",
+      progress: 78,
+      updated_at: 2,
+    };
+    const liveJob: Job = {
+      ...staleRecentJob,
+      stage: "device_rendering",
+      progress: 82,
+      updated_at: 3,
+    };
+    localStorage.setItem("studio-job:OWN02", liveJob.id);
+    api.fetchJobs.mockResolvedValue({ items: [staleRecentJob], total: 1, page: 1, page_size: 4 });
+    api.fetchJob.mockResolvedValue({ job: liveJob });
+
+    render(<MemoryRouter initialEntries={["/?workflow=OWN02"]}><StudioPage /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getAllByText("82%")).toHaveLength(2));
+    expect(screen.queryByText("78%")).not.toBeInTheDocument();
+    expect(screen.getByText("本机助手正在处理剪映导出")).toBeInTheDocument();
+    expect(screen.queryByText("device_rendering")).not.toBeInTheDocument();
+  });
+
   it("opens and saves the selected workflow input settings without navigation", async () => {
     authState.role = "admin";
     render(<MemoryRouter><StudioPage /></MemoryRouter>);

@@ -76,6 +76,7 @@ from workflow_jobs import (
     job_summary,
     list_jobs,
     promote_device_render_result,
+    report_device_render_progress,
     workflow_job_counts,
 )
 from workflow_registry import (
@@ -960,7 +961,7 @@ def api_render_agent_claim(request: Request):
     task = claim_device_render_job(
         device["id"],
         device["user_id"],
-        int(os.getenv("DEVICE_RENDER_LEASE_SECONDS") or 3600),
+        int(os.getenv("DEVICE_RENDER_LEASE_SECONDS") or 900),
     )
     if not task:
         return Response(status_code=204)
@@ -1056,6 +1057,28 @@ async def api_complete_render_agent_job(
             result_name,
             destination,
         )
+    heartbeat_device(device["id"])
+    return {"job": _public_job(get_job(job_id))}
+
+
+@app.post("/api/v1/render-agent/jobs/{job_id}/progress")
+def api_render_agent_job_progress(job_id: str, request: Request, payload: dict = Body(default_factory=dict)):
+    device = _require_render_device(request)
+    try:
+        progress = int(payload.get("progress") or 82)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_progress", "message": "本机导出进度格式不正确"},
+        )
+    if not report_device_render_progress(
+        job_id,
+        device["id"],
+        stage=str(payload.get("stage") or ""),
+        progress=progress,
+        message=str(payload.get("message") or "")[:500],
+    ):
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "导出任务不存在"})
     heartbeat_device(device["id"])
     return {"job": _public_job(get_job(job_id))}
 

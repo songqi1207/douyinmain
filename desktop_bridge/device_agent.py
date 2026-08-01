@@ -44,6 +44,23 @@ logger.addHandler(logging.NullHandler())
 _JIANYING_OPERATION_LOCK = threading.RLock()
 
 
+def _device_progress_state(message: str) -> tuple[str, int]:
+    text = str(message or "")
+    if "传回网站" in text or "上传" in text:
+        return "device_uploading", 96
+    if "导出" in text and "草稿" not in text:
+        return "device_exporting", 92
+    if "启动剪映" in text or "正在用剪映" in text or "打开剪映" in text:
+        return "device_opening_jianying", 88
+    if "字体" in text or "资源" in text:
+        return "device_preparing_resources", 86
+    if "导入成功" in text or "草稿已写入" in text:
+        return "device_draft_ready", 85
+    if "草稿" in text or "下载素材" in text:
+        return "device_importing", 83
+    return "device_preparing", 82
+
+
 class FontResourceUnavailable(BridgeError):
     """Raised when Jianying did not download a required cloud font."""
 
@@ -665,7 +682,18 @@ def _run_native_export(
     output_dir: Path,
     progress: StatusCallback | None = None,
 ) -> Path:
-    with _JIANYING_OPERATION_LOCK:
+    acquired = _JIANYING_OPERATION_LOCK.acquire(blocking=False)
+    if not acquired:
+        if progress:
+            progress("本机已有剪映操作正在进行，正在等待它结束…")
+        lock_timeout = max(
+            30,
+            int(os.getenv("DEVICE_JIANYING_OPERATION_LOCK_TIMEOUT_SECONDS") or 300),
+        )
+        acquired = _JIANYING_OPERATION_LOCK.acquire(timeout=lock_timeout)
+    if not acquired:
+        raise BridgeError("等待本机上一项剪映操作结束超时，请重启导出助手后重试")
+    try:
         return _run_native_export_unlocked(
             task,
             draft_root,
@@ -673,6 +701,8 @@ def _run_native_export(
             output_dir,
             progress,
         )
+    finally:
+        _JIANYING_OPERATION_LOCK.release()
 
 
 def _run_native_export_unlocked(
@@ -1196,6 +1226,24 @@ class DeviceAgent:
         timeout = kwargs.pop("timeout", 30)
         return self._session.request(method, f"{self.site_url}{path}", timeout=timeout, **kwargs)
 
+    def _report_task_progress(self, job_id: str, message: str) -> None:
+        stage, progress = _device_progress_state(message)
+        try:
+            response = self._request(
+                "POST",
+                f"/api/v1/render-agent/jobs/{job_id}/progress",
+                json={"stage": stage, "progress": progress, "message": message},
+                timeout=10,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning(
+                "device_task_progress_report_failed job_id=%s stage=%s error=%s",
+                job_id,
+                stage,
+                exc,
+            )
+
     def _loop(self) -> None:
         self._set_status("本机剪映助手正在连接网站…")
         while not self._stop.is_set():
@@ -1259,14 +1307,19 @@ class DeviceAgent:
         if not job_id:
             return
         try:
+            def task_progress(message: str) -> None:
+                self._set_status(message)
+                self._report_task_progress(job_id, message)
+
+            task_progress("助手已收到任务数据，正在等待本机执行")
             output_path = _run_native_export(
                 task,
                 self.draft_root,
                 self.jianying_exe,
                 self.output_dir,
-                self._set_status,
+                task_progress,
             )
-            self._set_status("剪映导出完成，正在把视频传回网站…")
+            task_progress("剪映导出完成，正在把视频传回网站…")
             upload_attempts = max(
                 1,
                 min(5, int(os.getenv("DEVICE_RESULT_UPLOAD_ATTEMPTS") or 3)),

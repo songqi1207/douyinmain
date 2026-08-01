@@ -21,6 +21,18 @@ const PHASES = [
   { label: "完成", threshold: 100 },
 ];
 
+const STAGE_TEXT: Record<string, string> = {
+  waiting_for_device: "等待本机导出助手领取",
+  device_rendering: "本机助手正在处理剪映导出",
+  device_preparing: "助手正在接收任务数据",
+  device_importing: "正在写入本机剪映草稿",
+  device_draft_ready: "本机剪映草稿已经写入",
+  device_preparing_resources: "正在准备字体与特效资源",
+  device_opening_jianying: "正在打开剪映草稿",
+  device_exporting: "剪映正在导出视频",
+  device_uploading: "正在回传并处理视频",
+};
+
 export function JobProgress({
   job,
   onRetry,
@@ -54,7 +66,7 @@ export function JobProgress({
           );
         })}
       </ol>
-      <p>{job.stage}</p>
+      <p>{STAGE_TEXT[job.stage] || job.stage}</p>
       <JobLogs key={job.id} job={job} />
       {job.error && <div className="notice error">{job.error.message}</div>}
       {job.status === "failed" && onRetry && (

@@ -23,6 +23,7 @@ from desktop_bridge.core import (
 )
 from desktop_bridge.device_agent import (
     _cloud_resource_wait_seconds,
+    _device_progress_state,
     _font_verification_enabled,
     _prime_jianying_cloud_resources,
     _run_native_export,
@@ -52,6 +53,12 @@ from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_device_progress_messages_map_to_truthful_online_stages(self):
+        self.assertEqual(_device_progress_state("正在把任务写入本机剪映草稿…"), ("device_importing", 83))
+        self.assertEqual(_device_progress_state("草稿已写入，正在验证文件结构……"), ("device_draft_ready", 85))
+        self.assertEqual(_device_progress_state("正在用剪映专业版导出…"), ("device_exporting", 92))
+        self.assertEqual(_device_progress_state("剪映导出完成，正在把视频传回网站…"), ("device_uploading", 96))
+
     def test_device_agent_bypasses_system_proxy_for_large_video_uploads(self):
         from desktop_bridge.device_agent import DeviceAgent
 

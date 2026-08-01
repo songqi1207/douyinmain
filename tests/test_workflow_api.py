@@ -125,9 +125,9 @@ class WorkflowApiTests(unittest.TestCase):
             with patch.object(fastapi_app, "ROOT", root):
                 response = fastapi_app.api_download_draft_bridge()
             self.assertEqual(Path(response.path), executable)
-            self.assertIn("AI-Video-Creator-v1.4.64.exe", response.headers["content-disposition"])
+            self.assertIn("AI-Video-Creator-v1.4.65.exe", response.headers["content-disposition"])
             self.assertIn("no-store", response.headers["cache-control"])
-            self.assertEqual(response.headers["x-helper-version"], "1.4.64")
+            self.assertEqual(response.headers["x-helper-version"], "1.4.65")
             self.assertEqual(
                 response.headers["x-content-sha256"],
                 hashlib.sha256(executable.read_bytes()).hexdigest(),
@@ -137,7 +137,7 @@ class WorkflowApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/draft-key-renders/status")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["latest_helper_version"], "1.4.64")
+        self.assertEqual(response.json()["latest_helper_version"], "1.4.65")
 
     def test_spa_index_must_revalidate_after_frontend_deploy(self):
         with tempfile.TemporaryDirectory(prefix="frontend-dist-") as temporary:
@@ -1459,6 +1459,24 @@ class WorkflowApiTests(unittest.TestCase):
                 self.assertEqual(claimed.status_code, 200, claimed.text)
                 self.assertEqual(claimed.json()["task"]["job_id"], job_id)
                 self.assertEqual(claimed.json()["task"]["draft_key"], key)
+                claimed_job = self.client.get(f"/api/v1/jobs/{job_id}").json()["job"]
+                self.assertEqual(claimed_job["stage"], "device_preparing")
+                self.assertEqual(claimed_job["progress"], 82)
+
+                progress_report = TestClient(app).post(
+                    f"/api/v1/render-agent/jobs/{job_id}/progress",
+                    headers=headers,
+                    json={
+                        "stage": "device_draft_ready",
+                        "progress": 85,
+                        "message": "本机剪映草稿已经写入：ABC123",
+                    },
+                )
+                self.assertEqual(progress_report.status_code, 200, progress_report.text)
+                self.assertEqual(progress_report.json()["job"]["stage"], "device_draft_ready")
+                self.assertEqual(progress_report.json()["job"]["progress"], 85)
+                progress_logs = self.client.get(f"/api/v1/jobs/{job_id}/logs").json()["items"]
+                self.assertIn("本机剪映草稿已经写入：ABC123", [item["message"] for item in progress_logs])
 
                 mp4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
                 completed = TestClient(app).post(

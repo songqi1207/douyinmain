@@ -96,6 +96,9 @@ export function StudioPage() {
   const published = workflow?.status === "online" && workflow.output_type === "draft";
   const renderReady = renderStatus.configured;
   const ready = Boolean(user && !user.must_change_password && published && renderReady);
+  const visibleRecentJobs = useMemo(() => recentJobs.map((item) => (
+    item.id === job?.id ? job : item
+  )), [recentJobs, job]);
 
   useEffect(() => {
     Promise.all([
@@ -389,9 +392,9 @@ export function StudioPage() {
         <section className="studio-lower-grid">
           <div className="recent-work-card">
             <div className="section-title"><span>最近创作</span><Link to="/records">查看全部</Link></div>
-            {user ? recentJobs.length ? (
+            {user ? visibleRecentJobs.length ? (
               <div className="mini-job-list">
-                {recentJobs.map((item) => (
+                {visibleRecentJobs.map((item) => (
                   <Link to="/records" key={item.id}>
                     <span className={`mini-status ${item.status}`} />
                     <div><strong>{item.display_title}</strong><small>{item.category} · {new Date(item.created_at * 1000).toLocaleDateString("zh-CN")}</small></div>

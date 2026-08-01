@@ -1828,7 +1828,7 @@ def claim_device_render_job(device_id: str, user_id: str, lease_seconds: int = 6
             """SELECT id FROM jobs
                WHERE render_device_id = ? AND user_id = ? AND status = 'rendering'
                  AND (stage = 'waiting_for_device'
-                      OR (stage = 'device_rendering' AND COALESCE(render_claimed_at, 0) < ?))
+                      OR (stage LIKE 'device_%' AND COALESCE(render_claimed_at, 0) < ?))
                ORDER BY created_at LIMIT 1""",
             (device_id, user_id, expired),
         ).fetchone()
@@ -1836,7 +1836,7 @@ def claim_device_render_job(device_id: str, user_id: str, lease_seconds: int = 6
             db.commit()
             return None
         db.execute(
-            """UPDATE jobs SET stage = 'device_rendering', progress = 82,
+            """UPDATE jobs SET stage = 'device_preparing', progress = 82,
                render_claimed_at = ?, updated_at = ? WHERE id = ?""",
             (now, now, row["id"]),
         )
@@ -1849,7 +1849,7 @@ def claim_device_render_job(device_id: str, user_id: str, lease_seconds: int = 6
         job["id"],
         device_id,
     )
-    append_job_log(job["id"], "本机导出助手已领取任务，正在打开剪映并导出视频")
+    append_job_log(job["id"], "本机导出助手已领取任务，正在接收草稿数据")
     draft_key = _load_draft_key_result(job["results"])
     if draft_key is None:
         fail_device_render_job(job["id"], device_id, "draft_key_missing", "后台任务缺少 draft_key")
@@ -1859,6 +1859,48 @@ def claim_device_render_job(device_id: str, user_id: str, lease_seconds: int = 6
         "workflow_code": job["workflow_code"],
         "draft_key": draft_key,
     }
+
+
+_DEVICE_PROGRESS_STAGES = {
+    "device_preparing",
+    "device_importing",
+    "device_draft_ready",
+    "device_preparing_resources",
+    "device_opening_jianying",
+    "device_exporting",
+    "device_uploading",
+}
+
+
+def report_device_render_progress(
+    job_id: str,
+    device_id: str,
+    *,
+    stage: str,
+    progress: int,
+    message: str = "",
+) -> bool:
+    """Persist a truthful milestone reported by the paired Windows helper."""
+    job = get_job(job_id)
+    normalized_stage = str(stage or "").strip()
+    if (
+        not job
+        or job.get("render_device_id") != device_id
+        or job["status"] != "rendering"
+        or normalized_stage not in _DEVICE_PROGRESS_STAGES
+    ):
+        return False
+    current_progress = int(job.get("progress") or 0)
+    normalized_progress = max(current_progress, min(99, max(82, int(progress))))
+    _update_job(
+        job_id,
+        stage=normalized_stage,
+        progress=normalized_progress,
+        render_claimed_at=time.time(),
+    )
+    if str(message or "").strip():
+        append_job_log(job_id, message)
+    return True
 
 
 def complete_device_render_job(
