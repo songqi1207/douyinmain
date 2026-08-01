@@ -349,6 +349,11 @@ def ensure_configured_admin() -> None:
     salt = secrets.token_bytes(16)
     now = time.time()
     with _connect() as db:
+        db.execute(
+            """UPDATE users SET role = 'user'
+               WHERE role = 'admin' AND (email IS NULL OR email <> ? COLLATE NOCASE)""",
+            (email,),
+        )
         row = db.execute(
             "SELECT id FROM users WHERE email = ? COLLATE NOCASE OR username = ? COLLATE NOCASE",
             (email, email),

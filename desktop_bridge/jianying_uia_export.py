@@ -50,6 +50,35 @@ def _resolve_export_path(value: str, draft_name: str) -> Path:
     return path.resolve()
 
 
+def _export_field_points(
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+) -> dict[str, tuple[int, int]]:
+    """Return JianYing 11 export field centers when QML hides its control tree."""
+
+    width = max(1, int(right) - int(left))
+    height = max(1, int(bottom) - int(top))
+    return {
+        "title": (int(left + (width * 0.835)), int(top + (height * 0.139))),
+        "path": (int(left + (width * 0.815)), int(top + (height * 0.194))),
+        "confirm": (int(left + (width * 0.793)), int(top + (height * 0.963))),
+    }
+
+
+def _replace_text_at_point(auto, point: tuple[int, int], value: str) -> None:
+    _click_point(*point)
+    time.sleep(0.15)
+    auto.SendKeys("{Ctrl}a")
+    try:
+        auto.SetClipboardText(str(value))
+        auto.SendKeys("{Ctrl}v")
+    except Exception:
+        auto.SendKeys(str(value))
+    time.sleep(0.2)
+
+
 def _emit(callback: StageCallback | None, stage: str, details: str = "") -> None:
     if callback:
         callback(stage, details)
@@ -652,13 +681,27 @@ def export_draft_uia(
         searchDepth=8,
         Compare=_description_matcher("ExportPath"),
     )
-    if not path_label.Exists(10, 0.25):
-        raise JianyingUIAError("UIA2 没有找到导出保存位置")
-    path_value = path_label.GetSiblingControl(lambda _control: True)
-    if path_value is None:
-        raise JianyingUIAError("UIA2 没有找到导出路径输入控件")
-    source = _resolve_export_path(_full_description(path_value), draft_name)
-    _emit(stage, "uia2_export_path_ready", f"path={source}")
+    source = None
+    if path_label.Exists(3, 0.25):
+        path_value = path_label.GetSiblingControl(lambda _control: True)
+        if path_value is not None:
+            try:
+                source = _resolve_export_path(_full_description(path_value), draft_name)
+            except JianyingUIAError:
+                source = None
+    if source is None:
+        export_rect = _window_rect(export_window)
+        field_points = _export_field_points(*export_rect)
+        _replace_text_at_point(auto, field_points["title"], target.stem)
+        _replace_text_at_point(auto, field_points["path"], str(target.parent))
+        source = target
+        _emit(
+            stage,
+            "uia2_export_fields_coordinate_fallback",
+            f"title={target.stem} path={target.parent}",
+        )
+    else:
+        _emit(stage, "uia2_export_path_ready", f"path={source}")
 
     confirm_calibration = export_confirm_calibration or {}
     confirm_x_ratio = confirm_calibration.get("x_from_right_ratio")
@@ -688,10 +731,17 @@ def export_draft_uia(
             searchDepth=8,
             Compare=_description_matcher("ExportOkBtn", exact=True),
         )
-        if not confirm.Exists(10, 0.25):
-            raise JianyingUIAError("UIA2 没有找到导出确认按钮")
-        confirm.Click(simulateMove=False)
-        _emit(stage, "uia2_export_confirmed", "mode=control")
+        if confirm.Exists(3, 0.25):
+            confirm.Click(simulateMove=False)
+            _emit(stage, "uia2_export_confirmed", "mode=control")
+        else:
+            confirm_point = _export_field_points(*_window_rect(export_window))["confirm"]
+            _click_point(*confirm_point)
+            _emit(
+                stage,
+                "uia2_export_confirmed",
+                f"mode=coordinate_fallback x={confirm_point[0]} y={confirm_point[1]}",
+            )
     _minimize_jianying_window(export_window, stage, "export_wait")
 
     deadline = time.monotonic() + max(30, int(timeout))

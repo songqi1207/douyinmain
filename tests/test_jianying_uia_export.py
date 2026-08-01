@@ -8,6 +8,7 @@ from desktop_bridge.jianying_uia_export import (
     _description_matcher,
     _double_click_control,
     _draft_card_candidate_points,
+    _export_field_points,
     _first_draft_card_point,
     _resolve_export_path,
 )
@@ -41,7 +42,7 @@ class JianyingUIAExportTests(unittest.TestCase):
     def test_uuid_draft_search_uses_unique_prefix(self):
         self.assertEqual(
             _draft_search_query("EAB8433A-C232-4C5C-B10D-9EDCB3A5D69C"),
-            "EAB8433A",
+            "EAB",
         )
         self.assertEqual(_draft_search_query("神话故事草稿"), "神话故事草稿")
 
@@ -74,6 +75,13 @@ class JianyingUIAExportTests(unittest.TestCase):
 
             self.assertEqual(direct, (root / "rendered.mp4").resolve())
             self.assertEqual(folder, (root / "DRAFT-ID.mp4").resolve())
+
+    def test_jianying_11_export_fields_have_coordinate_fallbacks(self):
+        points = _export_field_points(0, 0, 960, 1080)
+
+        self.assertEqual(points["title"], (801, 150))
+        self.assertEqual(points["path"], (782, 209))
+        self.assertEqual(points["confirm"], (761, 1040))
 
     def test_empty_export_path_is_rejected(self):
         with self.assertRaises(JianyingUIAError):

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 
+import { AdminRoute } from "./components/AdminRoute";
 import { AccountSecurityPage } from "./pages/AccountSecurityPage";
 import { HelpPage, NotFoundPage, RegistrationAdminPage } from "./pages/AdminHelpPages";
 import { RuntimeSettingsPage } from "./pages/AdminRuntimeSettingsPage";
@@ -36,8 +37,8 @@ export default function App() {
         <Route path="/account/security" element={<AccountSecurityPage />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
-        <Route path="/admin/registrations" element={<RegistrationAdminPage />} />
-        <Route path="/admin/runtime-settings" element={<RuntimeSettingsPage />} />
+        <Route path="/admin/registrations" element={<AdminRoute><RegistrationAdminPage /></AdminRoute>} />
+        <Route path="/admin/runtime-settings" element={<AdminRoute><RuntimeSettingsPage /></AdminRoute>} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
