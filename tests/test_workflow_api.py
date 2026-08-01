@@ -31,6 +31,19 @@ from workflow_registry import get_workflow, runtime_input_schema
 
 
 class WorkflowApiTests(unittest.TestCase):
+    def test_update_job_persists_resolved_inputs(self):
+        job = workflow_jobs.create_job("G45", "起号", {"theme": "原始主题"})
+
+        workflow_jobs._update_job(
+            job["id"],
+            inputs_json=json.dumps({"theme": "更新主题", "author": "作者"}, ensure_ascii=False),
+        )
+
+        self.assertEqual(
+            workflow_jobs.get_job(job["id"])["inputs"],
+            {"theme": "更新主题", "author": "作者"},
+        )
+
     def test_runtime_voice_inputs_use_concrete_voice_names(self):
         with patch.dict(
             os.environ,

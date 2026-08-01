@@ -400,6 +400,7 @@ def _update_job(job_id: str, **changes):
         "status",
         "stage",
         "progress",
+        "inputs_json",
         "results_json",
         "error_code",
         "error_message",
