@@ -64,6 +64,21 @@ public static class JianyingNative {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MOUSEINPUT {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint dwFlags;
+        public uint time;
+        public UIntPtr extraInfo;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct INPUT {
+        public uint type;
+        public MOUSEINPUT mi;
+    }
+    [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint count, INPUT[] inputs, int size);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
     [StructLayout(LayoutKind.Sequential)]
@@ -336,6 +351,51 @@ function Invoke-SlowPoint([int]$X, [int]$Y) {
     Write-Stage "slow_physical_click_sent" "requested_x=$X requested_y=$Y actual_x=$($actual.X) actual_y=$($actual.Y) cursor_moved=$moved"
 }
 
+function Invoke-SendInputPoint([int]$X, [int]$Y) {
+    $moved = [JianyingNative]::SetCursorPos($X, $Y)
+    Start-Sleep -Milliseconds 180
+    $down = New-Object JianyingNative+INPUT
+    $down.type = 0
+    $downMouse = New-Object JianyingNative+MOUSEINPUT
+    $downMouse.dwFlags = 0x0002
+    $down.mi = $downMouse
+    $up = New-Object JianyingNative+INPUT
+    $up.type = 0
+    $upMouse = New-Object JianyingNative+MOUSEINPUT
+    $upMouse.dwFlags = 0x0004
+    $up.mi = $upMouse
+    $inputs = New-Object 'JianyingNative+INPUT[]' 2
+    $inputs[0] = $down
+    $inputs[1] = $up
+    $size = [System.Runtime.InteropServices.Marshal]::SizeOf([type][JianyingNative+INPUT])
+    $sent = [JianyingNative]::SendInput(2, $inputs, $size)
+    $errorCode = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    Write-Stage "send_input_click_sent" "x=$X y=$Y events=$sent error=$errorCode cursor_moved=$moved"
+}
+
+function Invoke-ElementWindowMessagePoint($Element, [int]$X, [int]$Y) {
+    if (-not $Element) {
+        return $false
+    }
+    $handle = [IntPtr]$Element.Current.NativeWindowHandle
+    if ($handle -eq [IntPtr]::Zero) {
+        return $false
+    }
+    $clientPoint = New-Object JianyingNative+POINT
+    $clientPoint.X = $X
+    $clientPoint.Y = $Y
+    if (-not [JianyingNative]::ScreenToClient($handle, [ref]$clientPoint)) {
+        return $false
+    }
+    $packed = (($clientPoint.Y -band 0xFFFF) -shl 16) -bor ($clientPoint.X -band 0xFFFF)
+    [JianyingNative]::PostMessage($handle, 0x0200, [IntPtr]::Zero, [IntPtr]$packed) | Out-Null
+    [JianyingNative]::PostMessage($handle, 0x0201, [IntPtr]1, [IntPtr]$packed) | Out-Null
+    Start-Sleep -Milliseconds 120
+    [JianyingNative]::PostMessage($handle, 0x0202, [IntPtr]::Zero, [IntPtr]$packed) | Out-Null
+    Write-Stage "export_window_message_click_sent" "handle=$handle screen_x=$X screen_y=$Y client_x=$($clientPoint.X) client_y=$($clientPoint.Y)"
+    return $true
+}
+
 function Set-ElementWindowForeground($Element) {
     if (-not $Element) {
         return
@@ -411,24 +471,25 @@ function Invoke-ExportConfirmationReliably([int]$ProcessId, $ExportRoot, [int]$X
                 Write-Stage "export_confirm_accepted" "mode=control"
                 return
             }
+            Write-Stage "export_confirm_unverified" "mode=control action=monitor_output"
+            return
         }
         catch {
             Write-Stage "export_confirm_control_failed" "error=$($_.Exception.Message)"
         }
     }
 
-    for ($attempt = 1; $attempt -le 2; $attempt += 1) {
-        Set-ElementWindowForeground $ExportRoot
-        Write-Stage "export_confirm_attempt" "mode=slow_physical attempt=$attempt x=$X y=$Y"
-        Invoke-SlowPoint $X $Y
-        if (Wait-ExportConfirmationAccepted $ProcessId 4000) {
-            Write-Stage "export_confirm_accepted" "mode=slow_physical attempt=$attempt"
-            return
-        }
+    Set-ElementWindowForeground $ExportRoot
+    Write-Stage "export_confirm_attempt" "mode=slow_physical attempt=1 x=$X y=$Y"
+    Invoke-SlowPoint $X $Y
+    if (Wait-ExportConfirmationAccepted $ProcessId 4000) {
+        Write-Stage "export_confirm_accepted" "mode=slow_physical attempt=1"
+        return
     }
-
-    Write-Stage "export_confirm_not_accepted" "x=$X y=$Y"
-    throw "剪映导出窗口已经打开，但底部[导出]按钮没有响应；窗口已保留，请重新校准弹窗底部的[导出]按钮位置"
+    # JianYing 11 can keep the same QML window while exporting and expose no
+    # progress text through UIA. The physical click is visible and was sent;
+    # let output-file monitoring decide whether export actually started.
+    Write-Stage "export_confirm_unverified" "mode=slow_physical action=monitor_output x=$X y=$Y"
 }
 
 function Invoke-WindowMessagePoint($Process, [int]$X, [int]$Y) {
