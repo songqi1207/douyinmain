@@ -1,9 +1,14 @@
-import { Check, ChevronDown, ChevronUp, Circle, Download, LoaderCircle, RotateCcw, Sparkles } from "lucide-react";
+import { Bell, BellRing, Check, ChevronDown, ChevronUp, Circle, Clock3, Download, LoaderCircle, RotateCcw, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchJobLogs } from "../api";
 import type { Job, JobLogEntry } from "../types";
+import {
+  JOB_NOTIFICATIONS_ENABLED_KEY,
+  JOB_NOTIFICATIONS_REQUEST_EVENT,
+  JOB_NOTIFICATIONS_STATE_EVENT,
+} from "./JobNotifications";
 
 const STATUS_TEXT: Record<Job["status"], string> = {
   queued: "等待执行",
@@ -33,6 +38,15 @@ const STAGE_TEXT: Record<string, string> = {
   device_uploading: "正在回传并处理视频",
 };
 
+const ACTIVE_STATUSES = new Set<Job["status"]>(["queued", "running", "rendering"]);
+
+function formatElapsed(seconds: number) {
+  const safe = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safe / 60);
+  const remainder = safe % 60;
+  return minutes > 0 ? `${minutes} 分 ${remainder} 秒` : `${remainder} 秒`;
+}
+
 export function JobProgress({
   job,
   onRetry,
@@ -42,6 +56,26 @@ export function JobProgress({
   onRetry?: () => void;
   retrying?: boolean;
 }) {
+  const active = ACTIVE_STATUSES.has(job.status);
+  const [now, setNow] = useState(() => Date.now());
+  const [notificationsEnabled, setNotificationsEnabled] = useState(
+    () => localStorage.getItem(JOB_NOTIFICATIONS_ENABLED_KEY) === "true",
+  );
+
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [active, job.id]);
+
+  useEffect(() => {
+    const sync = () => setNotificationsEnabled(
+      localStorage.getItem(JOB_NOTIFICATIONS_ENABLED_KEY) === "true",
+    );
+    window.addEventListener(JOB_NOTIFICATIONS_STATE_EVENT, sync);
+    return () => window.removeEventListener(JOB_NOTIFICATIONS_STATE_EVENT, sync);
+  }, []);
+
   let progressPhase = 0;
   PHASES.forEach((phase, index) => {
     if (job.progress >= phase.threshold) progressPhase = index;
@@ -67,6 +101,25 @@ export function JobProgress({
         })}
       </ol>
       <p>{STAGE_TEXT[job.stage] || job.stage}</p>
+      {active && (
+        <div className="job-background-status">
+          <span className="job-background-icon"><LoaderCircle className="spin" /></span>
+          <div>
+            <strong>任务正在后台持续处理</strong>
+            <p>可以离开当前页面，任务不会中断；浏览器保持打开，完成后会通知你。</p>
+            <small><Clock3 />已处理 {formatElapsed(now / 1000 - job.created_at)}</small>
+          </div>
+          <button
+            className={notificationsEnabled ? "active" : ""}
+            type="button"
+            disabled={notificationsEnabled}
+            onClick={() => window.dispatchEvent(new Event(JOB_NOTIFICATIONS_REQUEST_EVENT))}
+          >
+            {notificationsEnabled ? <BellRing /> : <Bell />}
+            {notificationsEnabled ? "完成通知已开启" : "完成后通知我"}
+          </button>
+        </div>
+      )}
       <JobLogs key={job.id} job={job} />
       {job.error && <div className="notice error">{job.error.message}</div>}
       {job.status === "failed" && onRetry && (
@@ -77,8 +130,6 @@ export function JobProgress({
     </section>
   );
 }
-
-const ACTIVE_STATUSES = new Set<Job["status"]>(["queued", "running", "rendering"]);
 
 function formatLogTime(timestamp: number) {
   return new Date(timestamp * 1000).toLocaleTimeString("zh-CN", { hour12: false });

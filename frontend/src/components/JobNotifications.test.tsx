@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Job } from "../types";
-import { JobNotifications } from "./JobNotifications";
+import { JobNotifications, JOB_NOTIFICATIONS_REQUEST_EVENT } from "./JobNotifications";
 
 const api = vi.hoisted(() => ({ fetchJobs: vi.fn() }));
 
@@ -67,5 +67,17 @@ describe("JobNotifications", () => {
     fireEvent.click(screen.getByRole("button", { name: "关闭任务通知" }));
     expect(localStorage.getItem("job-notifications-enabled")).toBe("false");
     expect(screen.getByRole("button", { name: "开启任务通知" })).toBeInTheDocument();
+  });
+
+  it("enables notifications when the progress card requests them", async () => {
+    localStorage.setItem("job-notifications-enabled", "false");
+    render(<JobNotifications />);
+
+    await act(async () => {
+      window.dispatchEvent(new Event(JOB_NOTIFICATIONS_REQUEST_EVENT));
+      await Promise.resolve();
+    });
+
+    expect(localStorage.getItem("job-notifications-enabled")).toBe("true");
   });
 });

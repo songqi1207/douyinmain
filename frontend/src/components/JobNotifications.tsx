@@ -5,7 +5,9 @@ import { fetchJobs } from "../api";
 import { useAuth } from "../auth";
 import type { Job } from "../types";
 
-const ENABLED_KEY = "job-notifications-enabled";
+export const JOB_NOTIFICATIONS_ENABLED_KEY = "job-notifications-enabled";
+export const JOB_NOTIFICATIONS_REQUEST_EVENT = "job-notifications-request";
+export const JOB_NOTIFICATIONS_STATE_EVENT = "job-notifications-state";
 const TERMINAL = new Set<Job["status"]>(["succeeded", "failed"]);
 
 function notificationText(job: Job) {
@@ -17,7 +19,7 @@ function notificationText(job: Job) {
 
 export function JobNotifications() {
   const { user } = useAuth();
-  const [enabled, setEnabled] = useState(() => localStorage.getItem(ENABLED_KEY) === "true");
+  const [enabled, setEnabled] = useState(() => localStorage.getItem(JOB_NOTIFICATIONS_ENABLED_KEY) === "true");
   const [toast, setToast] = useState<{ kind: "success" | "error"; title: string; body: string } | null>(null);
   const statuses = useRef(new Map<string, Job["status"]>());
   const initialized = useRef(false);
@@ -91,10 +93,19 @@ export function JobNotifications() {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
   }, []);
 
+  useEffect(() => {
+    const requestNotifications = () => {
+      if (!enabled) void toggle();
+    };
+    window.addEventListener(JOB_NOTIFICATIONS_REQUEST_EVENT, requestNotifications);
+    return () => window.removeEventListener(JOB_NOTIFICATIONS_REQUEST_EVENT, requestNotifications);
+  }, [enabled]);
+
   async function toggle() {
     if (enabled) {
-      localStorage.setItem(ENABLED_KEY, "false");
+      localStorage.setItem(JOB_NOTIFICATIONS_ENABLED_KEY, "false");
       setEnabled(false);
+      window.dispatchEvent(new Event(JOB_NOTIFICATIONS_STATE_EVENT));
       return;
     }
     if (typeof Notification === "undefined") {
@@ -108,8 +119,9 @@ export function JobNotifications() {
       setToast({ kind: "error", title: "通知未开启", body: "浏览器已阻止通知，请在网站权限中允许通知。" });
       return;
     }
-    localStorage.setItem(ENABLED_KEY, "true");
+    localStorage.setItem(JOB_NOTIFICATIONS_ENABLED_KEY, "true");
     setEnabled(true);
+    window.dispatchEvent(new Event(JOB_NOTIFICATIONS_STATE_EVENT));
     setToast({ kind: "success", title: "任务通知已开启", body: "视频完成或失败时会立即提醒你。" });
   }
 
