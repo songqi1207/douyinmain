@@ -607,9 +607,33 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .studio-form-label > span { font-weight: 650; }
 .studio-form-label > div { display: flex; align-items: center; gap: 7px; }
 .studio-form-label small { color: #776f64; font-size: 11px; }
-.studio-input-config { width: 27px; height: 27px; display: grid; place-items: center; flex: 0 0 27px; border: 1px solid #494137; border-radius: 7px; color: #a99677; background: #171512; }
+.studio-input-config { width: 27px; height: 27px; display: grid; place-items: center; flex: 0 0 27px; border: 1px solid #494137; border-radius: 7px; padding: 0; color: #a99677; background: #171512; cursor: pointer; }
 .studio-input-config:hover { color: #f0ca83; border-color: #80643c; background: #231d14; }
 .studio-input-config svg { width: 14px; height: 14px; }
+.workflow-input-modal-backdrop { position: fixed; z-index: 1200; inset: 0; display: grid; place-items: center; overflow-y: auto; padding: 24px; background: rgba(0, 0, 0, .76); backdrop-filter: blur(5px); }
+.workflow-input-modal { width: min(620px, 100%); max-height: calc(100vh - 48px); overflow: auto; border: 1px solid #4b443a; border-radius: 16px; background: #191815; box-shadow: 0 28px 90px rgba(0, 0, 0, .68); }
+.workflow-input-modal > header { position: sticky; z-index: 2; top: 0; display: grid; grid-template-columns: 38px minmax(0, 1fr) 32px; align-items: center; gap: 11px; padding: 18px 20px; border-bottom: 1px solid #37332d; background: rgba(25, 24, 21, .96); backdrop-filter: blur(8px); }
+.workflow-input-modal > header > span { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; color: #e9be74; background: #292116; }
+.workflow-input-modal > header > span svg { width: 18px; }
+.workflow-input-modal > header h2 { margin: 0; color: #f1ede5; font-size: 17px; }
+.workflow-input-modal > header p { margin: 4px 0 0; color: #7f7a71; font-size: 11px; }
+.workflow-input-modal > header button { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; padding: 0; color: #8f8a81; background: transparent; cursor: pointer; }
+.workflow-input-modal > header button:hover { color: #fff; background: #2a2824; }
+.workflow-input-modal > header button svg { width: 17px; }
+.workflow-input-modal-loading, .workflow-input-modal-empty { min-height: 210px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #8d887f; font-size: 13px; }
+.workflow-input-modal-empty svg { width: 17px; color: #76b88e; }
+.workflow-input-modal form { padding: 20px; }
+.workflow-input-modal-fields { display: grid; gap: 14px; }
+.workflow-input-modal-fields label { display: grid; gap: 7px; }
+.workflow-input-modal-fields label > span { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #d7d1c7; font-size: 12px; }
+.workflow-input-modal-fields code { color: #8f8068; font-size: 10px; font-weight: 400; }
+.workflow-input-modal-fields input, .workflow-input-modal-fields select, .workflow-input-modal-fields textarea { width: 100%; border: 1px solid #454039; border-radius: 9px; outline: 0; color: #eee9e0; background: #10100f; }
+.workflow-input-modal-fields input, .workflow-input-modal-fields select { min-height: 42px; padding: 0 12px; }
+.workflow-input-modal-fields textarea { resize: vertical; min-height: 92px; padding: 11px 12px; line-height: 1.6; }
+.workflow-input-modal-fields input:focus, .workflow-input-modal-fields select:focus, .workflow-input-modal-fields textarea:focus { border-color: #9a7540; box-shadow: 0 0 0 3px rgba(180, 131, 62, .1); }
+.workflow-input-modal-note { padding: 11px 12px; border-radius: 9px; color: #89847b; background: #121211; font-size: 11px; line-height: 1.6; }
+.workflow-input-modal footer { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #36322c; }
+.workflow-input-modal footer button { min-height: 39px; margin: 0; }
 .studio-form textarea { width: 100%; min-height: 125px; resize: vertical; border: 1px solid #464038; border-radius: 12px; padding: 15px; outline: 0; color: #f4f0e8; background: #10100f; font-size: 17px; line-height: 1.65; }
 .studio-form textarea:focus { border-color: #a67a3e; box-shadow: 0 0 0 3px rgba(180, 131, 62, .1); }
 .input-meta { display: flex; justify-content: space-between; gap: 12px; color: #6f6a62; font-size: 10px; }
@@ -839,6 +863,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .studio-form-label { align-items: center; flex-direction: row; gap: 8px; }
   .studio-form-label > div { min-width: 0; }
   .studio-form-label small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .workflow-input-modal-backdrop { align-items: end; padding: 10px; }
+  .workflow-input-modal { max-height: calc(100vh - 20px); border-radius: 15px 15px 10px 10px; }
+  .workflow-input-modal > header { padding: 15px 14px; }
+  .workflow-input-modal form { padding: 15px 14px; }
   .studio-form textarea { min-height: 112px; font-size: 15px; }
   .input-meta span:last-child { display: none; }
   .readiness-grid { grid-template-columns: 1fr; }

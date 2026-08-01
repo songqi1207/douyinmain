@@ -26,6 +26,7 @@ import {
 import { useAuth } from "../auth";
 import { JobProgress, Results } from "../components/JobViews";
 import { Layout } from "../components/Layout";
+import { WorkflowInputSettingsDialog } from "../components/WorkflowInputSettingsDialog";
 import { useJobPolling } from "../hooks";
 import type { Job, RenderStatus, SiteSummary, Workflow } from "../types";
 
@@ -85,6 +86,8 @@ export function StudioPage() {
   const [busy, setBusy] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState("");
+  const [configMessage, setConfigMessage] = useState("");
+  const [configuringWorkflowCode, setConfiguringWorkflowCode] = useState<string | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
   const { job, setJob } = useJobPolling(initialJob, setError);
 
@@ -172,6 +175,7 @@ export function StudioPage() {
     setSelectedCode(code);
     setTheme("");
     setError("");
+    setConfigMessage("");
     setSearchParams({ workflow: code });
   }
 
@@ -294,14 +298,15 @@ export function StudioPage() {
                 <div>
                   <small>示例：{selected.example}</small>
                   {user?.role === "admin" && (
-                    <Link
+                    <button
+                      type="button"
                       className="studio-input-config"
-                      to={`/admin/runtime-settings?workflow=${selectedCode}#workflow-inputs`}
+                      onClick={() => setConfiguringWorkflowCode(selectedCode)}
                       aria-label={`配置${selected.label}输入参数`}
                       title={`配置${selected.label}输入参数`}
                     >
                       <Settings />
-                    </Link>
+                    </button>
                   )}
                 </div>
               </div>
@@ -327,6 +332,7 @@ export function StudioPage() {
                 })}
               </div>
               {error && <div className="notice error" role="alert">{error}</div>}
+              {configMessage && <div className="notice success"><Check />{configMessage}</div>}
               <button className="studio-submit" disabled={busy || !theme.trim()} type="submit">
                 {busy ? <span className="spin-ring" /> : <Sparkles />}
                 {busy ? "正在创建任务" : !user ? "登录后开始创作" : !ready ? "完成准备后生成" : "一键生成视频"}
@@ -366,6 +372,19 @@ export function StudioPage() {
             </aside>
           </div>
         </section>
+
+        {configuringWorkflowCode && (
+          <WorkflowInputSettingsDialog
+            workflowCode={configuringWorkflowCode}
+            workflowLabel={WORKFLOW_CHOICES.find((item) => item.code === configuringWorkflowCode)?.label || configuringWorkflowCode}
+            onClose={() => setConfiguringWorkflowCode(null)}
+            onSaved={() => {
+              const label = WORKFLOW_CHOICES.find((item) => item.code === configuringWorkflowCode)?.label || configuringWorkflowCode;
+              setConfigMessage(`${label}输入参数已保存并立即生效`);
+              setConfiguringWorkflowCode(null);
+            }}
+          />
+        )}
 
         <section className="studio-lower-grid">
           <div className="recent-work-card">

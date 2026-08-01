@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,9 +10,11 @@ const api = vi.hoisted(() => ({
   fetchDraftKeyRenderStatus: vi.fn(),
   fetchJob: vi.fn(),
   fetchJobs: vi.fn(),
+  fetchRuntimeSettings: vi.fn(),
   fetchSiteSummary: vi.fn(),
   fetchWorkflows: vi.fn(),
   retryJob: vi.fn(),
+  updateRuntimeSettings: vi.fn(),
 }));
 const authState = vi.hoisted(() => ({ role: "user" }));
 
@@ -68,6 +70,27 @@ const queuedJob: Job = {
   updated_at: 1,
 };
 
+const runtimeSettings = {
+  mihe_key: { configured: true, masked: "****1234" },
+  workflows: [
+    {
+      code: "OWN01", name: "书单视频", category: "自有工作流", workflow_id: "11111111",
+      input_schema: [{ name: "author", label: "默认作者", type: "text" as const, default: "佚名" }],
+      input_defaults: { author: "佚名" },
+    },
+    {
+      code: "OWN02", name: "香烟故事", category: "自有工作流", workflow_id: "22222222",
+      input_schema: [{ name: "left", label: "左侧提示文字", type: "text" as const }],
+      input_defaults: { left: "未成年人禁止吸烟" },
+    },
+    {
+      code: "OWN03", name: "神话人物", category: "自有工作流", workflow_id: "33333333",
+      input_schema: [{ name: "shuliang", label: "默认分镜数量", type: "number" as const, default: 10, min: 1, max: 22 }],
+      input_defaults: { shuliang: 10 },
+    },
+  ],
+};
+
 describe("StudioPage", () => {
   afterEach(() => cleanup());
 
@@ -89,7 +112,9 @@ describe("StudioPage", () => {
       voice_service: { provider: "external", available: true, message: "ok" },
     });
     api.fetchJobs.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 4 });
+    api.fetchRuntimeSettings.mockResolvedValue(runtimeSettings);
     api.createJob.mockResolvedValue({ job: queuedJob });
+    api.updateRuntimeSettings.mockResolvedValue({ ...runtimeSettings, message: "运行配置已保存并立即生效" });
   });
 
   it("submits only the selected workflow and theme", async () => {
@@ -119,15 +144,28 @@ describe("StudioPage", () => {
     expect(await screen.findByText("需要完成一次配对")).toBeInTheDocument();
   });
 
-  it("links administrators directly to the selected workflow input settings", async () => {
+  it("opens and saves the selected workflow input settings without navigation", async () => {
     authState.role = "admin";
     render(<MemoryRouter><StudioPage /></MemoryRouter>);
     await screen.findAllByText("已发布");
     fireEvent.click(screen.getByRole("tab", { name: /神话人物/ }));
+    fireEvent.click(screen.getByRole("button", { name: "配置神话人物输入参数" }));
 
-    expect(screen.getByRole("link", { name: "配置神话人物输入参数" })).toHaveAttribute(
-      "href",
-      "/admin/runtime-settings?workflow=OWN03#workflow-inputs",
-    );
+    const dialog = await screen.findByRole("dialog", { name: "配置神话人物输入参数" });
+    const sceneCount = within(dialog).getByRole("spinbutton", { name: /默认分镜数量/ });
+    expect(sceneCount).toHaveValue(10);
+    fireEvent.change(sceneCount, { target: { value: "12" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存并立即生效" }));
+
+    await waitFor(() => expect(api.updateRuntimeSettings).toHaveBeenCalledWith({
+      workflow_ids: { OWN01: "11111111", OWN02: "22222222", OWN03: "33333333" },
+      workflow_inputs: {
+        OWN01: { author: "佚名" },
+        OWN02: { left: "未成年人禁止吸烟" },
+        OWN03: { shuliang: 12 },
+      },
+    }));
+    expect(await screen.findByText("神话人物输入参数已保存并立即生效")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
