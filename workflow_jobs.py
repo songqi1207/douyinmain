@@ -1861,14 +1861,23 @@ def claim_device_render_job(device_id: str, user_id: str, lease_seconds: int = 6
     }
 
 
-def complete_device_render_job(job_id: str, device_id: str, result_name: str) -> bool:
+def complete_device_render_job(
+    job_id: str,
+    device_id: str,
+    result_name: str = "",
+    *,
+    result_url: str = "",
+) -> bool:
     job = get_job(job_id)
     if not job or job.get("render_device_id") != device_id or job["status"] != "rendering":
         return False
+    hosted_url = str(result_url or "").strip()
+    if not hosted_url:
+        hosted_url = f"/api/v1/job-results/{Path(result_name).name}"
     results = [
         {
             "type": "video",
-            "url": f"/api/v1/job-results/{Path(result_name).name}",
+            "url": hosted_url,
             "poster_url": None,
             "downloadable": True,
         }

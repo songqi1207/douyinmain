@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import time
@@ -60,6 +62,7 @@ from workflow_catalog import IMAGE_WORKFLOWS, workflow_categories
 from workflow_jobs import (
     DRAFT_KEY_RENDER_CODE,
     RESULT_DIR,
+    append_job_log,
     claim_device_render_job,
     complete_device_render_job,
     create_asset,
@@ -89,6 +92,7 @@ from utils.draft_key_importer import KeyValidationError
 from utils.email_delivery import EmailConfigurationError, email_delivery_status, send_registration_approved
 from utils.local_media_generation import generated_file_path, list_system_voices, synthesize_speech
 from utils.runtime_settings import update_dotenv_file
+from video_delivery import VideoDeliveryError, publish_device_video, r2_export_configured
 from utils.volcengine_vod_renderer import (
     VodConfigurationError,
     VodRenderError,
@@ -98,6 +102,7 @@ from utils.volcengine_vod_renderer import (
 
 
 ROOT = Path(__file__).resolve().parent
+logger = logging.getLogger("workflow.api")
 RUNTIME_ENV_PATH = ROOT / ".env"
 JIANYING_COMPAT_VERSION = "5.9.0.11632"
 JIANYING_COMPAT_DOWNLOAD_URL = (
@@ -1003,10 +1008,35 @@ async def api_complete_render_agent_job(job_id: str, request: Request, video: Up
         if temporary.exists():
             temporary.unlink()
 
-    if not complete_device_render_job(job_id, device["id"], result_name):
+    result_url = ""
+    if r2_export_configured():
+        append_job_log(job_id, "视频已回传，正在压缩并上传到 R2")
+        try:
+            result_url, original_bytes, published_bytes = await asyncio.to_thread(
+                publish_device_video,
+                job_id,
+                destination,
+            )
+            saved_percent = max(0, round((1 - (published_bytes / max(1, original_bytes))) * 100))
+            append_job_log(
+                job_id,
+                f"视频已压缩并上传到 R2（{original_bytes} → {published_bytes} 字节，减少 {saved_percent}%）",
+            )
+        except VideoDeliveryError as exc:
+            logger.warning("r2_video_delivery_failed job_id=%s error=%s", job_id, exc)
+            append_job_log(job_id, f"R2 视频处理失败，已自动保留站点原片：{exc}", level="warning")
+
+    if not complete_device_render_job(
+        job_id,
+        device["id"],
+        result_name,
+        result_url=result_url,
+    ):
         if destination.exists():
             destination.unlink()
         raise HTTPException(status_code=409, detail={"code": "job_not_rendering", "message": "任务状态已变化"})
+    if result_url:
+        destination.unlink(missing_ok=True)
     heartbeat_device(device["id"])
     return {"job": _public_job(get_job(job_id))}
 

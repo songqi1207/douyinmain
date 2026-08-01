@@ -1,0 +1,18 @@
+{
+  "name": "workflow-media",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "media.songqi.online",
+      "custom_domain": true
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PUBLIC_BUCKET",
+      "bucket_name": "douyin-workflow-public"
+    }
+  ]
+}
