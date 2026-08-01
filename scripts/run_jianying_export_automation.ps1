@@ -29,7 +29,9 @@ $outputName = [System.IO.Path]::GetFileNameWithoutExtension($OutputPath)
 function Write-Stage([string]$Stage, [string]$Details = "") {
     $suffix = if ($Details) { " $Details" } else { "" }
     $message = "jianying_automation_stage stage=$Stage$suffix"
-    Write-Output $message
+    # Write directly to stdout so stage messages do not become function return
+    # values when a helper function is assigned to a variable.
+    [Console]::Out.WriteLine($message)
     if ($LogPath) {
         try {
             $resolvedLogPath = [System.IO.Path]::GetFullPath($LogPath)
@@ -767,7 +769,13 @@ function Set-TextByCoordinate([int]$X, [int]$Y, [string]$Value) {
 function Invoke-ExportDialogByCoordinate([int]$ProcessId) {
     $exportRoot = Get-ExportDialogRoot $ProcessId
     Set-ElementWindowForeground $exportRoot
-    $rect = Get-ExportWindowRect $ProcessId
+    # Use the export dialog itself. Looking the window up again by process ID
+    # can return Jianying's full editor window and produce a dangerous click
+    # far away from the export confirmation button.
+    $rect = $ExportRoot.Current.BoundingRectangle
+    if ($rect.Width -lt 420 -or $rect.Height -lt 420) {
+        throw "剪映导出窗口尺寸异常，已停止导出确认点击"
+    }
     $confirmPoint = Get-ExportConfirmPoint $rect
     $confirmX = $confirmPoint.X
     $confirmY = $confirmPoint.Y
@@ -871,7 +879,12 @@ function Enable-OneClickEnhanceInDialog([int]$ProcessId, $ExportRoot) {
         }
     }
 
-    $rect = Get-ExportWindowRect $ProcessId
+    # The process has both the editor and export-dialog top-level windows.
+    # Coordinates must be derived from the already verified dialog root.
+    $rect = $ExportRoot.Current.BoundingRectangle
+    if ($rect.Width -lt 420 -or $rect.Height -lt 420) {
+        throw "剪映导出窗口尺寸异常，已停止一键超清点击"
+    }
     $width = [Math]::Max(1, $rect.Right - $rect.Left)
     $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
     $toggleX = [int]($rect.Left + ($width * 0.947))
@@ -880,6 +893,9 @@ function Enable-OneClickEnhanceInDialog([int]$ProcessId, $ExportRoot) {
     if ($before -eq "on") {
         Write-Stage "one_click_enhance_enabled" "mode=visual state=already_on x=$toggleX y=$toggleY"
         return
+    }
+    if ($before -ne "off") {
+        throw "无法确认剪映一键超清开关状态，已停止坐标点击以避免误操作"
     }
     Write-Stage "one_click_enhance_click" "mode=coordinate state_before=$before x=$toggleX y=$toggleY"
     Set-ElementWindowForeground $ExportRoot

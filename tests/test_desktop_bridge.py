@@ -23,6 +23,7 @@ from desktop_bridge.core import (
 )
 from desktop_bridge.device_agent import (
     _cloud_resource_wait_seconds,
+    _font_verification_enabled,
     _prime_jianying_cloud_resources,
     _run_native_export,
     _run_pyjianying_export,
@@ -49,6 +50,16 @@ from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_font_verification_blocks_missing_fonts_by_default(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertTrue(_font_verification_enabled())
+        with patch.dict(
+            os.environ,
+            {"DEVICE_JIANYING_ENFORCE_FONT_RESOURCES": "0"},
+            clear=True,
+        ):
+            self.assertFalse(_font_verification_enabled())
+
     def test_jianying_export_click_calibration_uses_relative_window_coordinates(self):
         calibration = normalize_export_click(1145, 17, (0, 0, 1280, 800))
 
@@ -509,6 +520,14 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "export_dialog_coordinate_confirm_only"', script)
         self.assertIn('Write-Stage "one_click_enhance_enabled"', script)
         self.assertIn('Write-Stage "one_click_enhance_wait_extended"', script)
+        self.assertIn("[Console]::Out.WriteLine($message)", script)
+        self.assertIn("$ExportRoot.Current.BoundingRectangle", script)
+        self.assertIn('if ($before -ne "off")', script)
+        enhance_body = script.split("function Enable-OneClickEnhanceInDialog", 1)[1].split(
+            "function Get-CandidateOutputPaths", 1
+        )[0]
+        self.assertIn("$rect = $ExportRoot.Current.BoundingRectangle", enhance_body)
+        self.assertNotIn("Get-ExportWindowRect $ProcessId", enhance_body)
         self.assertIn("$width * 0.947", script)
         self.assertIn("$height * 0.318", script)
         self.assertNotIn('Write-Stage "export_dialog_coordinate_fields"', script)

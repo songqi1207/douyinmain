@@ -147,6 +147,13 @@ def _cloud_resource_wait_seconds(resource_count: int) -> int:
     return 0 if count == 0 else min(60, max(15, 8 + count * 2))
 
 
+def _font_verification_enabled() -> bool:
+    """Return whether missing-font cache checks should block video export."""
+    return (
+        os.getenv("DEVICE_JIANYING_ENFORCE_FONT_RESOURCES") or "1"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _prime_jianying_cloud_resources(
     controller: object,
     draft_name: str,
@@ -734,12 +741,19 @@ def _run_native_export_unlocked(
             messages += f" 等 {len(quality_issues)} 项"
         raise BridgeError("成片质量检查未通过，已停止导出：" + messages)
     cloud_resources = report.get("cloud_resources") or []
-    font_resources = _prepare_export_fonts(
-        report,
-        root,
-        executable,
-        progress=progress,
-    )
+    if _font_verification_enabled():
+        font_resources = _prepare_export_fonts(
+            report,
+            root,
+            executable,
+            progress=progress,
+        )
+    else:
+        font_resources = []
+        logger.info(
+            "font_verification_skipped job_id=%s reason=user_configuration",
+            task.get("job_id"),
+        )
     resource_wait_seconds = _cloud_resource_wait_seconds(len(cloud_resources))
 
     output_dir.mkdir(parents=True, exist_ok=True)
