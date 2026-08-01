@@ -11,7 +11,7 @@ import threading
 import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import requests
 
@@ -443,6 +443,7 @@ def prepare_required_jianying_fonts(
     draft_root: Path | str,
     jianying_exe: Path | str,
     *,
+    resources: list[dict[str, Any]] | None = None,
     progress: StatusCallback | None = None,
     wait_seconds: int = 180,
 ) -> dict:
@@ -451,6 +452,7 @@ def prepare_required_jianying_fonts(
         return _prepare_required_jianying_fonts_unlocked(
             draft_root,
             jianying_exe,
+            resources=resources,
             progress=progress,
             wait_seconds=wait_seconds,
         )
@@ -460,6 +462,7 @@ def _prepare_required_jianying_fonts_unlocked(
     draft_root: Path | str,
     jianying_exe: Path | str,
     *,
+    resources: list[dict[str, Any]] | None = None,
     progress: StatusCallback | None = None,
     wait_seconds: int = 180,
 ) -> dict:
@@ -470,8 +473,10 @@ def _prepare_required_jianying_fonts_unlocked(
     if not executable.is_file():
         raise BridgeError(f"剪映程序不存在：{executable}")
 
-    resources = required_font_resources()
-    statuses = inspect_font_resources(resources, draft_root=root)
+    selected_resources = (
+        list(resources) if resources is not None else required_font_resources()
+    )
+    statuses = inspect_font_resources(selected_resources, draft_root=root)
     missing = [item for item in statuses if not item.get("available")]
     if not missing:
         if progress:
@@ -555,7 +560,7 @@ def _prepare_required_jianying_fonts_unlocked(
         missing,
         draft_root=root,
     )
-    final_statuses = inspect_font_resources(resources, draft_root=root)
+    final_statuses = inspect_font_resources(selected_resources, draft_root=root)
     still_missing = [
         str(item["name"])
         for item in final_statuses
@@ -585,6 +590,64 @@ def _prepare_required_jianying_fonts_unlocked(
         "statuses": final_statuses,
         "draft_dir": report.get("draft_dir") or "",
     }
+
+
+def _prepare_export_fonts(
+    report: dict[str, Any],
+    draft_root: Path,
+    jianying_exe: Path,
+    *,
+    progress: StatusCallback | None = None,
+) -> list[dict[str, str]]:
+    """Preload and bind fonts referenced by one task before opening export."""
+    font_resources = font_resources_from_import_report(report)
+    if not font_resources:
+        return []
+
+    missing = [
+        item
+        for item in inspect_font_resources(
+            font_resources,
+            draft_root=draft_root,
+            draft_dir=report.get("draft_dir") or "",
+        )
+        if not item.get("available")
+    ]
+    if missing:
+        names = "、".join(str(item["name"]) for item in missing)
+        logger.info("font_preflight_started fonts=%s", names)
+        if progress:
+            progress(f"检测到缺少字体 {names}，正在通过剪映官方资源自动下载…")
+        try:
+            _prepare_required_jianying_fonts_unlocked(
+                draft_root,
+                jianying_exe,
+                resources=missing,
+                progress=progress,
+                wait_seconds=int(
+                    os.getenv("DEVICE_JIANYING_FONT_PRELOAD_TIMEOUT_SECONDS") or 180
+                ),
+            )
+        except BridgeError as exc:
+            raise FontResourceUnavailable(
+                f"剪映未能自动下载字体：{names}。请确认剪映已登录且会员资源可用；原始错误：{exc}"
+            ) from exc
+
+    binding = bind_cached_fonts(
+        report.get("draft_dir") or "",
+        font_resources,
+        draft_root=draft_root,
+    )
+    still_missing = [str(item) for item in binding.get("missing") or []]
+    if still_missing:
+        raise FontResourceUnavailable(
+            "字体资源不可用，已停止导出：" + "、".join(still_missing)
+        )
+    logger.info(
+        "font_preflight_finished fonts=%s",
+        ",".join(binding.get("bound") or []),
+    )
+    return font_resources
 
 
 def _run_native_export(
@@ -671,7 +734,12 @@ def _run_native_export_unlocked(
             messages += f" 等 {len(quality_issues)} 项"
         raise BridgeError("成片质量检查未通过，已停止导出：" + messages)
     cloud_resources = report.get("cloud_resources") or []
-    font_resources = font_resources_from_import_report(report)
+    font_resources = _prepare_export_fonts(
+        report,
+        root,
+        executable,
+        progress=progress,
+    )
     resource_wait_seconds = _cloud_resource_wait_seconds(len(cloud_resources))
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -935,6 +1003,7 @@ def _run_native_export_unlocked(
                         for item in inspect_font_resources(
                             font_resources,
                             draft_root=root,
+                            draft_dir=report.get("draft_dir") or "",
                         )
                         if not item.get("available")
                     ]
@@ -995,6 +1064,7 @@ def _run_native_export_unlocked(
             for item in inspect_font_resources(
                 font_resources,
                 draft_root=root,
+                draft_dir=report.get("draft_dir") or "",
             )
             if not item.get("available")
         ]

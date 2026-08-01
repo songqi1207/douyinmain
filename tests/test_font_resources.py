@@ -6,11 +6,13 @@ from unittest.mock import patch
 
 from desktop_bridge.device_agent import (
     FontResourceUnavailable,
+    _prepare_export_fonts,
     _run_pyjianying_export,
 )
 from desktop_bridge.font_resources import (
     bind_cached_fonts,
     build_font_preload_key,
+    find_bound_font,
     find_cached_font,
     inspect_font_resources,
     jianying_font_cache_roots,
@@ -135,6 +137,83 @@ class JianyingFontResourceTests(unittest.TestCase):
 
         self.assertFalse(statuses[0]["available"])
         self.assertEqual(statuses[0]["cached_path"], "")
+
+    def test_recognizes_font_downloaded_and_bound_by_jianying_11(self):
+        with tempfile.TemporaryDirectory(prefix="jianying-bound-font-") as temporary:
+            root = Path(temporary)
+            draft_dir = root / "draft"
+            draft_dir.mkdir()
+            downloaded = root / "new-cache-layout" / "font-file"
+            downloaded.parent.mkdir()
+            downloaded.write_bytes(b"OTTO" + b"\0" * 2048)
+            content = {
+                "materials": {
+                    "texts": [
+                        {
+                            "font_name": "毛笔行楷",
+                            "font_resource_id": "new-jianying-resource-id",
+                            "font_path": str(downloaded),
+                            "content": json.dumps({"styles": []}),
+                        }
+                    ]
+                }
+            }
+            (draft_dir / "draft_content.json").write_text(
+                json.dumps(content, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            bound = find_bound_font(
+                "6912033793700270606",
+                name="毛笔行楷",
+                draft_dir=draft_dir,
+            )
+            statuses = inspect_font_resources(
+                [{"name": "毛笔行楷", "resource_id": "6912033793700270606"}],
+                cache_roots=[root / "empty-cache"],
+                draft_dir=draft_dir,
+            )
+
+            self.assertEqual(bound, downloaded.resolve())
+            self.assertTrue(statuses[0]["available"])
+            self.assertEqual(statuses[0]["source"], "draft_binding")
+
+    @patch("desktop_bridge.device_agent.bind_cached_fonts")
+    @patch("desktop_bridge.device_agent._prepare_required_jianying_fonts_unlocked")
+    @patch("desktop_bridge.device_agent.inspect_font_resources")
+    @patch("desktop_bridge.device_agent.font_resources_from_import_report")
+    def test_export_preloads_only_missing_fonts_before_binding_task_draft(
+        self,
+        extract_fonts,
+        inspect_fonts,
+        prepare_fonts,
+        bind_fonts,
+    ):
+        resources = [
+            {"name": "出云龙", "resource_id": "7618137748045696292"},
+            {"name": "江湖体", "resource_id": "7080097079397192228"},
+        ]
+        extract_fonts.return_value = resources
+        inspect_fonts.return_value = [
+            {**resources[0], "available": True},
+            {**resources[1], "available": False},
+        ]
+        bind_fonts.return_value = {"bound": ["出云龙", "江湖体"], "missing": []}
+
+        result = _prepare_export_fonts(
+            {"draft_dir": "C:/drafts/task"},
+            Path("C:/drafts"),
+            Path("C:/JianyingPro.exe"),
+        )
+
+        self.assertEqual(result, resources)
+        prepared = prepare_fonts.call_args.kwargs["resources"]
+        self.assertEqual([item["name"] for item in prepared], ["江湖体"])
+        bind_fonts.assert_called_once_with(
+            "C:/drafts/task",
+            resources,
+            draft_root=Path("C:/drafts"),
+        )
 
     @patch("pyJianYingDraft.JianyingController")
     def test_native_export_stops_when_font_did_not_reach_cache(

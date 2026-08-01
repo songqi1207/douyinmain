@@ -15,6 +15,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import unquote, urlparse
 
 
 REQUIRED_WORKFLOW_FONTS: tuple[dict[str, Any], ...] = (
@@ -149,10 +150,107 @@ def find_cached_font(
     return None
 
 
+def _existing_font_path(value: Any, draft_dir: Path) -> Path | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    if raw.lower().startswith("file:"):
+        parsed = urlparse(raw)
+        raw = unquote(parsed.path or "")
+        if parsed.netloc:
+            raw = f"//{parsed.netloc}{raw}"
+        elif os.name == "nt" and len(raw) >= 3 and raw[0] == "/" and raw[2] == ":":
+            raw = raw[1:]
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute():
+        candidate = draft_dir / candidate
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        return None
+    return resolved if _looks_like_font_file(resolved) else None
+
+
+def find_bound_font(
+    resource_id: str,
+    *,
+    name: str = "",
+    aliases: Iterable[str] | None = None,
+    draft_dir: Path | str = "",
+) -> Path | None:
+    """Locate a font path Jianying has already bound into this draft.
+
+    Jianying 11 may store downloaded fonts outside the legacy
+    ``Cache/effect/<resource-id>`` layout. After a user downloads a font in the
+    editor, the authoritative local path is written into ``draft_content.json``.
+    """
+    target_dir = Path(draft_dir).expanduser().resolve() if str(draft_dir).strip() else None
+    if target_dir is None:
+        return None
+    content_path = target_dir / "draft_content.json"
+    if not content_path.is_file():
+        return None
+    try:
+        content = json.loads(content_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    expected_id = str(resource_id or "").strip()
+    expected_names = {
+        str(item or "").strip().casefold()
+        for item in [name, *(aliases or [])]
+        if str(item or "").strip()
+    }
+
+    def matches(candidate_id: Any, candidate_name: Any) -> bool:
+        normalized_id = str(candidate_id or "").strip()
+        normalized_name = str(candidate_name or "").strip().casefold()
+        return bool(
+            (expected_id and normalized_id == expected_id)
+            or (expected_names and normalized_name in expected_names)
+        )
+
+    for material in (content.get("materials") or {}).get("texts") or []:
+        if not isinstance(material, dict):
+            continue
+        material_name = material.get("font_name") or material.get("font_title")
+        if matches(material.get("font_resource_id"), material_name):
+            available = _existing_font_path(material.get("font_path"), target_dir)
+            if available:
+                return available
+
+        for font in material.get("fonts") or []:
+            if not isinstance(font, dict):
+                continue
+            font_id = font.get("resource_id") or font.get("effect_id") or font.get("id")
+            font_name = font.get("title") or font.get("name") or material_name
+            if matches(font_id, font_name):
+                available = _existing_font_path(font.get("path"), target_dir)
+                if available:
+                    return available
+
+        try:
+            text_content = json.loads(str(material.get("content") or "{}"))
+        except json.JSONDecodeError:
+            continue
+        for style in text_content.get("styles") or []:
+            if not isinstance(style, dict):
+                continue
+            font = style.get("font") or {}
+            if not isinstance(font, dict):
+                continue
+            if matches(font.get("id") or font.get("resource_id"), material_name):
+                available = _existing_font_path(font.get("path"), target_dir)
+                if available:
+                    return available
+    return None
+
+
 def inspect_font_resources(
     resources: Iterable[dict[str, Any]] | None = None,
     *,
     draft_root: Path | str = "",
+    draft_dir: Path | str = "",
     cache_roots: Iterable[Path | str] | None = None,
 ) -> list[dict[str, Any]]:
     """Report whether every requested cloud font exists in Jianying's cache."""
@@ -166,13 +264,21 @@ def inspect_font_resources(
             cache_roots=cache_roots,
             draft_root=draft_root,
         )
+        bound = None if cached else find_bound_font(
+            resource_id,
+            name=name,
+            aliases=resource.get("aliases") or [],
+            draft_dir=draft_dir,
+        )
+        available_path = cached or bound
         statuses.append(
             {
                 **resource,
                 "name": name,
                 "resource_id": resource_id,
-                "available": cached is not None,
-                "cached_path": str(cached or ""),
+                "available": available_path is not None,
+                "cached_path": str(available_path or ""),
+                "source": "legacy_cache" if cached else ("draft_binding" if bound else ""),
             }
         )
     return statuses
@@ -287,6 +393,13 @@ def bind_cached_fonts(
             cache_roots=cache_roots,
             draft_root=draft_root,
         )
+        if cached is None:
+            cached = find_bound_font(
+                resource_id,
+                name=name,
+                aliases=resource.get("aliases") or [],
+                draft_dir=target_dir,
+            )
         if cached is None:
             missing.append(name)
             continue
