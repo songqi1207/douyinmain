@@ -577,15 +577,24 @@ def inspect_draft_quality(content: dict[str, Any]) -> dict[str, Any]:
     canvas_width = max(1, _integer(canvas.get("width"), 1080))
 
     issues: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
     issues.extend(_check_caption_sync(caption_rows, voice_rows))
     issues.extend(_check_text_layout(text_tracks, texts, canvas_width))
-    issues.extend(_check_pacing(video_tracks, text_tracks, animations))
+    for pacing_issue in _check_pacing(video_tracks, text_tracks, animations):
+        # Sub-frame image sequences and flip-book animations intentionally use
+        # very short video segments. Keep reporting them for diagnostics, but
+        # never prevent an otherwise valid JianYing draft from exporting.
+        if pacing_issue.get("code") == "shot_too_short":
+            warnings.append(pacing_issue)
+        else:
+            issues.append(pacing_issue)
     issues.extend(_check_bright_effects(effect_tracks, effects))
     issues.extend(_check_ending(video_rows, caption_rows, voice_rows, music_rows))
 
     return {
         "passed": not issues,
         "issues": issues,
+        "warnings": warnings,
         "thresholds": {
             "max_caption_voice_drift_ms": MAX_SYNC_DRIFT_US // 1000,
             "min_visible_shot_ms": MIN_VISIBLE_SHOT_US // 1000,

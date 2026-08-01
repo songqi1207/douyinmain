@@ -58,6 +58,10 @@ def _codes(content: dict) -> set[str]:
     return {item["code"] for item in inspect_draft_quality(content)["issues"]}
 
 
+def _warning_codes(content: dict) -> set[str]:
+    return {item["code"] for item in inspect_draft_quality(content)["warnings"]}
+
+
 def test_quality_check_accepts_balanced_draft() -> None:
     result = inspect_draft_quality(_base_content())
 
@@ -179,9 +183,21 @@ def test_quality_check_detects_short_shot_and_fast_text_animation() -> None:
     )
 
     codes = _codes(content)
-    assert "shot_too_short" in codes
+    assert "shot_too_short" not in codes
+    assert "shot_too_short" in _warning_codes(content)
     assert "text_display_too_fast" in codes
     assert "text_animation_too_fast" in codes
+
+
+def test_quality_check_does_not_block_short_video_segments() -> None:
+    content = _base_content()
+    content["tracks"][0]["segments"].append(_segment("video-2", 5_000_000, 100_000))
+    content["tracks"][1]["segments"][0]["target_timerange"]["duration"] = 5_100_000
+
+    result = inspect_draft_quality(content)
+
+    assert result["passed"] is True
+    assert "shot_too_short" in _warning_codes(content)
 
 
 def test_quality_check_allows_fast_decorative_slide_text() -> None:
@@ -242,6 +258,9 @@ class DraftQualityTests(unittest.TestCase):
 
     def test_detects_short_shot_and_fast_text_animation(self) -> None:
         test_quality_check_detects_short_shot_and_fast_text_animation()
+
+    def test_does_not_block_short_video_segments(self) -> None:
+        test_quality_check_does_not_block_short_video_segments()
 
     def test_allows_long_text_with_safe_forced_line_wrap(self) -> None:
         test_quality_check_allows_long_text_with_safe_forced_line_wrap()
