@@ -904,7 +904,21 @@ function Enable-OneClickEnhanceInDialog([int]$ProcessId, $ExportRoot) {
     Start-Sleep -Milliseconds 900
     $after = Get-OneClickEnhanceVisualState $rect
     if ($after -eq "off") {
-        Write-Stage "one_click_enhance_skipped" "reason=toggle_rejected action=continue_without_enhance"
+        Write-Stage "one_click_enhance_retry" "mode=send_input x=$toggleX y=$toggleY"
+        Set-ElementWindowForeground $ExportRoot
+        Invoke-SendInputPoint $toggleX $toggleY
+        Start-Sleep -Milliseconds 900
+        $after = Get-OneClickEnhanceVisualState $rect
+    }
+    if ($after -eq "off") {
+        Write-Stage "one_click_enhance_retry" "mode=window_message x=$toggleX y=$toggleY"
+        Set-ElementWindowForeground $ExportRoot
+        Invoke-ElementWindowMessagePoint $ExportRoot $toggleX $toggleY | Out-Null
+        Start-Sleep -Milliseconds 900
+        $after = Get-OneClickEnhanceVisualState $rect
+    }
+    if ($after -eq "off") {
+        Write-Stage "one_click_enhance_skipped" "reason=all_click_modes_rejected action=continue_without_enhance"
         return
     }
     if ($after -ne "on") {
