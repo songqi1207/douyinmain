@@ -1895,6 +1895,31 @@ def complete_device_render_job(
     return True
 
 
+def promote_device_render_result(job_id: str, result_name: str, result_url: str) -> bool:
+    """Replace a completed job's local video URL after background delivery."""
+
+    job = get_job(job_id)
+    hosted_url = str(result_url or "").strip()
+    if not job or job.get("status") != "succeeded" or not hosted_url:
+        return False
+    local_url = f"/api/v1/job-results/{Path(result_name).name}"
+    results = list(job.get("results") or [])
+    changed = False
+    for result in results:
+        if result.get("type") != "video":
+            continue
+        current_url = str(result.get("url") or "")
+        if current_url == hosted_url:
+            return True
+        if current_url == local_url:
+            result["url"] = hosted_url
+            changed = True
+    if not changed:
+        return False
+    _update_job(job_id, results_json=json.dumps(results, ensure_ascii=False))
+    return True
+
+
 def fail_device_render_job(job_id: str, device_id: str, code: str, message: str) -> bool:
     job = get_job(job_id)
     if not job or job.get("render_device_id") != device_id or job["status"] != "rendering":

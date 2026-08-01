@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import logging
@@ -76,6 +75,7 @@ from workflow_jobs import (
     get_result_path,
     job_summary,
     list_jobs,
+    promote_device_render_result,
     workflow_job_counts,
 )
 from workflow_registry import (
@@ -967,14 +967,46 @@ def api_render_agent_claim(request: Request):
     return {"task": task}
 
 
+def _publish_device_video_in_background(job_id: str, result_name: str, destination: Path) -> None:
+    try:
+        result_url, original_bytes, published_bytes = publish_device_video(job_id, destination)
+    except (OSError, VideoDeliveryError) as exc:
+        logger.warning("r2_video_delivery_failed job_id=%s error=%s", job_id, exc)
+        append_job_log(job_id, f"R2 视频处理失败，已自动保留站点原片：{exc}", level="warning")
+        return
+
+    if not promote_device_render_result(job_id, result_name, result_url):
+        logger.warning("r2_video_result_not_promoted job_id=%s url=%s", job_id, result_url)
+        append_job_log(job_id, "R2 视频已经上传，但任务结果已变化，站点原片予以保留", level="warning")
+        return
+
+    saved_percent = max(0, round((1 - (published_bytes / max(1, original_bytes))) * 100))
+    append_job_log(
+        job_id,
+        f"视频已压缩并上传到 R2（{original_bytes} → {published_bytes} 字节，减少 {saved_percent}%）",
+    )
+    destination.unlink(missing_ok=True)
+
+
 @app.post("/api/v1/render-agent/jobs/{job_id}/complete")
-async def api_complete_render_agent_job(job_id: str, request: Request, video: UploadFile = File(...)):
+async def api_complete_render_agent_job(
+    job_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    video: UploadFile = File(...),
+):
     device = _require_render_device(request)
     job = get_job(job_id)
+    owned_by_device = bool(
+        job
+        and job.get("render_device_id") == device["id"]
+        and job.get("user_id") == device["user_id"]
+    )
+    if owned_by_device and job.get("status") == "succeeded":
+        heartbeat_device(device["id"])
+        return {"job": _public_job(job)}
     if (
-        not job
-        or job.get("render_device_id") != device["id"]
-        or job.get("user_id") != device["user_id"]
+        not owned_by_device
         or job.get("status") != "rendering"
     ):
         raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "导出任务不存在"})
@@ -1008,35 +1040,22 @@ async def api_complete_render_agent_job(job_id: str, request: Request, video: Up
         if temporary.exists():
             temporary.unlink()
 
-    result_url = ""
-    if r2_export_configured():
-        append_job_log(job_id, "视频已回传，正在压缩并上传到 R2")
-        try:
-            result_url, original_bytes, published_bytes = await asyncio.to_thread(
-                publish_device_video,
-                job_id,
-                destination,
-            )
-            saved_percent = max(0, round((1 - (published_bytes / max(1, original_bytes))) * 100))
-            append_job_log(
-                job_id,
-                f"视频已压缩并上传到 R2（{original_bytes} → {published_bytes} 字节，减少 {saved_percent}%）",
-            )
-        except VideoDeliveryError as exc:
-            logger.warning("r2_video_delivery_failed job_id=%s error=%s", job_id, exc)
-            append_job_log(job_id, f"R2 视频处理失败，已自动保留站点原片：{exc}", level="warning")
-
     if not complete_device_render_job(
         job_id,
         device["id"],
         result_name,
-        result_url=result_url,
     ):
         if destination.exists():
             destination.unlink()
         raise HTTPException(status_code=409, detail={"code": "job_not_rendering", "message": "任务状态已变化"})
-    if result_url:
-        destination.unlink(missing_ok=True)
+    if r2_export_configured():
+        append_job_log(job_id, "视频已回传，正在后台压缩并上传到 R2")
+        background_tasks.add_task(
+            _publish_device_video_in_background,
+            job_id,
+            result_name,
+            destination,
+        )
     heartbeat_device(device["id"])
     return {"job": _public_job(get_job(job_id))}
 

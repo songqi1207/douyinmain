@@ -114,6 +114,32 @@ class VideoDeliveryTests(unittest.TestCase):
         self.assertEqual(results[0]["url"], "https://cdn.test/exports/job-id-device-web.mp4")
         self.assertEqual(update.call_args.kwargs["status"], "succeeded")
 
+    def test_background_delivery_promotes_local_result_to_r2_url(self):
+        job = {
+            "id": "job-id",
+            "status": "succeeded",
+            "results": [
+                {
+                    "type": "video",
+                    "url": "/api/v1/job-results/job-id-device.mp4",
+                    "downloadable": True,
+                }
+            ],
+        }
+        with (
+            patch.object(workflow_jobs, "get_job", return_value=job),
+            patch.object(workflow_jobs, "_update_job") as update,
+        ):
+            promoted = workflow_jobs.promote_device_render_result(
+                "job-id",
+                "job-id-device.mp4",
+                "https://cdn.test/exports/job-id-device-web.mp4",
+            )
+
+        self.assertTrue(promoted)
+        results = json.loads(update.call_args.kwargs["results_json"])
+        self.assertEqual(results[0]["url"], "https://cdn.test/exports/job-id-device-web.mp4")
+
 
 if __name__ == "__main__":
     unittest.main()
