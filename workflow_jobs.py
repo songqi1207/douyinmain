@@ -13,6 +13,7 @@ import sqlite3
 import subprocess
 import time
 import uuid
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -201,6 +202,8 @@ def create_job(
     alias = aliases.get(normalized_code)
     if alias and not str(inputs.get("theme") or "").strip():
         inputs["theme"] = inputs.get(alias)
+    if normalized_code == "OWN01":
+        inputs = _normalize_book_inputs(inputs, lookup_missing=False)
     validate_inputs(workflow, inputs)
     now = time.time()
     job_id = uuid.uuid4().hex
@@ -497,6 +500,14 @@ def execute_job(job_id: str):
     started_at = time.monotonic()
     try:
         _update_job(job_id, status="running", stage="preparing", progress=10)
+        if job["workflow_code"] == "OWN01":
+            resolved_inputs = _normalize_book_inputs(job["inputs"], lookup_missing=True)
+            if resolved_inputs != job["inputs"]:
+                _update_job(job_id, inputs_json=json.dumps(resolved_inputs, ensure_ascii=False))
+                job = {**job, "inputs": resolved_inputs}
+                resolved_author = str(resolved_inputs.get("author") or "").strip()
+                if resolved_author and not _book_author_is_placeholder(resolved_author):
+                    append_job_log(job_id, f"已识别书籍作者：{resolved_author}")
         mode = (os.getenv("WORKFLOW_PROVIDER_MODE") or "demo").strip().lower()
         build_mode = (os.getenv("WORKFLOW_BUILD_MODE") or "template").strip().lower()
         logger.info(
@@ -635,6 +646,149 @@ def _configured_visible_text(env_name: str, default: str) -> str:
     return value
 
 
+_BOOK_AUTHOR_PLACEHOLDERS = {"", "佚名", "未知", "未知作者", "unknown", "anonymous"}
+_WIKIDATA_API_URL = "https://www.wikidata.org/w/api.php"
+
+
+def _book_author_is_placeholder(value: str) -> bool:
+    return str(value or "").strip().casefold() in _BOOK_AUTHOR_PLACEHOLDERS
+
+
+def _split_book_theme(value: str) -> tuple[str, str]:
+    subject = str(value or "").strip()
+    for separator in ("｜", "|"):
+        if separator in subject:
+            title, author = (part.strip() for part in subject.split(separator, 1))
+            return title or subject, author
+    return subject, ""
+
+
+def _normalized_book_title(value: str) -> str:
+    return re.sub(r"[\s《》〈〉「」『』·:：,，。.!！?？'\"]+", "", str(value or "")).casefold()
+
+
+def _wikidata_entity_id(claim: dict[str, Any]) -> str:
+    value = (
+        (claim.get("mainsnak") or {})
+        .get("datavalue", {})
+        .get("value", {})
+    )
+    return str(value.get("id") or "") if isinstance(value, dict) else ""
+
+
+@lru_cache(maxsize=256)
+def _lookup_book_author(title: str) -> str:
+    """Look up a book author through Wikidata; return empty on uncertainty."""
+    normalized_title = _normalized_book_title(title)
+    if not normalized_title:
+        return ""
+    headers = {
+        "User-Agent": "AI-Video-Creator/1.0 (+http://139.155.153.59/)",
+        "Accept": "application/json",
+    }
+    session = requests.Session()
+    session.trust_env = False
+    try:
+        search_response = session.get(
+            _WIKIDATA_API_URL,
+            params={
+                "action": "wbsearchentities",
+                "search": title,
+                "language": "zh",
+                "uselang": "zh",
+                "format": "json",
+                "limit": 8,
+            },
+            headers=headers,
+            timeout=(3, 6),
+        )
+        search_response.raise_for_status()
+        candidates = [
+            item
+            for item in (search_response.json().get("search") or [])
+            if isinstance(item, dict)
+            and _normalized_book_title(item.get("label") or (item.get("match") or {}).get("text"))
+            == normalized_title
+            and str(item.get("id") or "").startswith("Q")
+        ]
+        candidate_ids = [str(item["id"]) for item in candidates[:6]]
+        if not candidate_ids:
+            return ""
+        entity_response = session.get(
+            _WIKIDATA_API_URL,
+            params={
+                "action": "wbgetentities",
+                "ids": "|".join(candidate_ids),
+                "props": "claims",
+                "format": "json",
+            },
+            headers=headers,
+            timeout=(3, 6),
+        )
+        entity_response.raise_for_status()
+        entities = entity_response.json().get("entities") or {}
+        author_ids: list[str] = []
+        for candidate_id in candidate_ids:
+            claims = (entities.get(candidate_id) or {}).get("claims") or {}
+            author_ids = [
+                entity_id
+                for entity_id in (_wikidata_entity_id(item) for item in claims.get("P50") or [])
+                if entity_id
+            ]
+            if author_ids:
+                break
+        if not author_ids:
+            return ""
+        author_response = session.get(
+            _WIKIDATA_API_URL,
+            params={
+                "action": "wbgetentities",
+                "ids": "|".join(author_ids[:3]),
+                "props": "labels",
+                "languages": "zh-cn|zh-hans|zh|en",
+                "format": "json",
+            },
+            headers=headers,
+            timeout=(3, 6),
+        )
+        author_response.raise_for_status()
+        author_entities = author_response.json().get("entities") or {}
+        names: list[str] = []
+        for author_id in author_ids[:3]:
+            labels = (author_entities.get(author_id) or {}).get("labels") or {}
+            name = str(
+                (
+                    labels.get("zh-cn")
+                    or labels.get("zh-hans")
+                    or labels.get("zh")
+                    or labels.get("en")
+                    or {}
+                ).get("value")
+                or ""
+            ).strip()
+            if name and name not in names:
+                names.append(name)
+        return "、".join(names)
+    except (requests.RequestException, TypeError, ValueError, AttributeError):
+        logger.warning("book_author_lookup_failed title=%r", title, exc_info=True)
+        return ""
+
+
+def _normalize_book_inputs(inputs: dict[str, Any], *, lookup_missing: bool) -> dict[str, Any]:
+    result = dict(inputs)
+    raw_theme = str(result.get("theme") or result.get("book_name") or "").strip()
+    subject, inline_author = _split_book_theme(raw_theme)
+    current_author = str(result.get("author") or "").strip()
+    if inline_author:
+        current_author = inline_author
+    elif lookup_missing and _book_author_is_placeholder(current_author):
+        current_author = _lookup_book_author(subject) or current_author
+    result["theme"] = subject
+    if current_author:
+        result["author"] = current_author
+    return result
+
+
 def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
     result: dict[str, Any] = {}
     for key, value in inputs.items():
@@ -648,14 +802,9 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
     code = str(workflow_code or "").upper()
     result.pop("voice_notice", None)
     if code == "OWN01":
-        raw_theme = str(result.pop("theme", "") or result.pop("book_name", "") or "").strip()
-        subject = raw_theme
+        result = _normalize_book_inputs(result, lookup_missing=True)
+        subject = str(result.pop("theme", "") or result.pop("book_name", "") or "").strip()
         author = str(result.pop("author", "") or "").strip()
-        for separator in ("｜", "|"):
-            if separator in subject:
-                subject, inline_author = (part.strip() for part in subject.split(separator, 1))
-                author = author or inline_author
-                break
         author = author or _configured_visible_text("BOOK_DEFAULT_AUTHOR", "佚名")
         try:
             image_count = max(

@@ -529,10 +529,26 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(params["author"], "Author Name")
         self.assertEqual(params["img_count"], "10")
 
+    def test_published_book_inline_author_replaces_placeholder_default(self):
+        params = _provider_inputs(
+            {"theme": "克林索尔的最后夏天｜黑塞", "author": "佚名"},
+            "OWN01",
+        )
+
+        self.assertEqual(params["subject"], "克林索尔的最后夏天")
+        self.assertEqual(params["author"], "黑塞")
+
+    @patch("workflow_jobs._lookup_book_author", return_value="余华")
+    def test_published_book_looks_up_missing_author(self, lookup_author):
+        params = _provider_inputs({"theme": "活着", "author": "佚名"}, "OWN01")
+
+        self.assertEqual(params["author"], "余华")
+        lookup_author.assert_called_once_with("活着")
+
     def test_published_book_replaces_encoding_damaged_default_author(self):
-        with patch.dict(
-            os.environ,
-            {"BOOK_DEFAULT_AUTHOR": "??"},
+        with (
+            patch.dict(os.environ, {"BOOK_DEFAULT_AUTHOR": "??"}),
+            patch("workflow_jobs._lookup_book_author", return_value=""),
         ):
             params = _provider_inputs({"theme": "活着"}, "OWN01")
 
