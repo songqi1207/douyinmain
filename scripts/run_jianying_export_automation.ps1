@@ -667,7 +667,7 @@ function Set-HomeDraftSearchByCoordinate($Process, [string]$Query) {
     $rect = Get-WindowRect $Process
     $width = [Math]::Max(1, $rect.Right - $rect.Left)
     $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
-    $searchQuery = if ($Query -match '^[0-9A-Fa-f]{8}-') { $Query.Substring(0, 8) } else { $Query }
+    $searchQuery = if ($Query -match '^[0-9A-Fa-f]{8}-') { $Query.Substring(0, 3) } else { $Query }
     # JianYing 11.2 local-drafts search icon is at about 79.5% width / 67.2% height.
     $x = [int]($rect.Left + ($width * 0.795))
     $y = [int]($rect.Top + ($height * 0.672))

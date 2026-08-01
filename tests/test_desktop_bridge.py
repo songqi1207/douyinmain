@@ -36,6 +36,7 @@ from desktop_bridge.draft_core import (
     prefer_newest_jianying_executable,
 )
 from desktop_bridge.paths import app_data_dir
+from desktop_bridge.jianying_uia_export import _draft_search_query
 from desktop_bridge.click_calibration import (
     normalize_export_click,
     normalize_export_confirm_click,
@@ -50,6 +51,10 @@ from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_uuid_draft_search_uses_first_three_characters(self):
+        self.assertEqual(_draft_search_query("EAB8433A-C232-4C5C-B10D"), "EAB")
+        self.assertEqual(_draft_search_query("named-draft"), "named-draft")
+
     def test_font_verification_blocks_missing_fonts_by_default(self):
         with patch.dict(os.environ, {}, clear=True):
             self.assertTrue(_font_verification_enabled())
@@ -546,7 +551,7 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "editor_export_calibration_loaded"', script)
         self.assertIn('Write-Stage "draft_search_applied"', script)
         self.assertIn("$height * 0.672", script)
-        self.assertIn("$Query.Substring(0, 8)", script)
+        self.assertIn("$Query.Substring(0, 3)", script)
         self.assertIn('Write-Stage "export_confirm_calibration_loaded"', script)
         self.assertIn("$width * 0.105", script)
         self.assertIn("$height * 0.023", script)
