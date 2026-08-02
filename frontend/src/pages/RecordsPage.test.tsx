@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -46,6 +46,20 @@ const completedJob: Job = {
   updated_at: 1,
 };
 
+const renderingJob: Job = {
+  ...completedJob,
+  id: "job-rendering",
+  status: "rendering",
+  stage: "device_exporting",
+  progress: 92,
+  results: [{
+    type: "draft",
+    format: "draft_key",
+    url: "/api/v1/job-results/internal-draft-key.json",
+    downloadable: true,
+  }],
+};
+
 describe("RecordsPage", () => {
   beforeEach(() => {
     api.fetchJobs.mockResolvedValue({
@@ -70,5 +84,19 @@ describe("RecordsPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "收起视频" }));
     expect(container.querySelector("video")).not.toBeInTheDocument();
+  });
+
+  it("does not expose intermediate draft files while rendering", async () => {
+    api.fetchJobs.mockResolvedValue({
+      items: [renderingJob],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    });
+
+    const { container } = render(<MemoryRouter><RecordsPage /></MemoryRouter>);
+
+    await waitFor(() => expect(container).toHaveTextContent("92%"));
+    expect(within(container).queryByRole("link", { name: /下载结果/ })).not.toBeInTheDocument();
   });
 });

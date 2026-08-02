@@ -78,6 +78,7 @@ from workflow_jobs import (
     list_jobs,
     promote_device_render_result,
     report_device_render_progress,
+    user_can_access_result,
     workflow_job_counts,
 )
 from workflow_registry import (
@@ -887,7 +888,10 @@ def api_generated_media(kind: str, filename: str):
 
 
 @app.get("/api/v1/job-results/{filename}")
-def api_job_result(filename: str):
+def api_job_result(filename: str, request: Request):
+    user = _require_user(request)
+    if not user_can_access_result(user["id"], filename):
+        raise HTTPException(status_code=404, detail={"code": "result_not_found", "message": "结果文件不存在"})
     path = get_result_path(filename)
     if not path:
         raise HTTPException(status_code=404, detail={"code": "result_not_found", "message": "结果文件不存在"})
@@ -1426,6 +1430,7 @@ def _public_job(job: dict) -> dict:
     if not display_title:
         workflow = get_workflow(job["workflow_code"], job["category"])
         display_title = str((workflow or {}).get("name") or job["workflow_code"])
+    public_results = job["results"] if job["status"] == "succeeded" else []
     return {
         "id": job["id"],
         "workflow_code": job["workflow_code"],
@@ -1434,7 +1439,7 @@ def _public_job(job: dict) -> dict:
         "status": job["status"],
         "stage": job["stage"],
         "progress": job["progress"],
-        "results": job["results"],
+        "results": public_results,
         "error": (
             {"code": job["error_code"], "message": job["error_message"]}
             if job.get("error_code")

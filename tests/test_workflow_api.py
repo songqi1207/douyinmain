@@ -243,6 +243,52 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(voices.json()["available"], voices.json()["total"] > 0)
         self.assertIn(voices.json()["provider"], {"local-system", "external"})
 
+    def test_job_result_files_require_owner_and_completed_status(self):
+        user_id = self.client.get("/api/v1/auth/me").json()["user"]["id"]
+        with tempfile.TemporaryDirectory(prefix="private-job-results-") as temporary:
+            result_dir = Path(temporary)
+            video_name = "private-result-device.mp4"
+            draft_name = "private-result-draft-key.json"
+            (result_dir / video_name).write_bytes(b"\x00\x00\x00\x18ftypmp42")
+            (result_dir / draft_name).write_text('{"secret":"draft"}', encoding="utf-8")
+
+            completed = workflow_jobs.create_job(
+                "G218", "养生", {"title": "private video", "num": 3}, user_id=user_id
+            )
+            workflow_jobs._update_job(
+                completed["id"],
+                status="succeeded",
+                stage="completed",
+                progress=100,
+                results_json=json.dumps(
+                    [{"type": "video", "url": f"/api/v1/job-results/{video_name}"}]
+                ),
+            )
+            rendering = workflow_jobs.create_job(
+                "OWN01", "自有工作流", {"theme": "private draft"}, user_id=user_id
+            )
+            workflow_jobs._update_job(
+                rendering["id"],
+                status="rendering",
+                stage="device_exporting",
+                progress=92,
+                results_json=json.dumps(
+                    [{"type": "draft", "url": f"/api/v1/job-results/{draft_name}"}]
+                ),
+            )
+
+            with (
+                patch.object(workflow_jobs, "RESULT_DIR", result_dir),
+                patch.object(fastapi_app, "RESULT_DIR", result_dir),
+            ):
+                self.assertEqual(self.client.get(f"/api/v1/job-results/{video_name}").status_code, 200)
+                self.assertEqual(TestClient(app).get(f"/api/v1/job-results/{video_name}").status_code, 401)
+                self.assertEqual(self.admin_client.get(f"/api/v1/job-results/{video_name}").status_code, 404)
+                self.assertEqual(self.client.get(f"/api/v1/job-results/{draft_name}").status_code, 404)
+
+            public_rendering = self.client.get(f"/api/v1/jobs/{rendering['id']}").json()["job"]
+            self.assertEqual(public_rendering["results"], [])
+
     def test_registration_notifies_admin_when_notification_inbox_is_configured(self):
         anonymous = TestClient(app)
         with patch.dict(
@@ -1365,7 +1411,7 @@ class WorkflowApiTests(unittest.TestCase):
         job = self.client.get(f"/api/v1/jobs/{job_id}").json()["job"]
         self.assertEqual(job["status"], "rendering", job)
         self.assertEqual(job["stage"], "waiting_for_device", job)
-        self.assertEqual(job["results"][0]["format"], "draft_key")
+        self.assertEqual(job["results"], [])
 
     def test_new_frontend_can_render_uploaded_draft_key_to_hosted_mp4(self):
         key = {

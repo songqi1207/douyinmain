@@ -140,7 +140,7 @@ export function RecordsPage() {
                       <RotateCcw />{retryingId === job.id ? "重试中" : "重试"}
                     </button>
                   )}
-                  {job.results.map((result, index) => (
+                  {(job.status === "succeeded" ? job.results : []).map((result, index) => (
                     <span className="record-result-actions" key={`${result.url}-${index}`}>
                       {result.type === "video" && (
                         <button

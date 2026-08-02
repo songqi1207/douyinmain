@@ -331,6 +331,32 @@ def get_result_path(filename: str) -> Path | None:
     return path
 
 
+def user_can_access_result(user_id: str, filename: str) -> bool:
+    """Allow access only to a completed result explicitly owned by the user."""
+    if not user_id or not filename or filename != Path(filename).name:
+        return False
+    expected_url = f"/api/v1/job-results/{filename}"
+    with _connect() as db:
+        rows = db.execute(
+            """SELECT results_json FROM jobs
+               WHERE user_id = ? AND status = 'succeeded'
+                 AND instr(results_json, ?) > 0""",
+            (user_id, filename),
+        ).fetchall()
+    for row in rows:
+        try:
+            results = json.loads(row["results_json"])
+        except (TypeError, ValueError):
+            continue
+        if any(
+            isinstance(result, dict)
+            and str(result.get("url") or "").split("?", 1)[0] == expected_url
+            for result in results
+        ):
+            return True
+    return False
+
+
 def list_jobs(
     user_id: str,
     page: int = 1,
