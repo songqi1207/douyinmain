@@ -9,6 +9,7 @@ import { AuthPage } from "./pages/AuthPages";
 import { DevicesPage } from "./pages/DevicesPage";
 import { JianyingExportPage } from "./pages/JianyingExportPage";
 import { CatalogPage, DetailPage } from "./pages/MarketplacePages";
+import { ProfilePage } from "./pages/ProfilePage";
 import { RecordsPage } from "./pages/RecordsPage";
 import { AccountUsagePage, AdminUserQuotaPage } from "./pages/QuotaPages";
 import { StudioPage } from "./pages/StudioPage";
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/devices" element={<DevicesPage />} />
         <Route path="/jianying-export" element={<JianyingExportPage />} />
         <Route path="/jianying-export/test" element={<JianyingExportPage />} />
+        <Route path="/account" element={<ProfilePage />} />
         <Route path="/account/security" element={<AccountSecurityPage />} />
         <Route path="/account/usage" element={<AccountUsagePage />} />
         <Route path="/login" element={<AuthPage mode="login" />} />

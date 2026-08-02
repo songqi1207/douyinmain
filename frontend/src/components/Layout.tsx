@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  ChevronRight,
   Clock3,
   Coins,
   Gauge,
@@ -12,31 +13,57 @@ import {
   ShieldCheck,
   Sparkles,
   Store,
+  UserRound,
   X,
 } from "lucide-react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
+import { fetchAccountQuota } from "../api";
 import { useAuth } from "../auth";
 import { JobNotifications } from "./JobNotifications";
+import type { UserQuota } from "../types";
 
 const NAV_ITEMS = [
-  { to: "/", label: "开始创作", icon: Sparkles, end: true },
-  { to: "/workflows", label: "工作流", icon: Store },
-  { to: "/voices", label: "配音", icon: Headphones },
-  { to: "/records", label: "创作记录", icon: Clock3 },
-  { to: "/devices", label: "设备", icon: Laptop },
+  { to: "/", label: "创作工作台", icon: Sparkles, end: true },
+  { to: "/workflows", label: "工作流库", icon: Store },
+  { to: "/voices", label: "声音工作室", icon: Headphones },
+  { to: "/records", label: "我的作品", icon: Clock3 },
+  { to: "/devices", label: "渲染设备", icon: Laptop },
 ] as const;
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [quota, setQuota] = useState<UserQuota | null>(null);
+
+  useEffect(() => {
+    if (!user) { setQuota(null); return; }
+    fetchAccountQuota().then(({ quota: result }) => setQuota(result)).catch(() => setQuota(null));
+  }, [user?.id]);
 
   async function signOut() {
     await logout();
     setMenuOpen(false);
     navigate("/");
   }
+
+  const pageContext = pathname === "/"
+    ? ["CREATE", "把一个想法，变成一条完整视频"]
+    : pathname.startsWith("/workflows")
+      ? ["WORKFLOWS", "查找适合内容方向的创作流程"]
+      : pathname.startsWith("/voices")
+        ? ["VOICE STUDIO", "选择声音并完成配音制作"]
+        : pathname.startsWith("/records")
+          ? ["MY CREATIONS", "管理正在生成和已经完成的作品"]
+          : pathname.startsWith("/devices")
+            ? ["RENDER DEVICES", "管理剪映助手和本机渲染能力"]
+            : pathname.startsWith("/account")
+              ? ["MY ACCOUNT", "积分、作品、云空间与账户安全"]
+              : pathname.startsWith("/admin")
+                ? ["ADMIN CONSOLE", "平台运行与用户管理"]
+                : ["VIDEOLAB", "AI 视频创作控制台"];
 
   return (
     <div className="app-shell">
@@ -61,8 +88,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <NavLink to="/admin/registrations" onClick={() => setMenuOpen(false)}><ShieldCheck />注册审核</NavLink>
         </div>}
         <div className="rail-support">
+          {user && <NavLink className="rail-account" to="/account" onClick={() => setMenuOpen(false)}>
+            <span className="rail-account-avatar">{(user.email || user.username).slice(0, 1).toUpperCase()}</span>
+            <span><strong>{user.username}</strong><small>{quota?.unlimited ? "积分不限" : quota ? `${quota.points_balance.toLocaleString("zh-CN")} 积分` : "个人中心"}</small></span>
+            <ChevronRight />
+          </NavLink>}
           <Link to="/help" onClick={() => setMenuOpen(false)}><HelpCircle />使用帮助</Link>
-          <p>从灵感到成片，流程都在这里。</p>
+          {!user && <p>登录后可查看个人作品、积分和云存储。</p>}
         </div>
       </aside>
       {menuOpen && <button className="rail-scrim" type="button" aria-label="关闭导航" onClick={() => setMenuOpen(false)} />}
@@ -72,14 +104,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {menuOpen ? <X /> : <Menu />}
           </button>
           <Link className="brand mobile-brand" to="/"><span className="brand-mark">V</span><span>VIDEOLAB</span></Link>
-          <div className="header-context"><small>CREATOR OPERATING SYSTEM</small><strong>把一个想法，变成一条完整视频</strong></div>
+          <div className="header-context"><small>VIDEOLAB / {pageContext[0]}</small><strong>{pageContext[1]}</strong></div>
           <div className="auth-nav">
             {user ? <>
               <JobNotifications />
-              <Link className="points-link" to="/account/usage"><Coins size={15} /><span>积分中心</span></Link>
-              <Link className={user.must_change_password ? "security-alert-link" : "user-link"} to="/account/security">
+              <Link className="points-link" to="/account/usage"><Coins size={15} /><span>{quota?.unlimited ? "积分不限" : quota ? `${quota.points_balance.toLocaleString("zh-CN")} 积分` : "积分"}</span></Link>
+              <Link className={user.must_change_password ? "security-alert-link" : "user-link"} to="/account">
                 {user.must_change_password ? <ShieldCheck size={15} /> : <span className="user-avatar">{(user.email || user.username).slice(0, 1).toUpperCase()}</span>}
-                <span>{user.email || user.username}</span>
+                <span>{user.username}</span>
               </Link>
               <button type="button" onClick={() => void signOut()} aria-label="退出登录"><LogOut size={15} /><span>退出</span></button>
             </> : <><Link to="/login">登录</Link><Link className="register-link" to="/register">申请注册</Link></>}
@@ -89,7 +121,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="shell-content">{children}</div>
         <footer className="site-footer">
           <span>VIDEOLAB · AI 视频创作控制台</span>
-          <div><Link to="/jianying-export">手工导出</Link><Link to="/help">使用帮助</Link><a href="https://ai.laobaiai.top/" target="_blank" rel="noreferrer">相关平台</a></div>
+          <div><Link to="/account">个人中心</Link><Link to="/jianying-export">手工导出</Link><Link to="/help">使用帮助</Link></div>
         </footer>
       </div>
     </div>
