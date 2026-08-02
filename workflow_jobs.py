@@ -333,7 +333,12 @@ def get_result_path(filename: str) -> Path | None:
 
 def user_can_access_result(user_id: str, filename: str) -> bool:
     """Allow access only to a completed result explicitly owned by the user."""
-    if not user_id or not filename or filename != Path(filename).name:
+    if (
+        not user_id
+        or not filename
+        or filename != Path(filename).name
+        or Path(filename).suffix.lower() == ".json"
+    ):
         return False
     expected_url = f"/api/v1/job-results/{filename}"
     with _connect() as db:

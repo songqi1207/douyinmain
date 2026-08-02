@@ -289,6 +289,13 @@ class WorkflowApiTests(unittest.TestCase):
             public_rendering = self.client.get(f"/api/v1/jobs/{rendering['id']}").json()["job"]
             self.assertEqual(public_rendering["results"], [])
 
+            workflow_jobs._update_job(
+                rendering["id"], status="succeeded", stage="completed", progress=100
+            )
+            public_completed_draft = self.client.get(f"/api/v1/jobs/{rendering['id']}").json()["job"]
+            self.assertEqual(public_completed_draft["results"], [])
+            self.assertEqual(self.client.get(f"/api/v1/job-results/{draft_name}").status_code, 404)
+
     def test_registration_notifies_admin_when_notification_inbox_is_configured(self):
         anonymous = TestClient(app)
         with patch.dict(
@@ -467,24 +474,7 @@ class WorkflowApiTests(unittest.TestCase):
             self.assertEqual(created.status_code, 202, created.text)
             job = self.client.get(f"/api/v1/jobs/{created.json()['job']['id']}").json()["job"]
             self.assertEqual(job["status"], "succeeded", job)
-            self.assertEqual(job["results"][0]["type"], "draft")
-            result = self.client.get(job["results"][0]["url"])
-            self.assertEqual(result.status_code, 200)
-            self.assertEqual(result.json()["type"], "coze-workflow-clipboard-data")
-            end = next(
-                node
-                for node in result.json()["json"]["nodes"]
-                if str(node.get("id")) == "900001"
-            )
-            output_names = [
-                item["name"]
-                for item in end["data"]["inputs"]["inputParameters"]
-            ]
-            self.assertEqual(output_names[-2:], ["draft_id", "draft_key"])
-            self.assertIn("output", output_names)
-            self.assertTrue(
-                any(str(node.get("id")) == "390001" for node in result.json()["json"]["nodes"])
-            )
+            self.assertEqual(job["results"], [])
 
     def test_starter_workflow_schemas_and_document_upload(self):
         g259 = self.client.get("/api/v1/workflows/G259", params={"category": "起号"})
@@ -1775,14 +1765,7 @@ class WorkflowApiTests(unittest.TestCase):
             self.assertEqual(created.status_code, 202, created.text)
             job = self.client.get(f"/api/v1/jobs/{created.json()['job']['id']}").json()["job"]
             self.assertEqual(job["status"], "succeeded", job)
-            self.assertEqual(job["results"][0]["type"], "draft")
-            result = self.client.get(job["results"][0]["url"])
-            self.assertEqual(result.status_code, 200)
-            payload = result.json()
-            start = next(node for node in payload["json"]["nodes"] if str(node.get("type")) == "1")
-            defaults = {item["name"]: item.get("defaultValue") for item in start["data"]["outputs"]}
-            for name, value in expected_defaults.items():
-                self.assertEqual(defaults[name], value)
+            self.assertEqual(job["results"], [])
 
     def test_catalog_supports_reference_sort_modes(self):
         for sort in ("newest", "favorites", "downloads", "views", "name"):

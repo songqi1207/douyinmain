@@ -1430,7 +1430,11 @@ def _public_job(job: dict) -> dict:
     if not display_title:
         workflow = get_workflow(job["workflow_code"], job["category"])
         display_title = str((workflow or {}).get("name") or job["workflow_code"])
-    public_results = job["results"] if job["status"] == "succeeded" else []
+    public_results = [
+        result
+        for result in (job["results"] if job["status"] == "succeeded" else [])
+        if isinstance(result, dict) and result.get("type") != "draft"
+    ]
     return {
         "id": job["id"],
         "workflow_code": job["workflow_code"],
