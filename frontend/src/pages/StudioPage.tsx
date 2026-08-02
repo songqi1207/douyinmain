@@ -252,27 +252,30 @@ export function StudioPage() {
       <main className="studio-page page-width">
         <section className="studio-hero">
           <div className="studio-hero-copy">
-            <span className="eyebrow">ONE IDEA. ONE VIDEO.</span>
-            <h1>输入一个主题，<em>直接生成视频</em></h1>
-            <p>文案、配音、画面、剪映草稿和 MP4 导出都由后台自动完成。你只需要决定今天想讲什么。</p>
+            <span className="eyebrow">VIDEOLAB / CREATE</span>
+            <h1>把想法交给流程，<em>把时间留给创作</em></h1>
+            <p>一个主题就够了。文案、声音、画面、剪映草稿和成片导出在同一条创作链路里自动完成。</p>
             <div className="hero-proof">
-              <span><Check />密钥只在服务器</span>
-              <span><Check />进度自动保存</span>
-              <span><Check />剪映原生导出</span>
+              <span><Check />过程可见</span>
+              <span><Check />离开页面也会继续</span>
+              <span><Check />完成后自动通知</span>
             </div>
           </div>
-          <div className="studio-orbit" aria-hidden="true">
-            <div className="orbit-core"><Play fill="currentColor" /></div>
-            <span className="orbit-label one">主题</span>
-            <span className="orbit-label two">草稿</span>
-            <span className="orbit-label three">视频</span>
+          <div className="studio-orbit">
+            <div className="flow-card-heading"><span>本次创作链路</span><em>{renderReady ? "READY" : "CHECKING"}</em></div>
+            <ol className="flow-steps">
+              <li><i>01</i><div><strong>一句主题</strong><small>告诉系统你今天想讲什么</small></div></li>
+              <li><i>02</i><div><strong>自动编排</strong><small>内容、配音与画面同步生成</small></div></li>
+              <li><i>03</i><div><strong>交付成片</strong><small>剪映原生导出并回传网页</small></div></li>
+            </ol>
+            <div className="flow-card-footer"><span><Play fill="currentColor" />{renderReady ? "创作通道已就绪" : "等待创作通道"}</span><strong>{workflow?.pricing?.price_points ?? 0} P</strong></div>
           </div>
         </section>
 
         <section className="creation-workspace" aria-labelledby="creation-title">
           <div className="workspace-heading">
-            <div><span>创作工作台</span><h2 id="creation-title">今天想做哪类视频？</h2></div>
-            <small>只需要 1 个输入项</small>
+            <div><span>NEW CREATION</span><h2 id="creation-title">选择一个创作入口</h2></div>
+            <small>一个主题，完整交付</small>
           </div>
           <div className="workflow-choice-grid" role="tablist" aria-label="视频类型">
             {WORKFLOW_CHOICES.map((choice) => {
