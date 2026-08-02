@@ -341,7 +341,7 @@ export function StudioPage() {
                 placeholder={language === "en" ? selected.placeholderEn : selected.placeholder}
               />
               <div className="input-meta"><span>{theme.length} / 120</span><span>{tr("按你的主题自动生成完整脚本与画面", "Generate the complete script and visuals from your topic")}</span></div>
-              <div className="readiness-grid">
+              {user?.role === "admin" && <div className="readiness-grid">
                 {readiness.map(({ label, ready: itemReady, detail, icon: Icon, action }) => {
                   const content = (
                     <>
@@ -353,7 +353,7 @@ export function StudioPage() {
                     ? <Link key={label} to={action} className="readiness-item actionable">{content}</Link>
                     : <div key={label} className="readiness-item">{content}</div>;
                 })}
-              </div>
+              </div>}
               {error && <div className="notice error" role="alert">{error}</div>}
               {configMessage && <div className="notice success"><Check />{configMessage}</div>}
               <button className="studio-submit" disabled={busy || !theme.trim()} type="submit">

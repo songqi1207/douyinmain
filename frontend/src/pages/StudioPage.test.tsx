@@ -128,9 +128,8 @@ describe("StudioPage", () => {
 
   it("submits only the selected workflow and theme", async () => {
     render(<MemoryRouter><StudioPage /></MemoryRouter>);
-    await screen.findByText("已发布");
     fireEvent.click(screen.getByRole("tab", { name: /香烟故事/ }));
-    fireEvent.change(screen.getByPlaceholderText("输入香烟名称"), { target: { value: "中华" } });
+    fireEvent.change(await screen.findByPlaceholderText("输入香烟名称"), { target: { value: "中华" } });
     fireEvent.click(screen.getByRole("button", { name: /一键生成视频/ }));
 
     await waitFor(() => expect(api.createJob).toHaveBeenCalledWith(
@@ -141,7 +140,7 @@ describe("StudioPage", () => {
     expect(await screen.findByText("等待执行")).toBeInTheDocument();
   });
 
-  it("shows device readiness before submission", async () => {
+  it("keeps device diagnostics hidden for regular users", async () => {
     api.fetchDraftKeyRenderStatus.mockResolvedValueOnce({
       configured: false,
       device_online: false,
@@ -150,7 +149,8 @@ describe("StudioPage", () => {
       message: "需要配对",
     });
     render(<MemoryRouter><StudioPage /></MemoryRouter>);
-    expect(await screen.findByText("需要完成一次配对")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "完成准备后生成" })).toBeInTheDocument();
+    expect(screen.queryByText("需要完成一次配对")).not.toBeInTheDocument();
   });
 
   it("keeps the recent creation progress in sync with the active job", async () => {
