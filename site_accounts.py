@@ -21,7 +21,7 @@ SESSION_TTL_SECONDS = int(os.getenv("SITE_SESSION_TTL_SECONDS") or 30 * 24 * 60 
 DEFAULT_GENERATION_CREDITS = int(os.getenv("DEFAULT_GENERATION_CREDITS") or 10)
 LEGACY_CREDIT_POINT_RATE = max(1, int(os.getenv("LEGACY_CREDIT_POINT_RATE") or 4))
 DEFAULT_POINTS_BALANCE = int(
-    os.getenv("DEFAULT_POINTS_BALANCE") or DEFAULT_GENERATION_CREDITS * LEGACY_CREDIT_POINT_RATE
+    os.getenv("DEFAULT_POINTS_BALANCE") or 1000
 )
 DEFAULT_STORAGE_LIMIT_BYTES = int(os.getenv("DEFAULT_STORAGE_LIMIT_BYTES") or 5 * 1024 * 1024 * 1024)
 DEFAULT_INVITER_REWARD_POINTS = int(os.getenv("DEFAULT_INVITER_REWARD_POINTS") or 10)
@@ -216,6 +216,41 @@ def init_site_database():
             db.execute(
                 "INSERT INTO schema_meta (key, value, updated_at) VALUES ('points_wallet_v1', ?, ?)",
                 (str(LEGACY_CREDIT_POINT_RATE), now),
+            )
+        default_points_migration = db.execute(
+            "SELECT value FROM schema_meta WHERE key = 'points_default_1000_v1'"
+        ).fetchone()
+        if not default_points_migration:
+            previous_default = DEFAULT_GENERATION_CREDITS * LEGACY_CREDIT_POINT_RATE
+            topup_points = max(0, DEFAULT_POINTS_BALANCE - previous_default)
+            if topup_points:
+                ordinary_quotas = db.execute(
+                    """SELECT q.user_id, q.generation_balance
+                       FROM user_quotas q JOIN users u ON u.id = q.user_id
+                       WHERE u.role <> 'admin' AND q.generation_balance >= 0"""
+                ).fetchall()
+                for row in ordinary_quotas:
+                    balance_after = int(row["generation_balance"]) + topup_points
+                    db.execute(
+                        "UPDATE user_quotas SET generation_balance = ?, updated_at = ? WHERE user_id = ?",
+                        (balance_after, now, row["user_id"]),
+                    )
+                    db.execute(
+                        """INSERT INTO quota_ledger
+                           (id, user_id, job_id, event_type, units, balance_after, detail, created_at)
+                           VALUES (?, ?, NULL, 'adjust', ?, ?, ?, ?)""",
+                        (
+                            uuid.uuid4().hex,
+                            row["user_id"],
+                            topup_points,
+                            balance_after,
+                            "平台初始积分标准升级，自动补发积分",
+                            now,
+                        ),
+                    )
+            db.execute(
+                "INSERT INTO schema_meta (key, value, updated_at) VALUES ('points_default_1000_v1', ?, ?)",
+                (str(DEFAULT_POINTS_BALANCE), now),
             )
         db.execute(
             """INSERT OR IGNORE INTO user_quotas

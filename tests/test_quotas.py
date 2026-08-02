@@ -130,6 +130,27 @@ class QuotaTests(unittest.TestCase):
             site_accounts.init_site_database()
             self.assertEqual(site_accounts.quota_snapshot(self.user["id"])["points_balance"], 40)
 
+    def test_existing_user_receives_one_time_topup_to_new_1000_point_standard(self):
+        site_accounts.quota_snapshot(self.user["id"])
+        with site_accounts._connect() as db:
+            db.execute(
+                "UPDATE user_quotas SET generation_balance = 40 WHERE user_id = ?",
+                (self.user["id"],),
+            )
+            db.execute("DELETE FROM schema_meta WHERE key = 'points_default_1000_v1'")
+            db.commit()
+        with (
+            patch.object(site_accounts, "DEFAULT_POINTS_BALANCE", 1000),
+            patch.object(site_accounts, "DEFAULT_GENERATION_CREDITS", 10),
+            patch.object(site_accounts, "LEGACY_CREDIT_POINT_RATE", 4),
+        ):
+            site_accounts.init_site_database()
+            topped_up = site_accounts.quota_snapshot(self.user["id"])
+            self.assertEqual(topped_up["points_balance"], 1000)
+            self.assertEqual(topped_up["ledger"][0]["units"], 960)
+            site_accounts.init_site_database()
+            self.assertEqual(site_accounts.quota_snapshot(self.user["id"])["points_balance"], 1000)
+
 
 if __name__ == "__main__":
     unittest.main()
