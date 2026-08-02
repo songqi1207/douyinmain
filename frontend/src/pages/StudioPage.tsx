@@ -43,6 +43,7 @@ const WORKFLOW_CHOICES = [
     placeholder: "输入书名，也可写成：书名｜作者",
     placeholderEn: "Enter a title, or use: Book | Author",
     example: "克林索尔的最后夏天｜黑塞",
+    exampleEn: "The Old Man and the Sea | Hemingway",
     icon: BookOpen,
   },
   {
@@ -56,6 +57,7 @@ const WORKFLOW_CHOICES = [
     placeholder: "输入香烟名称",
     placeholderEn: "Enter a cigarette name",
     example: "中华",
+    exampleEn: "Marlboro",
     icon: Cigarette,
   },
   {
@@ -69,6 +71,7 @@ const WORKFLOW_CHOICES = [
     placeholder: "输入神名或神话主题",
     placeholderEn: "Enter a deity or mythology topic",
     example: "哪吒",
+    exampleEn: "Nezha",
     icon: Sparkles,
   },
 ] as const;
@@ -316,7 +319,7 @@ export function StudioPage() {
               <div className="studio-form-label">
                 <span>{tr("主题内容", "Topic")}</span>
                 <div>
-                  <small>{tr("示例", "Example")}: {selected.example}</small>
+                  <small>{tr("示例", "Example")}: {language === "en" ? selected.exampleEn : selected.example}</small>
                   {user?.role === "admin" && (
                     <button
                       type="button"

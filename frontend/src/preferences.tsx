@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-export type ColorTheme = "mint" | "violet" | "sunset" | "ocean";
+export type ColorTheme = "mint" | "violet" | "sunset" | "ocean" | "pastel";
 export type AppLanguage = "zh-CN" | "en";
 
 type PreferencesContextValue = {
@@ -25,7 +25,7 @@ const PreferencesContext = createContext<PreferencesContextValue>(DEFAULT_PREFER
 
 function readTheme(): ColorTheme {
   const saved = localStorage.getItem("videolab:color-theme");
-  return saved === "violet" || saved === "sunset" || saved === "ocean" ? saved : "mint";
+  return saved === "violet" || saved === "sunset" || saved === "ocean" || saved === "pastel" ? saved : "mint";
 }
 
 function readLanguage(): AppLanguage {
@@ -67,4 +67,5 @@ export const COLOR_THEMES: Array<{ id: ColorTheme; zh: string; en: string }> = [
   { id: "violet", zh: "云雾紫", en: "Violet" },
   { id: "sunset", zh: "日落橙", en: "Sunset" },
   { id: "ocean", zh: "海洋蓝", en: "Ocean" },
+  { id: "pastel", zh: "白蓝粉", en: "Pastel" },
 ];
