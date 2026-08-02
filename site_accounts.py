@@ -24,12 +24,13 @@ DEFAULT_POINTS_BALANCE = int(
     os.getenv("DEFAULT_POINTS_BALANCE") or 1000
 )
 DEFAULT_STORAGE_LIMIT_BYTES = int(os.getenv("DEFAULT_STORAGE_LIMIT_BYTES") or 5 * 1024 * 1024 * 1024)
-DEFAULT_INVITER_REWARD_POINTS = int(os.getenv("DEFAULT_INVITER_REWARD_POINTS") or 10)
-DEFAULT_INVITEE_REWARD_POINTS = int(os.getenv("DEFAULT_INVITEE_REWARD_POINTS") or 10)
+POINT_DENOMINATION_SCALE = max(1, int(os.getenv("POINT_DENOMINATION_SCALE") or 25))
+DEFAULT_INVITER_REWARD_POINTS = int(os.getenv("DEFAULT_INVITER_REWARD_POINTS") or 250)
+DEFAULT_INVITEE_REWARD_POINTS = int(os.getenv("DEFAULT_INVITEE_REWARD_POINTS") or 250)
 BILLING_MARKUP_MULTIPLIER = max(2, int(os.getenv("BILLING_MARKUP_MULTIPLIER") or 2))
-DEFAULT_COZE_COST_POINTS = max(0, int(os.getenv("DEFAULT_COZE_COST_POINTS") or 1))
+DEFAULT_COZE_COST_POINTS = max(0, int(os.getenv("DEFAULT_COZE_COST_POINTS") or 25))
 DEFAULT_MIHE_COST_POINTS = max(0, int(os.getenv("DEFAULT_MIHE_COST_POINTS") or 0))
-DEFAULT_LOCAL_MIHE_COST_POINTS = max(0, int(os.getenv("DEFAULT_LOCAL_MIHE_COST_POINTS") or 1))
+DEFAULT_LOCAL_MIHE_COST_POINTS = max(0, int(os.getenv("DEFAULT_LOCAL_MIHE_COST_POINTS") or 25))
 USERNAME_PATTERN = re.compile(r"^[\w\u4e00-\u9fff]{3,20}$", re.UNICODE)
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
@@ -251,6 +252,61 @@ def init_site_database():
             db.execute(
                 "INSERT INTO schema_meta (key, value, updated_at) VALUES ('points_default_1000_v1', ?, ?)",
                 (str(DEFAULT_POINTS_BALANCE), now),
+            )
+        denomination_migration = db.execute(
+            "SELECT value FROM schema_meta WHERE key = 'points_denomination_25_v1'"
+        ).fetchone()
+        if not denomination_migration:
+            db.execute(
+                """UPDATE workflow_pricing
+                   SET coze_cost_points = coze_cost_points * ?,
+                       mihe_cost_points = mihe_cost_points * ?,
+                       updated_at = ?""",
+                (POINT_DENOMINATION_SCALE, POINT_DENOMINATION_SCALE, now),
+            )
+            reward_rows = db.execute("SELECT * FROM invite_rewards").fetchall()
+            for reward in reward_rows:
+                next_inviter_points = int(reward["inviter_points"]) * POINT_DENOMINATION_SCALE
+                next_invitee_points = int(reward["invitee_points"]) * POINT_DENOMINATION_SCALE
+                db.execute(
+                    """UPDATE invite_rewards SET inviter_points = ?, invitee_points = ?
+                       WHERE invitee_user_id = ?""",
+                    (next_inviter_points, next_invitee_points, reward["invitee_user_id"]),
+                )
+                for rewarded_user_id, delta, detail in (
+                    (
+                        reward["inviter_user_id"],
+                        next_inviter_points - int(reward["inviter_points"]),
+                        "积分单位统一升级，补发历史邀请人奖励差额",
+                    ),
+                    (
+                        reward["invitee_user_id"],
+                        next_invitee_points - int(reward["invitee_points"]),
+                        "积分单位统一升级，补发历史受邀用户奖励差额",
+                    ),
+                ):
+                    if delta <= 0:
+                        continue
+                    quota = db.execute(
+                        "SELECT generation_balance FROM user_quotas WHERE user_id = ?",
+                        (rewarded_user_id,),
+                    ).fetchone()
+                    if not quota or int(quota["generation_balance"]) < 0:
+                        continue
+                    balance_after = int(quota["generation_balance"]) + delta
+                    db.execute(
+                        "UPDATE user_quotas SET generation_balance = ?, updated_at = ? WHERE user_id = ?",
+                        (balance_after, now, rewarded_user_id),
+                    )
+                    db.execute(
+                        """INSERT INTO quota_ledger
+                           (id, user_id, job_id, event_type, units, balance_after, detail, created_at)
+                           VALUES (?, ?, NULL, 'adjust', ?, ?, ?, ?)""",
+                        (uuid.uuid4().hex, rewarded_user_id, delta, balance_after, detail, now),
+                    )
+            db.execute(
+                "INSERT INTO schema_meta (key, value, updated_at) VALUES ('points_denomination_25_v1', ?, ?)",
+                (str(POINT_DENOMINATION_SCALE), now),
             )
         db.execute(
             """INSERT OR IGNORE INTO user_quotas

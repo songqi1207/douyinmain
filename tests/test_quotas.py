@@ -151,6 +151,33 @@ class QuotaTests(unittest.TestCase):
             site_accounts.init_site_database()
             self.assertEqual(site_accounts.quota_snapshot(self.user["id"])["points_balance"], 1000)
 
+    def test_denomination_migration_scales_pricing_and_existing_invite_rewards_once(self):
+        site_accounts.update_workflow_pricing("OWN02", coze_cost_points=1, mihe_cost_points=1)
+        invite_code = site_accounts.quota_snapshot(self.user["id"])["invite"]["code"]
+        application = site_accounts.submit_registration_application(
+            "scaled-invite@example.test",
+            invite_code,
+        )
+        _, password = site_accounts.prepare_registration_approval(application["id"], self.user["id"])
+        site_accounts.complete_registration_approval(application["id"])
+        invitee = site_accounts.authenticate_user("scaled-invite@example.test", password)
+        with site_accounts._connect() as db:
+            db.execute("DELETE FROM schema_meta WHERE key = 'points_denomination_25_v1'")
+            db.commit()
+
+        with patch.object(site_accounts, "POINT_DENOMINATION_SCALE", 25):
+            site_accounts.init_site_database()
+            pricing = site_accounts.workflow_pricing_snapshot("OWN02")
+            self.assertEqual(pricing["coze_cost_points"], 25)
+            self.assertEqual(pricing["mihe_cost_points"], 25)
+            self.assertEqual(pricing["price_points"], 100)
+            self.assertEqual(site_accounts.quota_snapshot(self.user["id"])["points_balance"], 260)
+            self.assertEqual(site_accounts.quota_snapshot(invitee["id"])["points_balance"], 260)
+            self.assertEqual(site_accounts.quota_snapshot(self.user["id"])["invite"]["rewarded_points"], 250)
+            site_accounts.init_site_database()
+            self.assertEqual(site_accounts.workflow_pricing_snapshot("OWN02")["price_points"], 100)
+            self.assertEqual(site_accounts.quota_snapshot(self.user["id"])["points_balance"], 260)
+
 
 if __name__ == "__main__":
     unittest.main()
