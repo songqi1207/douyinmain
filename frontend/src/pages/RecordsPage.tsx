@@ -5,27 +5,29 @@ import { Link, useNavigate } from "react-router-dom";
 import { ApiError, deleteJobVideo, fetchJobs, fetchWorkflows, retryJob } from "../api";
 import { useAuth } from "../auth";
 import { Layout } from "../components/Layout";
+import { usePreferences } from "../preferences";
 import type { Job, Workflow } from "../types";
 
 const STATUS_OPTIONS = [
-  ["all", "全部状态"],
-  ["queued", "等待执行"],
-  ["running", "正在生成"],
-  ["rendering", "正在渲染"],
-  ["succeeded", "生成完成"],
-  ["failed", "生成失败"],
+  ["all", "全部状态", "All statuses"],
+  ["queued", "等待执行", "Queued"],
+  ["running", "正在生成", "Generating"],
+  ["rendering", "正在渲染", "Rendering"],
+  ["succeeded", "生成完成", "Completed"],
+  ["failed", "生成失败", "Failed"],
 ] as const;
 
-const STATUS_TEXT: Record<Job["status"], string> = {
-  queued: "等待执行",
-  running: "正在生成",
-  rendering: "正在渲染",
-  succeeded: "生成完成",
-  failed: "生成失败",
+const STATUS_TEXT: Record<Job["status"], [string, string]> = {
+  queued: ["等待执行", "Queued"],
+  running: ["正在生成", "Generating"],
+  rendering: ["正在渲染", "Rendering"],
+  succeeded: ["生成完成", "Completed"],
+  failed: ["生成失败", "Failed"],
 };
 
 export function RecordsPage() {
   const { user, loading: authLoading } = useAuth();
+  const { tr, locale } = usePreferences();
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -120,30 +122,30 @@ export function RecordsPage() {
       <main className="content-page page-width records-page">
         <div className="page-heading records-heading">
           <span className="page-icon"><Clock3 /></span>
-          <div><h1>创作记录</h1><p>查找、恢复和下载你生成的每一个作品。</p></div>
-          <Link className="primary-button heading-action" to="/">开始新创作</Link>
+          <div><h1>{tr("我的作品", "My Creations")}</h1><p>{tr("查找、恢复和下载你生成的每一个作品。", "Find, resume and download everything you create.")}</p></div>
+          <Link className="primary-button heading-action" to="/">{tr("开始新创作", "New creation")}</Link>
         </div>
         <section className="record-toolbar">
-          <label className="search-box"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索主题或工作流编号" /></label>
+          <label className="search-box"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tr("搜索主题或工作流编号", "Search topic or workflow code")} /></label>
           <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}>
-            {STATUS_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+            {STATUS_OPTIONS.map(([value, zh, en]) => <option value={value} key={value}>{tr(zh, en)}</option>)}
           </select>
           <select value={workflowCode} onChange={(event) => { setWorkflowCode(event.target.value); setPage(1); }}>
-            <option value="">全部工作流</option>
+            <option value="">{tr("全部工作流", "All workflows")}</option>
             {workflows.map((workflow) => <option value={workflow.code} key={`${workflow.category}-${workflow.code}`}>{workflow.code} · {workflow.name}</option>)}
-            <option value="DRAFT_KEY_EXPORT">手工剪映导出</option>
+            <option value="DRAFT_KEY_EXPORT">{tr("手工剪映导出", "Manual export")}</option>
           </select>
         </section>
         {error && <div className="notice error">{error}</div>}
-        {loading ? <div className="loading-state"><LoaderCircle className="spin" />正在加载创作记录</div> : visibleJobs.length ? (
+        {loading ? <div className="loading-state"><LoaderCircle className="spin" />{tr("正在加载创作记录", "Loading creations")}</div> : visibleJobs.length ? (
           <div className="record-list">
             {visibleJobs.map((job) => (
               <article className="record-card rich" key={job.id}>
                 <div className="record-main">
-                  <span className={`record-status ${job.status}`}>{STATUS_TEXT[job.status]}</span>
+                  <span className={`record-status ${job.status}`}>{tr(...STATUS_TEXT[job.status])}</span>
                   <div>
                     <h3>{job.display_title}</h3>
-                    <p>{job.workflow_code} · {job.category} · {new Date(job.created_at * 1000).toLocaleString("zh-CN")}</p>
+                    <p>{job.workflow_code} · {job.category} · {new Date(job.created_at * 1000).toLocaleString(locale)}</p>
                   </div>
                   <strong>{job.progress}%</strong>
                 </div>

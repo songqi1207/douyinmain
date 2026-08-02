@@ -5,9 +5,11 @@ import { useNavigate } from "react-router-dom";
 import { ApiError, fetchVoices, generateSpeech, toggleFavorite } from "../api";
 import { useAuth } from "../auth";
 import { Layout } from "../components/Layout";
+import { usePreferences } from "../preferences";
 import type { Voice } from "../types";
 
 export function VoicesPage() {
+  const { tr } = usePreferences();
   const { user, voice_favorites } = useAuth();
   const navigate = useNavigate();
   const [voices, setVoices] = useState<Voice[]>([]);
@@ -99,7 +101,7 @@ export function VoicesPage() {
     event.preventDefault();
     if (!requireCreator()) return;
     if (!selectedVoice || !text.trim()) {
-      setError("请选择音色并输入配音文案");
+      setError(tr("请选择音色并输入配音文案", "Choose a voice and enter your script"));
       return;
     }
     setGenerating(true);
@@ -117,8 +119,8 @@ export function VoicesPage() {
   return (
     <Layout>
       <main className="voices-page page-width">
-        <section className="page-heading voice-heading"><span className="page-icon"><Headphones /></span><div><h1>配音广场</h1><p>搜索真实音色、在线试听，并生成可下载配音。</p></div></section>
-        <div className={`service-status ${service.available ? "ready" : "unavailable"}`}><strong>{service.available ? "配音服务可用" : "配音服务不可用"}</strong><span>{service.message}</span></div>
+        <section className="page-heading voice-heading"><span className="page-icon"><Headphones /></span><div><h1>{tr("声音工作室", "Voice Studio")}</h1><p>{tr("搜索真实音色、在线试听，并生成可下载配音。", "Explore voices, preview them and create downloadable narration.")}</p></div></section>
+        <div className={`service-status ${service.available ? "ready" : "unavailable"}`}><strong>{service.available ? tr("配音服务可用", "Voice service ready") : tr("配音服务不可用", "Voice service unavailable")}</strong><span>{service.message}</span></div>
         <section className="voice-toolbar">
           <label className="search-box"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索名称或 ID" /></label>
           <div className="voice-filter-row">
@@ -128,7 +130,7 @@ export function VoicesPage() {
         </section>
         <div className="voice-layout">
           <section>
-            <div className="catalog-summary">共 {filteredVoices.length} 个音色</div>
+            <div className="catalog-summary">{tr(`共 ${filteredVoices.length} 个音色`, `${filteredVoices.length} voices`)}</div>
             <div className="voice-grid">
               {filteredVoices.map((voice) => (
                 <article className={`voice-card ${selectedId === voice.id ? "selected" : ""}`} key={voice.id} onClick={() => setSelectedId(voice.id)}>
@@ -141,17 +143,17 @@ export function VoicesPage() {
                 </article>
               ))}
             </div>
-            {!filteredVoices.length && <div className="empty-state">{favoritesOnly ? "还没有收藏音色" : service.message}</div>}
+            {!filteredVoices.length && <div className="empty-state">{favoritesOnly ? tr("还没有收藏音色", "No favorite voices yet") : service.message}</div>}
           </section>
           <aside className="tts-panel">
-            <div className="section-title"><span>制作配音</span><small>{selectedVoice?.name || "未选择音色"}</small></div>
+            <div className="section-title"><span>{tr("制作配音", "Create narration")}</span><small>{selectedVoice?.name || tr("未选择音色", "No voice selected")}</small></div>
             <form onSubmit={(event) => void submit(event)}>
-              <label><span>配音文案</span><textarea maxLength={5000} value={text} onChange={(event) => setText(event.target.value)} placeholder="输入需要配音的文案" /><small>{text.length} / 5000 字</small></label>
-              <label><span>语速：{speed.toFixed(1)}x</span><input type="range" min="0.5" max="2" step="0.1" value={speed} onChange={(event) => setSpeed(Number(event.target.value))} /></label>
+              <label><span>{tr("配音文案", "Script")}</span><textarea maxLength={5000} value={text} onChange={(event) => setText(event.target.value)} placeholder={tr("输入需要配音的文案", "Enter the script to narrate")} /><small>{text.length} / 5000</small></label>
+              <label><span>{tr("语速", "Speed")}: {speed.toFixed(1)}x</span><input type="range" min="0.5" max="2" step="0.1" value={speed} onChange={(event) => setSpeed(Number(event.target.value))} /></label>
               {error && <div className="notice error">{error}</div>}
-              <button className="primary-button" disabled={generating || !service.available || !selectedVoice || !text.trim()} type="submit">{generating ? <LoaderCircle className="spin" /> : <Mic2 />}{generating ? "生成中" : "生成配音"}</button>
+              <button className="primary-button" disabled={generating || !service.available || !selectedVoice || !text.trim()} type="submit">{generating ? <LoaderCircle className="spin" /> : <Mic2 />}{generating ? tr("生成中", "Generating") : tr("生成配音", "Generate narration")}</button>
             </form>
-            {audio && <div className="audio-result"><strong>配音已生成</strong><audio src={audio.url} controls /><a href={audio.url} download>下载配音</a><small>时长约 {audio.duration.toFixed(1)} 秒</small></div>}
+            {audio && <div className="audio-result"><strong>{tr("配音已生成", "Narration ready")}</strong><audio src={audio.url} controls /><a href={audio.url} download>{tr("下载配音", "Download audio")}</a><small>{tr(`时长约 ${audio.duration.toFixed(1)} 秒`, `About ${audio.duration.toFixed(1)} seconds`)}</small></div>}
           </aside>
         </div>
       </main>

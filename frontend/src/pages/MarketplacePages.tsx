@@ -26,6 +26,7 @@ import { FieldControl, type UploadedFile } from "../components/FieldControl";
 import { JobProgress, Results } from "../components/JobViews";
 import { Layout } from "../components/Layout";
 import { useJobPolling } from "../hooks";
+import { usePreferences } from "../preferences";
 import type { Job, Workflow } from "../types";
 
 function formatMetric(value: number) {
@@ -43,6 +44,7 @@ function WorkflowCard({
   favorite: boolean;
   onFavorite: () => void;
 }) {
+  const { tr } = usePreferences();
   const detailUrl = `/workflows/${workflow.code}?category=${encodeURIComponent(workflow.category)}`;
   return (
     <article className="workflow-card">
@@ -53,9 +55,9 @@ function WorkflowCard({
             : <img src={workflow.preview_url} alt={`${workflow.name}封面`} loading="lazy" />
         ) : <div className="media-fallback"><ImageIcon /><span>{workflow.code}</span></div>}
         <span className="play-button"><Play fill="currentColor" /></span>
-        {workflow.status === "coming_soon" && <span className="status-badge">即将上线</span>}
+        {workflow.status === "coming_soon" && <span className="status-badge">{tr("即将上线", "Coming soon")}</span>}
       </Link>
-      <button className={`favorite-button ${favorite ? "selected" : ""}`} type="button" aria-label={favorite ? "取消收藏" : "收藏"} onClick={onFavorite}>
+      <button className={`favorite-button ${favorite ? "selected" : ""}`} type="button" aria-label={favorite ? tr("取消收藏", "Remove favorite") : tr("收藏", "Favorite")} onClick={onFavorite}>
         <Heart fill={favorite ? "currentColor" : "none"} />
       </button>
       <div className="card-body">
@@ -67,7 +69,7 @@ function WorkflowCard({
             <span><Heart />{formatMetric(workflow.stats.favorites)}</span>
             <span><Download />{formatMetric(workflow.stats.downloads)}</span>
           </div>
-          <Link to={detailUrl}>查看详情</Link>
+          <Link to={detailUrl}>{tr("查看详情", "View details")}</Link>
         </div>
       </div>
     </article>
@@ -76,6 +78,7 @@ function WorkflowCard({
 
 export function CatalogPage() {
   const { user, workflow_favorites } = useAuth();
+  const { tr } = usePreferences();
   const navigate = useNavigate();
   const [categories, setCategories] = useState<Array<{ name: string; count: number }>>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -130,30 +133,31 @@ export function CatalogPage() {
   return (
     <Layout>
       <main className="catalog-page page-width">
-        <section className="hero-copy"><span className="eyebrow">WORKFLOW LIBRARY</span><h1>工作流商店</h1><p>探索更多创作能力，或下载成熟工作流供自己使用。</p></section>
+        <section className="hero-copy"><span className="eyebrow">WORKFLOW LIBRARY</span><h1>{tr("工作流库", "Workflow Library")}</h1><p>{tr("探索更多创作能力，或下载成熟工作流供自己使用。", "Explore proven creative workflows and find the right starting point for your content.")}</p></section>
         <section className="toolbar-panel expanded-toolbar">
-          <div className="category-tabs" role="tablist" aria-label="工作流分类">
+          <div className="category-tabs" role="tablist" aria-label={tr("工作流分类", "Workflow categories")}>
             {categories.map((item) => <button type="button" className={category === item.name ? "active" : ""} key={item.name} onClick={() => setCategory(item.name)}>{item.name}<em>{item.count}</em></button>)}
           </div>
-          <div className="toolbar-actions"><label className="search-box"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索名称、编号或标签" /></label></div>
+          <div className="toolbar-actions"><label className="search-box"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tr("搜索名称、编号或标签", "Search name, code or tag")} /></label></div>
           <div className="catalog-filters">
-            <button type="button" className={favoritesOnly ? "active" : ""} onClick={() => user ? setFavoritesOnly((value) => !value) : navigate(`/login?redirect=${encodeURIComponent("/workflows")}`)}><Heart fill={favoritesOnly ? "currentColor" : "none"} />我的收藏</button>
-            {[["newest", "最新"], ["favorites", "收藏最多"], ["downloads", "使用最多"], ["views", "浏览最多"], ["name", "按名称"]].map(([value, label]) => <button type="button" className={sort === value ? "active" : ""} key={value} onClick={() => setSort(value)}>{label}</button>)}
+            <button type="button" className={favoritesOnly ? "active" : ""} onClick={() => user ? setFavoritesOnly((value) => !value) : navigate(`/login?redirect=${encodeURIComponent("/workflows")}`)}><Heart fill={favoritesOnly ? "currentColor" : "none"} />{tr("我的收藏", "Favorites")}</button>
+            {[["newest", tr("最新", "Newest")], ["favorites", tr("收藏最多", "Most saved")], ["downloads", tr("使用最多", "Most used")], ["views", tr("浏览最多", "Most viewed")], ["name", tr("按名称", "Name")]].map(([value, label]) => <button type="button" className={sort === value ? "active" : ""} key={value} onClick={() => setSort(value)}>{label}</button>)}
           </div>
         </section>
-        <div className="catalog-summary">共 {visible.length} 个工作流</div>
+        <div className="catalog-summary">{tr(`共 ${visible.length} 个工作流`, `${visible.length} workflows`)}</div>
         {error && <div className="notice error">{error}</div>}
-        {loading ? <div className="loading-state"><LoaderCircle className="spin" />正在加载工作流</div> : visible.length ? (
+        {loading ? <div className="loading-state"><LoaderCircle className="spin" />{tr("正在加载工作流", "Loading workflows")}</div> : visible.length ? (
           <section className="workflow-grid">
             {visible.map((workflow) => <WorkflowCard key={`${workflow.category}-${workflow.code}`} workflow={workflow} favorite={favorites.has(workflow.code)} onFavorite={() => void save(workflow.code)} />)}
           </section>
-        ) : <div className="empty-state">没有找到符合条件的工作流</div>}
+        ) : <div className="empty-state">{tr("没有找到符合条件的工作流", "No matching workflows found")}</div>}
       </main>
     </Layout>
   );
 }
 
 export function DetailPage() {
+  const { tr } = usePreferences();
   const { code = "" } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -224,7 +228,7 @@ export function DetailPage() {
   return (
     <Layout>
       <main className="detail-page page-width">
-        <button type="button" className="back-button" onClick={() => navigate(-1)}><ArrowLeft />返回工作流</button>
+        <button type="button" className="back-button" onClick={() => navigate(-1)}><ArrowLeft />{tr("返回工作流", "Back to workflows")}</button>
         <section className="detail-hero">
           <div className="detail-preview">
             {workflow.preview_url ? workflow.preview_mime?.startsWith("video/")
@@ -233,19 +237,19 @@ export function DetailPage() {
               : <div className="media-fallback"><ImageIcon /><span>{workflow.code}</span></div>}
           </div>
           <div className="detail-copy">
-            <div className="detail-kicker"><span>{workflow.category}</span><span>{workflow.output_type === "video" || workflow.generation_mode === "draft" ? "视频生成" : "创作工作流"}</span></div>
+            <div className="detail-kicker"><span>{workflow.category}</span><span>{workflow.output_type === "video" || workflow.generation_mode === "draft" ? tr("视频生成", "Video generation") : tr("创作工作流", "Creative workflow")}</span></div>
             <h1>{workflow.name}</h1>
             <p>{workflow.description}</p>
             <div className="detail-tags">{workflow.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
-            <div className="detail-metrics"><span><Eye />{workflow.stats.views} 次查看</span><span><Heart />{workflow.stats.favorites} 人收藏</span><span><Download />{workflow.stats.downloads} 次使用</span></div>
-            {owned ? <Link className="download-access-button" to={`/?workflow=${workflow.code}`}><Sparkles />到一键工作台创作</Link>
-              : <a className="download-access-button" href={`/api/v1/workflows/${encodeURIComponent(workflow.code)}/download/json?category=${encodeURIComponent(category)}`} download><Download />下载工作流 JSON</a>}
+            <div className="detail-metrics"><span><Eye />{tr(`${workflow.stats.views} 次查看`, `${workflow.stats.views} views`)}</span><span><Heart />{tr(`${workflow.stats.favorites} 人收藏`, `${workflow.stats.favorites} saves`)}</span><span><Download />{tr(`${workflow.stats.downloads} 次使用`, `${workflow.stats.downloads} uses`)}</span></div>
+            {owned ? <Link className="download-access-button" to={`/?workflow=${workflow.code}`}><Sparkles />{tr("到一键工作台创作", "Create in Studio")}</Link>
+              : <a className="download-access-button" href={`/api/v1/workflows/${encodeURIComponent(workflow.code)}/download/json?category=${encodeURIComponent(category)}`} download><Download />{tr("下载工作流 JSON", "Download workflow JSON")}</a>}
           </div>
         </section>
         {!owned && (
           <div className="detail-layout">
             <section className="generator-panel">
-              <div className="section-title"><span>在线运行</span><small>第三方密钥由服务器安全注入</small></div>
+              <div className="section-title"><span>{tr("在线运行", "Run online")}</span><small>{tr("第三方密钥由服务器安全注入", "Provider keys are securely injected by the server")}</small></div>
               <form onSubmit={(event) => void submit(event)}>
                 {workflow.input_schema.map((field) => (
                   <label className="form-field" key={field.name}>
@@ -254,10 +258,10 @@ export function DetailPage() {
                   </label>
                 ))}
                 {error && <div className="notice error">{error}</div>}
-                <button className="primary-button" disabled={busy || assetBusy || workflow.status !== "online"} type="submit">{busy ? <LoaderCircle className="spin" /> : <Sparkles />}{busy ? "正在创建任务" : workflow.status === "online" ? `开始生成 · ${workflow.pricing?.price_points ?? 0} 积分` : "后台接入中"}</button>
+                <button className="primary-button" disabled={busy || assetBusy || workflow.status !== "online"} type="submit">{busy ? <LoaderCircle className="spin" /> : <Sparkles />}{busy ? tr("正在创建任务", "Creating task") : workflow.status === "online" ? tr(`开始生成 · ${workflow.pricing?.price_points ?? 0} 积分`, `Generate · ${workflow.pricing?.price_points ?? 0} credits`) : tr("后台接入中", "Connecting")}</button>
               </form>
             </section>
-            <aside className="execution-column">{job ? <JobProgress job={job} onRetry={() => void retry()} retrying={busy} /> : <div className="execution-placeholder"><strong>执行过程</strong><p>任务提交后，这里会显示生成和渲染状态。</p></div>}</aside>
+            <aside className="execution-column">{job ? <JobProgress job={job} onRetry={() => void retry()} retrying={busy} /> : <div className="execution-placeholder"><strong>{tr("执行过程", "Execution")}</strong><p>{tr("任务提交后，这里会显示生成和渲染状态。", "Generation and rendering status will appear here after submission.")}</p></div>}</aside>
           </div>
         )}
         {job && <Results job={job} />}

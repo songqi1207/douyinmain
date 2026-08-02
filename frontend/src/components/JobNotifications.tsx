@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { fetchJobs } from "../api";
 import { useAuth } from "../auth";
+import { usePreferences } from "../preferences";
 import type { Job } from "../types";
 
 export const JOB_NOTIFICATIONS_ENABLED_KEY = "job-notifications-enabled";
@@ -10,15 +11,16 @@ export const JOB_NOTIFICATIONS_REQUEST_EVENT = "job-notifications-request";
 export const JOB_NOTIFICATIONS_STATE_EVENT = "job-notifications-state";
 const TERMINAL = new Set<Job["status"]>(["succeeded", "failed"]);
 
-function notificationText(job: Job) {
+function notificationText(job: Job, tr: (zh: string, en: string) => string) {
   if (job.status === "succeeded") {
-    return { title: "视频已生成完成", body: `${job.display_title || "创作任务"} 已完成，可以查看或下载视频。` };
+    return { title: tr("视频已生成完成", "Video completed"), body: tr(`${job.display_title || "创作任务"} 已完成，可以查看或下载视频。`, `${job.display_title || "Creation"} is ready to view or download.`) };
   }
-  return { title: "视频生成失败", body: `${job.display_title || "创作任务"} 处理失败，请打开创作记录查看原因。` };
+  return { title: tr("视频生成失败", "Video generation failed"), body: tr(`${job.display_title || "创作任务"} 处理失败，请打开创作记录查看原因。`, `${job.display_title || "Creation"} failed. Open your creations to review the issue.`) };
 }
 
 export function JobNotifications() {
   const { user } = useAuth();
+  const { tr, language } = usePreferences();
   const [enabled, setEnabled] = useState(() => localStorage.getItem(JOB_NOTIFICATIONS_ENABLED_KEY) === "true");
   const [toast, setToast] = useState<{ kind: "success" | "error"; title: string; body: string } | null>(null);
   const statuses = useRef(new Map<string, Job["status"]>());
@@ -27,7 +29,7 @@ export function JobNotifications() {
   const toastTimer = useRef<number | undefined>(undefined);
 
   function showToast(job: Job) {
-    const message = notificationText(job);
+    const message = notificationText(job, tr);
     setToast({ kind: job.status === "succeeded" ? "success" : "error", ...message });
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 8000);
@@ -87,7 +89,7 @@ export function JobNotifications() {
       active = false;
       if (timer) window.clearTimeout(timer);
     };
-  }, [user?.id, enabled]);
+  }, [user?.id, enabled, language]);
 
   useEffect(() => () => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -109,20 +111,20 @@ export function JobNotifications() {
       return;
     }
     if (typeof Notification === "undefined") {
-      setToast({ kind: "error", title: "无法开启通知", body: "当前浏览器不支持系统通知。" });
+      setToast({ kind: "error", title: tr("无法开启通知", "Notifications unavailable"), body: tr("当前浏览器不支持系统通知。", "This browser does not support system notifications.") });
       return;
     }
     const permission = Notification.permission === "default"
       ? await Notification.requestPermission()
       : Notification.permission;
     if (permission !== "granted") {
-      setToast({ kind: "error", title: "通知未开启", body: "浏览器已阻止通知，请在网站权限中允许通知。" });
+      setToast({ kind: "error", title: tr("通知未开启", "Notifications blocked"), body: tr("浏览器已阻止通知，请在网站权限中允许通知。", "Allow notifications in your browser's site permissions.") });
       return;
     }
     localStorage.setItem(JOB_NOTIFICATIONS_ENABLED_KEY, "true");
     setEnabled(true);
     window.dispatchEvent(new Event(JOB_NOTIFICATIONS_STATE_EVENT));
-    setToast({ kind: "success", title: "任务通知已开启", body: "视频完成或失败时会立即提醒你。" });
+    setToast({ kind: "success", title: tr("任务通知已开启", "Task notifications enabled"), body: tr("视频完成或失败时会立即提醒你。", "You will be notified when a video completes or fails.") });
   }
 
   if (!user) return null;
@@ -133,17 +135,17 @@ export function JobNotifications() {
         className={`job-notification-toggle ${enabled ? "active" : ""}`}
         type="button"
         onClick={() => void toggle()}
-        aria-label={enabled ? "关闭任务通知" : "开启任务通知"}
-        title={enabled ? "任务通知已开启" : "开启任务完成通知"}
+        aria-label={enabled ? tr("关闭任务通知", "Disable task notifications") : tr("开启任务通知", "Enable task notifications")}
+        title={enabled ? tr("任务通知已开启", "Task notifications enabled") : tr("开启任务完成通知", "Enable completion notifications")}
       >
         {enabled ? <Bell size={15} /> : <BellOff size={15} />}
-        <span>{enabled ? "通知已开" : "开启通知"}</span>
+        <span>{enabled ? tr("通知已开", "Notifications on") : tr("开启通知", "Enable alerts")}</span>
       </button>
       {toast && (
         <aside className={`job-notification-toast ${toast.kind}`} role="status" aria-live="polite">
           <span>{toast.kind === "success" ? <Check /> : <Bell />}</span>
           <div><strong>{toast.title}</strong><p>{toast.body}</p></div>
-          <button type="button" onClick={() => setToast(null)} aria-label="关闭通知"><X /></button>
+          <button type="button" onClick={() => setToast(null)} aria-label={tr("关闭通知", "Dismiss notification")}><X /></button>
         </aside>
       )}
     </>

@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { adjustAdminUserQuota, fetchAccountQuota, fetchAdminUserQuotas, fetchAdminWorkflowPricing, updateAdminWorkflowPricing } from "../api";
 import { useAuth } from "../auth";
 import { Layout } from "../components/Layout";
+import { usePreferences } from "../preferences";
 import type { AdminWorkflowPricing, QuotaLedgerEntry, UserQuota } from "../types";
 
 function formatBytes(value: number) {
@@ -25,6 +26,7 @@ const LEDGER_LABELS: Record<QuotaLedgerEntry["event_type"], string> = {
 
 export function AccountUsagePage() {
   const { user, loading: authLoading } = useAuth();
+  const { tr, locale } = usePreferences();
   const navigate = useNavigate();
   const [quota, setQuota] = useState<UserQuota | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,18 +73,18 @@ export function AccountUsagePage() {
   return (
     <Layout>
       <main className="content-page page-width usage-page">
-        <div className="page-heading"><span className="page-icon"><Cloud /></span><div><h1>积分与云存储</h1><p>查看平台积分、供应商成本计价、邀请奖励和云端空间。</p></div></div>
+        <div className="page-heading"><span className="page-icon"><Cloud /></span><div><h1>{tr("积分与云存储", "Credits & Cloud Storage")}</h1><p>{tr("查看平台积分、供应商成本计价、邀请奖励和云端空间。", "Review credits, referral rewards, billing activity and cloud storage.")}</p></div></div>
         {error && <div className="notice error">{error}</div>}
-        {loading || !quota ? <div className="loading-state"><LoaderCircle className="spin" />正在读取额度</div> : (
+        {loading || !quota ? <div className="loading-state"><LoaderCircle className="spin" />{tr("正在读取额度", "Loading account limits")}</div> : (
           <>
             <section className="quota-overview-grid">
-              <article><span><Coins /></span><div><small>可用平台积分</small><strong>{quota.unlimited ? "不限" : `${quota.points_balance} 分`}</strong><p>{quota.points_reserved ? `${quota.points_reserved} 分正在任务中` : "当前没有冻结积分"}</p></div></article>
-              <article><span><HardDrive /></span><div><small>视频云存储</small><strong>{formatBytes(quota.storage_used_bytes)} / {formatBytes(quota.storage_limit_bytes)}</strong><p>{quota.unlimited ? "管理员账号不限制空间" : `剩余 ${formatBytes(quota.storage_available_bytes)}`}</p></div></article>
-              <article className={quota.can_generate ? "ready" : "blocked"}><span><ShieldCheck /></span><div><small>创作状态</small><strong>{quota.can_generate ? "可以生成视频" : "积分或存储不足"}</strong><p>{quota.can_generate ? "每个工作流按实际配置价格扣分" : "请邀请好友、充值积分或释放存储"}</p></div></article>
+              <article><span><Coins /></span><div><small>{tr("可用平台积分", "Available credits")}</small><strong>{quota.unlimited ? tr("不限", "Unlimited") : tr(`${quota.points_balance} 分`, `${quota.points_balance} credits`)}</strong><p>{quota.points_reserved ? tr(`${quota.points_reserved} 分正在任务中`, `${quota.points_reserved} credits reserved`) : tr("当前没有冻结积分", "No reserved credits")}</p></div></article>
+              <article><span><HardDrive /></span><div><small>{tr("视频云存储", "Video cloud storage")}</small><strong>{formatBytes(quota.storage_used_bytes)} / {formatBytes(quota.storage_limit_bytes)}</strong><p>{quota.unlimited ? tr("管理员账号不限制空间", "Unlimited administrator storage") : tr(`剩余 ${formatBytes(quota.storage_available_bytes)}`, `${formatBytes(quota.storage_available_bytes)} available`)}</p></div></article>
+              <article className={quota.can_generate ? "ready" : "blocked"}><span><ShieldCheck /></span><div><small>{tr("创作状态", "Creation status")}</small><strong>{quota.can_generate ? tr("可以生成视频", "Ready to generate") : tr("积分或存储不足", "Insufficient credits or storage")}</strong><p>{quota.can_generate ? tr("每个工作流按实际配置价格扣分", "Each workflow uses its configured credit price") : tr("请邀请好友、充值积分或释放存储", "Invite friends, add credits or free storage")}</p></div></article>
             </section>
             {!quota.unlimited && <div className="storage-meter"><div><span>云存储使用率</span><strong>{storagePercent}%</strong></div><progress max="100" value={storagePercent} /></div>}
             {!quota.unlimited && <section className="invite-reward-card">
-              <span><Gift /></span><div><h2>邀请好友送积分</h2><p>好友使用邀请码注册并通过审核后，你获得 {quota.invite.inviter_reward_points} 积分，好友获得 {quota.invite.invitee_reward_points} 积分。</p><small>已成功邀请 {quota.invite.invited_count} 人，累计奖励 {quota.invite.rewarded_points} 积分</small></div>
+              <span><Gift /></span><div><h2>{tr("邀请好友送积分", "Invite friends and earn credits")}</h2><p>{tr(`好友使用邀请码注册并通过审核后，你获得 ${quota.invite.inviter_reward_points} 积分，好友获得 ${quota.invite.invitee_reward_points} 积分。`, `After an invited friend is approved, you earn ${quota.invite.inviter_reward_points} credits and they earn ${quota.invite.invitee_reward_points} credits.`)}</p><small>{tr(`已成功邀请 ${quota.invite.invited_count} 人，累计奖励 ${quota.invite.rewarded_points} 积分`, `${quota.invite.invited_count} successful invites · ${quota.invite.rewarded_points} credits earned`)}</small></div>
               <div className="invite-code-box"><strong>{quota.invite.code}</strong><button type="button" onClick={() => void copyInviteLink()}><Copy />{copied ? "已复制" : "复制邀请链接"}</button></div>
             </section>}
             <section className="quota-rules-card">
@@ -90,9 +92,9 @@ export function AccountUsagePage() {
               <ol><li>每个工作流按照内容与素材生成服务的计费成本核算积分。</li><li>用户售价 = 工作流成本 × {quota.billing_multiplier}，创建任务时先冻结对应积分。</li><li>视频成功后正式扣分；任务失败自动退回全部冻结积分。</li><li>网页预览版和高清下载版计入云存储，删除视频后立即释放空间。</li></ol>
             </section>
             <section className="quota-ledger-card">
-              <div className="section-title"><span>积分明细</span><History /></div>
+              <div className="section-title"><span>{tr("积分明细", "Credit history")}</span><History /></div>
               {quota.ledger?.length ? quota.ledger.map((entry) => (
-                <article key={entry.id}><div><strong>{LEDGER_LABELS[entry.event_type]}</strong><small>{entry.detail || "积分变动"} · {new Date(entry.created_at * 1000).toLocaleString("zh-CN")}</small></div><span className={entry.units > 0 ? "positive" : entry.units < 0 ? "negative" : ""}>{entry.units > 0 ? `+${entry.units}` : entry.units || "确认"}</span></article>
+                <article key={entry.id}><div><strong>{LEDGER_LABELS[entry.event_type]}</strong><small>{entry.detail || tr("积分变动", "Credit activity")} · {new Date(entry.created_at * 1000).toLocaleString(locale)}</small></div><span className={entry.units > 0 ? "positive" : entry.units < 0 ? "negative" : ""}>{entry.units > 0 ? `+${entry.units}` : entry.units || tr("确认", "Confirmed")}</span></article>
               )) : <div className="small-empty">还没有积分消费记录</div>}
             </section>
           </>

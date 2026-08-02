@@ -28,33 +28,46 @@ import { JobProgress, Results } from "../components/JobViews";
 import { Layout } from "../components/Layout";
 import { WorkflowInputSettingsDialog } from "../components/WorkflowInputSettingsDialog";
 import { useJobPolling } from "../hooks";
+import { usePreferences } from "../preferences";
 import type { Job, RenderStatus, SiteSummary, Workflow } from "../types";
 
 const WORKFLOW_CHOICES = [
   {
     code: "OWN01",
     label: "书单视频",
+    labelEn: "Book Video",
     short: "书单",
+    shortEn: "Book",
     description: "把一本书的气质变成完整荐书短片",
+    descriptionEn: "Turn the character of a book into a complete short video",
     placeholder: "输入书名，也可写成：书名｜作者",
+    placeholderEn: "Enter a title, or use: Book | Author",
     example: "克林索尔的最后夏天｜黑塞",
     icon: BookOpen,
   },
   {
     code: "OWN02",
     label: "香烟故事",
+    labelEn: "Cigarette Story",
     short: "香烟",
+    shortEn: "Story",
     description: "围绕一款香烟生成克制的情感独白",
+    descriptionEn: "Create a restrained emotional monologue around a cigarette",
     placeholder: "输入香烟名称",
+    placeholderEn: "Enter a cigarette name",
     example: "中华",
     icon: Cigarette,
   },
   {
     code: "OWN03",
     label: "神话人物",
+    labelEn: "Mythology",
     short: "神话",
+    shortEn: "Myth",
     description: "生成有画面感的中国神话人物解说",
+    descriptionEn: "Create a cinematic narration about a Chinese mythological figure",
     placeholder: "输入神名或神话主题",
+    placeholderEn: "Enter a deity or mythology topic",
     example: "哪吒",
     icon: Sparkles,
   },
@@ -70,6 +83,7 @@ const EMPTY_RENDER_STATUS: RenderStatus = {
 
 export function StudioPage() {
   const { user, loading: authLoading } = useAuth();
+  const { language, tr, locale } = usePreferences();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedCode = (searchParams.get("workflow") || "OWN01").toUpperCase();
@@ -150,29 +164,29 @@ export function StudioPage() {
 
   const readiness = useMemo(() => [
     {
-      label: "账号",
+      label: tr("账号", "Account"),
       ready: Boolean(user && !user.must_change_password),
-      detail: authLoading ? "检查中" : !user ? "登录后开始" : user.must_change_password ? "请先修改密码" : "已登录",
+      detail: authLoading ? tr("检查中", "Checking") : !user ? tr("登录后开始", "Sign in to start") : user.must_change_password ? tr("请先修改密码", "Change password first") : tr("已登录", "Signed in"),
       icon: user?.must_change_password ? LockKeyhole : ShieldCheck,
       action: !user ? "/login?redirect=/" : user.must_change_password ? "/account/security" : "",
     },
     {
-      label: "工作流",
+      label: tr("工作流", "Workflow"),
       ready: Boolean(published),
-      detail: !workflow ? "检查中" : published ? "已发布" : "后台尚未发布",
+      detail: !workflow ? tr("检查中", "Checking") : published ? tr("已发布", "Published") : tr("后台尚未发布", "Not published"),
       icon: WandSparkles,
       action: "",
     },
     {
-      label: "剪映设备",
+      label: tr("剪映设备", "Render device"),
       ready: renderReady,
       detail: renderReady
-        ? renderStatus.device_online ? "本机助手在线" : "云端渲染可用"
-        : "需要完成一次配对",
+        ? renderStatus.device_online ? tr("本机助手在线", "Local assistant online") : tr("云端渲染可用", "Cloud rendering ready")
+        : tr("需要完成一次配对", "Pair a device first"),
       icon: Laptop,
       action: renderReady ? "" : "/devices",
     },
-  ], [user, authLoading, published, workflow, renderReady, renderStatus.device_online]);
+  ], [user, authLoading, published, workflow, renderReady, renderStatus.device_online, language]);
 
   function chooseWorkflow(code: (typeof WORKFLOW_CHOICES)[number]["code"]) {
     setSelectedCode(code);
@@ -185,7 +199,7 @@ export function StudioPage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!theme.trim()) {
-      setError("请先输入主题内容");
+      setError(tr("请先输入主题内容", "Enter a topic first"));
       return;
     }
     if (!user) {
@@ -197,7 +211,7 @@ export function StudioPage() {
       return;
     }
     if (!published) {
-      setError("该工作流后台尚未发布完成");
+      setError(tr("该工作流后台尚未发布完成", "This workflow has not been published yet"));
       return;
     }
     if (!renderReady) {
@@ -253,29 +267,29 @@ export function StudioPage() {
         <section className="studio-hero">
           <div className="studio-hero-copy">
             <span className="eyebrow">VIDEOLAB / CREATE</span>
-            <h1>把想法交给流程，<em>把时间留给创作</em></h1>
-            <p>一个主题就够了。文案、声音、画面、剪映草稿和成片导出在同一条创作链路里自动完成。</p>
+            <h1>{tr("把想法交给流程，", "Give the idea to the workflow,")}<em>{tr("把时间留给创作", "keep your time for creativity")}</em></h1>
+            <p>{tr("一个主题就够了。文案、声音、画面、剪映草稿和成片导出在同一条创作链路里自动完成。", "One topic is enough. Script, voice, visuals, editing draft and final export all happen in one creative flow.")}</p>
             <div className="hero-proof">
-              <span><Check />过程可见</span>
-              <span><Check />离开页面也会继续</span>
-              <span><Check />完成后自动通知</span>
+              <span><Check />{tr("过程可见", "Visible progress")}</span>
+              <span><Check />{tr("离开页面也会继续", "Keeps running in the background")}</span>
+              <span><Check />{tr("完成后自动通知", "Completion notifications")}</span>
             </div>
           </div>
           <div className="studio-orbit">
-            <div className="flow-card-heading"><span>本次创作链路</span><em>{renderReady ? "READY" : "CHECKING"}</em></div>
+            <div className="flow-card-heading"><span>{tr("本次创作链路", "CREATION FLOW")}</span><em>{renderReady ? "READY" : "CHECKING"}</em></div>
             <ol className="flow-steps">
-              <li><i>01</i><div><strong>一句主题</strong><small>告诉系统你今天想讲什么</small></div></li>
-              <li><i>02</i><div><strong>自动编排</strong><small>内容、配音与画面同步生成</small></div></li>
-              <li><i>03</i><div><strong>交付成片</strong><small>剪映原生导出并回传网页</small></div></li>
+              <li><i>01</i><div><strong>{tr("一句主题", "One topic")}</strong><small>{tr("告诉系统你今天想讲什么", "Tell us what you want to say")}</small></div></li>
+              <li><i>02</i><div><strong>{tr("自动编排", "Auto production")}</strong><small>{tr("内容、配音与画面同步生成", "Script, voice and visuals generated together")}</small></div></li>
+              <li><i>03</i><div><strong>{tr("交付成片", "Final delivery")}</strong><small>{tr("剪映原生导出并回传网页", "Native export returned to the web")}</small></div></li>
             </ol>
-            <div className="flow-card-footer"><span><Play fill="currentColor" />{renderReady ? "创作通道已就绪" : "等待创作通道"}</span><strong>{workflow?.pricing?.price_points ?? 0} P</strong></div>
+            <div className="flow-card-footer"><span><Play fill="currentColor" />{renderReady ? tr("创作通道已就绪", "Creation channel ready") : tr("等待创作通道", "Waiting for channel")}</span><strong>{workflow?.pricing?.price_points ?? 0} P</strong></div>
           </div>
         </section>
 
         <section className="creation-workspace" aria-labelledby="creation-title">
           <div className="workspace-heading">
-            <div><span>NEW CREATION</span><h2 id="creation-title">选择一个创作入口</h2></div>
-            <small>一个主题，完整交付</small>
+            <div><span>NEW CREATION</span><h2 id="creation-title">{tr("选择一个创作入口", "Choose a creation type")}</h2></div>
+            <small>{tr("一个主题，完整交付", "One topic, complete delivery")}</small>
           </div>
           <div className="workflow-choice-grid" role="tablist" aria-label="视频类型">
             {WORKFLOW_CHOICES.map((choice) => {
@@ -290,7 +304,7 @@ export function StudioPage() {
                   onClick={() => chooseWorkflow(choice.code)}
                 >
                   <span className="choice-icon"><Icon /></span>
-                  <span><strong>{choice.label}</strong><small>{choice.description}</small></span>
+                  <span><strong>{language === "en" ? choice.labelEn : choice.label}</strong><small>{language === "en" ? choice.descriptionEn : choice.description}</small></span>
                   <i>{selectedCode === choice.code && <Check />}</i>
                 </button>
               );
@@ -300,9 +314,9 @@ export function StudioPage() {
           <div className="workspace-grid">
             <form className="studio-form" onSubmit={(event) => void submit(event)}>
               <div className="studio-form-label">
-                <span>主题内容</span>
+                <span>{tr("主题内容", "Topic")}</span>
                 <div>
-                  <small>示例：{selected.example}</small>
+                  <small>{tr("示例", "Example")}: {selected.example}</small>
                   {user?.role === "admin" && (
                     <button
                       type="button"
@@ -321,9 +335,9 @@ export function StudioPage() {
                 maxLength={120}
                 value={theme}
                 onChange={(event) => setTheme(event.target.value)}
-                placeholder={selected.placeholder}
+                placeholder={language === "en" ? selected.placeholderEn : selected.placeholder}
               />
-              <div className="input-meta"><span>{theme.length} / 120</span><span>按你的主题自动生成完整脚本与画面</span></div>
+              <div className="input-meta"><span>{theme.length} / 120</span><span>{tr("按你的主题自动生成完整脚本与画面", "Generate the complete script and visuals from your topic")}</span></div>
               <div className="readiness-grid">
                 {readiness.map(({ label, ready: itemReady, detail, icon: Icon, action }) => {
                   const content = (
@@ -341,16 +355,16 @@ export function StudioPage() {
               {configMessage && <div className="notice success"><Check />{configMessage}</div>}
               <button className="studio-submit" disabled={busy || !theme.trim()} type="submit">
                 {busy ? <span className="spin-ring" /> : <Sparkles />}
-                {busy ? "正在创建任务" : !user ? "登录后开始创作" : !ready ? "完成准备后生成" : `一键生成视频 · ${workflow?.pricing?.price_points ?? 0} 积分`}
+                {busy ? tr("正在创建任务", "Creating task") : !user ? tr("登录后开始创作", "Sign in to create") : !ready ? tr("完成准备后生成", "Complete setup to generate") : tr(`一键生成视频 · ${workflow?.pricing?.price_points ?? 0} 积分`, `Generate video · ${workflow?.pricing?.price_points ?? 0} credits`)}
               </button>
-              <p className="privacy-note"><ShieldCheck />不会向浏览器发送生成服务或渲染密钥</p>
+              <p className="privacy-note"><ShieldCheck />{tr("不会向浏览器发送生成服务或渲染密钥", "Generation and rendering keys never reach your browser")}</p>
             </form>
 
             <aside className="workspace-status">
               {job ? (
                 <>
                   <div className="current-job-title">
-                    <span>{selected.short}视频</span>
+                    <span>{language === "en" ? selected.shortEn : selected.short}{tr("视频", " video")}</span>
                     <strong>{job.display_title || theme}</strong>
                   </div>
                   <JobProgress job={job} onRetry={() => void retry()} retrying={retrying} />
@@ -359,19 +373,19 @@ export function StudioPage() {
                   </div>
                   {job.status === "succeeded" && (
                     <button className="secondary-button create-again" type="button" onClick={resetCreation}>
-                      <Sparkles size={15} />再创作一个
+                      <Sparkles size={15} />{tr("再创作一个", "Create another")}
                     </button>
                   )}
                 </>
               ) : (
                 <div className="workspace-empty">
                   <span><WandSparkles /></span>
-                  <strong>等待你的主题</strong>
-                  <p>提交后，这里会实时显示生成、草稿和剪映导出进度。</p>
+                  <strong>{tr("等待你的主题", "Waiting for your topic")}</strong>
+                  <p>{tr("提交后，这里会实时显示生成、草稿和剪映导出进度。", "After submission, generation, draft and export progress will appear here.")}</p>
                   <ol>
-                    <li><i>1</i>生成内容与配音</li>
-                    <li><i>2</i>创建画面和剪映草稿</li>
-                    <li><i>3</i>导出并返回 MP4</li>
+                    <li><i>1</i>{tr("生成内容与配音", "Generate script and voice")}</li>
+                    <li><i>2</i>{tr("创建画面和剪映草稿", "Create visuals and draft")}</li>
+                    <li><i>3</i>{tr("导出并返回 MP4", "Export and return MP4")}</li>
                   </ol>
                 </div>
               )}
@@ -394,28 +408,28 @@ export function StudioPage() {
 
         <section className="studio-lower-grid">
           <div className="recent-work-card">
-            <div className="section-title"><span>最近创作</span><Link to="/records">查看全部</Link></div>
+            <div className="section-title"><span>{tr("最近创作", "Recent creations")}</span><Link to="/records">{tr("查看全部", "View all")}</Link></div>
             {user ? visibleRecentJobs.length ? (
               <div className="mini-job-list">
                 {visibleRecentJobs.map((item) => (
                   <Link to="/records" key={item.id}>
                     <span className={`mini-status ${item.status}`} />
-                    <div><strong>{item.display_title}</strong><small>{item.category} · {new Date(item.created_at * 1000).toLocaleDateString("zh-CN")}</small></div>
+                    <div><strong>{item.display_title}</strong><small>{item.category} · {new Date(item.created_at * 1000).toLocaleDateString(locale)}</small></div>
                     <em>{item.progress}%</em>
                   </Link>
                 ))}
               </div>
-            ) : <div className="small-empty">你的第一个作品会出现在这里</div>
-            : <div className="small-empty"><Link to="/login?redirect=/">登录后查看创作记录</Link></div>}
+            ) : <div className="small-empty">{tr("你的第一个作品会出现在这里", "Your first creation will appear here")}</div>
+            : <div className="small-empty"><Link to="/login?redirect=/">{tr("登录后查看创作记录", "Sign in to view creations")}</Link></div>}
           </div>
           <div className="platform-status-card">
-            <div className="section-title"><span>平台能力</span><small>实时状态</small></div>
+            <div className="section-title"><span>{tr("平台能力", "Platform capacity")}</span><small>{tr("实时状态", "Live status")}</small></div>
             <div className="platform-metrics">
-              <div><strong>{summary?.catalog.online_workflows ?? "—"}</strong><span>在线工作流</span></div>
-              <div><strong>{summary?.jobs.succeeded ?? "—"}</strong><span>完成任务</span></div>
-              <div><strong>{summary?.catalog.voices ?? "—"}</strong><span>真实音色</span></div>
+              <div><strong>{summary?.catalog.online_workflows ?? "—"}</strong><span>{tr("在线工作流", "Workflows")}</span></div>
+              <div><strong>{summary?.jobs.succeeded ?? "—"}</strong><span>{tr("完成任务", "Completed")}</span></div>
+              <div><strong>{summary?.catalog.voices ?? "—"}</strong><span>{tr("真实音色", "Voices")}</span></div>
             </div>
-            <Link className="status-link" to="/workflows">探索更多工作流 <span>→</span></Link>
+            <Link className="status-link" to="/workflows">{tr("探索更多工作流", "Explore workflows")} <span>→</span></Link>
           </div>
         </section>
       </main>

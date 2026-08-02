@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { useAuth } from "../auth";
 import { Layout } from "../components/Layout";
+import { usePreferences } from "../preferences";
 import type { RenderStatus } from "../types";
 
 const EMPTY_STATUS: RenderStatus = {
@@ -69,6 +70,7 @@ function jianyingStatus(capabilities: Record<string, unknown>): string {
 }
 
 export function DevicesPage() {
+  const { tr } = usePreferences();
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const [status, setStatus] = useState<RenderStatus>(EMPTY_STATUS);
@@ -226,14 +228,14 @@ export function DevicesPage() {
       <main className="content-page page-width devices-page">
         <div className="page-heading">
           <span className="page-icon"><Laptop /></span>
-          <div><h1>剪映设备中心</h1><p>只需配对一次，之后网页会自动把草稿发送到你的电脑并返回 MP4。</p></div>
+          <div><h1>{tr("渲染设备", "Render Devices")}</h1><p>{tr("只需配对一次，之后网页会自动把草稿发送到你的电脑并返回 MP4。", "Pair once, then drafts are sent to your computer and exported MP4 files return automatically.")}</p></div>
         </div>
 
         <div className={`device-hero-status ${status.configured ? "ready" : ""}`}>
           <span>{status.configured ? <Check /> : <Laptop />}</span>
           <div>
             <strong>{status.message}</strong>
-            <p>{status.shared_device ? "普通用户无需单独配对，任务会自动进入管理员电脑的渲染队列。" : status.device_online ? "你的电脑已准备好接收视频任务。" : status.central_configured ? "当前使用服务端视频渲染。" : "完成下方四步，即可从首页一键生成视频。"}</p>
+            <p>{status.shared_device ? tr("普通用户无需单独配对，任务会自动进入管理员电脑的渲染队列。", "No personal pairing is required. Tasks are sent to the shared administrator render queue.") : status.device_online ? tr("你的电脑已准备好接收视频任务。", "Your computer is ready for video tasks.") : status.central_configured ? tr("当前使用服务端视频渲染。", "Server-side rendering is available.") : tr("完成下方四步，即可从首页一键生成视频。", "Complete the steps below to enable one-click video generation.")}</p>
           </div>
           <button type="button" onClick={() => void refresh()}><RefreshCw />刷新状态</button>
         </div>
@@ -242,25 +244,25 @@ export function DevicesPage() {
           <section className="shared-render-device-card">
             <span><Check /></span>
             <div>
-              <h2>全站共享渲染设备已连接</h2>
-              <p>你的任务会自动排队到管理员的剪映电脑，无需下载安装助手，也不需要再次配对。</p>
+              <h2>{tr("全站共享渲染设备已连接", "Shared render device connected")}</h2>
+              <p>{tr("你的任务会自动排队到管理员的剪映电脑，无需下载安装助手，也不需要再次配对。", "Your tasks automatically enter the shared rendering queue. No download or additional pairing is needed.")}</p>
             </div>
           </section>
         ) : <section className="device-onboarding">
           <article>
             <em>01</em>
             <span><Download /></span>
-            <h2>安装兼容版剪映</h2>
+            <h2>{tr("安装兼容版剪映", "Install a compatible editor")}</h2>
             <p>自动导出使用剪映专业版 5.9.0.11632。安装包来自字节官方 CDN，并已核对数字签名和 SHA-256。</p>
             <a className="secondary-button" href="/api/v1/downloads/jianying-compatible">
-              <Download />下载剪映 5.9
+              <Download />{tr("下载剪映 5.9", "Download Jianying 5.9")}
             </a>
           </article>
           <article>
             <em>02</em>
             <span><Download /></span>
-            <h2>下载 / 更新 AI 视频创作助手</h2>
-            <p>当前最新版 {latestHelperVersion ? `v${latestHelperVersion}` : "检测中"}。已安装助手时可一键更新；未安装时请先下载安装包。</p>
+            <h2>{tr("下载 / 更新 AI 视频创作助手", "Download / update the Video Assistant")}</h2>
+            <p>{tr("当前最新版", "Latest version")} {latestHelperVersion ? `v${latestHelperVersion}` : tr("检测中", "checking")}。{tr("已安装助手时可一键更新；未安装时请先下载安装包。", "Update with one click if installed, or download the installer first.")}</p>
             <button className="secondary-button" disabled={Boolean(helperUpdate?.running)} type="button" onClick={() => updateHelper()}>
               {helperUpdate?.running ? <LoaderCircle className="spin" /> : <Download />}
               {helperUpdate?.running
@@ -279,38 +281,38 @@ export function DevicesPage() {
             <a
               className="subtle-link"
               href={helperDownloadUrl}
-            >下载安装包</a>
+            >{tr("下载安装包", "Download installer")}</a>
           </article>
           <article>
             <em>03</em>
             <span><Link2 /></span>
-            <h2>一键连接助手</h2>
-            <p>网页会生成一次性配对信息并在后台唤醒助手，无需复制或在助手窗口中确认。</p>
+            <h2>{tr("一键连接助手", "Connect assistant")}</h2>
+            <p>{tr("网页会生成一次性配对信息并在后台唤醒助手，无需复制或在助手窗口中确认。", "The browser creates one-time pairing information and wakes the assistant automatically.")}</p>
             <button className="secondary-button" disabled={busy} type="button" onClick={() => void createPairing()}>
-              {busy ? <LoaderCircle className="spin" /> : <Link2 />}{busy ? "正在连接" : "连接助手"}
+              {busy ? <LoaderCircle className="spin" /> : <Link2 />}{busy ? tr("正在连接", "Connecting") : tr("连接助手", "Connect")}
             </button>
           </article>
           <article>
             <em>04</em>
             <span><Laptop /></span>
-            <h2>启动并保持在线</h2>
-            <p>助手会静默常驻；只有剪映原生渲染阶段会短暂打开剪映，完成后自动最小化。</p>
-            <button className="secondary-button" type="button" onClick={() => wakeHelper()}><Laptop />唤醒助手</button>
+            <h2>{tr("启动并保持在线", "Start and stay online")}</h2>
+            <p>{tr("助手会静默常驻；只有剪映原生渲染阶段会短暂打开剪映，完成后自动最小化。", "The assistant stays quiet in the background and opens the editor only during native rendering.")}</p>
+            <button className="secondary-button" type="button" onClick={() => wakeHelper()}><Laptop />{tr("唤醒助手", "Wake assistant")}</button>
           </article>
         </section>}
 
         {!status.shared_device && pairing && (
           <section className="pairing-display" aria-live="polite">
             <div><span>网站地址</span><strong>{window.location.origin}</strong></div>
-            <div><span>一次性配对码</span><strong className="pairing-number">{pairing.code}</strong></div>
-            <button type="button" onClick={() => void copyPairing()}><Clipboard />复制配对码</button>
+            <div><span>{tr("一次性配对码", "One-time pairing code")}</span><strong className="pairing-number">{pairing.code}</strong></div>
+            <button type="button" onClick={() => void copyPairing()}><Clipboard />{tr("复制配对码", "Copy code")}</button>
           </section>
         )}
         {message && <div className="notice success">{message}</div>}
         {error && <div className="notice error">{error}</div>}
 
         {!status.shared_device && <section className="connected-devices">
-          <div className="section-title"><span>已连接设备</span><small>{status.devices.length} 台</small></div>
+          <div className="section-title"><span>{tr("已连接设备", "Connected devices")}</span><small>{tr(`${status.devices.length} 台`, `${status.devices.length} devices`)}</small></div>
           {status.devices.length ? (
             <div className="connected-device-grid">
               {status.devices.map((device) => (
@@ -318,7 +320,7 @@ export function DevicesPage() {
                   <span className={`device-computer ${device.online ? "online" : ""}`}><Laptop /></span>
                   <div>
                     <strong>{device.name}</strong>
-                    <small>{device.platform} · {device.online ? "在线" : "离线"}</small>
+                    <small>{device.platform} · {device.online ? tr("在线", "Online") : tr("离线", "Offline")}</small>
                     <small className={device.capabilities.jianying_found === false ? "device-version warning" : "device-version"}>
                       {jianyingStatus(device.capabilities)}
                       {capabilityText(device.capabilities.helper_version)
@@ -330,7 +332,7 @@ export function DevicesPage() {
                 </article>
               ))}
             </div>
-          ) : <div className="small-empty">还没有配对设备，请按上方步骤完成首次连接。</div>}
+          ) : <div className="small-empty">{tr("还没有配对设备，请按上方步骤完成首次连接。", "No paired devices yet. Follow the steps above to connect one.")}</div>}
         </section>}
       </main>
     </Layout>
