@@ -243,6 +243,23 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(voices.json()["available"], voices.json()["total"] > 0)
         self.assertIn(voices.json()["provider"], {"local-system", "external"})
 
+    def test_registration_notifies_admin_when_notification_inbox_is_configured(self):
+        anonymous = TestClient(app)
+        with patch.dict(
+            os.environ,
+            {"REGISTRATION_NOTIFICATION_EMAIL": "admin-alerts@example.test"},
+        ), patch("fastapi_app.send_registration_application_received") as send_notification:
+            application = anonymous.post(
+                "/api/v1/auth/register",
+                json={"email": "notify-admin@example.test"},
+            )
+
+        self.assertEqual(application.status_code, 202, application.text)
+        send_notification.assert_called_once_with(
+            "notify-admin@example.test",
+            "http://127.0.0.1:8000/business/admin/registrations",
+        )
+
     def test_registration_is_admin_approved_and_email_delivery_is_required(self):
         anonymous = TestClient(app)
         application = anonymous.post(

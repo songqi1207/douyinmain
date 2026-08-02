@@ -90,7 +90,12 @@ from workflow_registry import (
     runtime_input_schema,
 )
 from utils.draft_key_importer import KeyValidationError
-from utils.email_delivery import EmailConfigurationError, email_delivery_status, send_registration_approved
+from utils.email_delivery import (
+    EmailConfigurationError,
+    email_delivery_status,
+    send_registration_application_received,
+    send_registration_approved,
+)
 from utils.local_media_generation import generated_file_path, list_system_voices, synthesize_speech
 from utils.runtime_settings import update_dotenv_file
 from video_delivery import VideoDeliveryError, publish_device_video, r2_export_configured
@@ -398,12 +403,25 @@ def business_spa_route(path: str):
 # ----------------------------- API v1 ---------------------------------
 
 
+def _notify_admin_of_registration(application: dict) -> None:
+    try:
+        public_base = (os.getenv("PUBLIC_BASE_URL") or "http://127.0.0.1:8000").rstrip("/")
+        send_registration_application_received(
+            str(application.get("email") or ""),
+            f"{public_base}/business/admin/registrations",
+        )
+    except Exception:
+        logger.exception("registration_application_notification_failed application_id=%s", application.get("id"))
+
+
 @app.post("/api/v1/auth/register", status_code=202)
-def api_register(payload: dict = Body(default_factory=dict)):
+def api_register(background_tasks: BackgroundTasks, payload: dict = Body(default_factory=dict)):
     try:
         application = submit_registration_application(str(payload.get("email") or ""))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": "invalid_registration", "message": str(exc)}) from exc
+    if (os.getenv("REGISTRATION_NOTIFICATION_EMAIL") or "").strip():
+        background_tasks.add_task(_notify_admin_of_registration, application)
     return {
         "application": application,
         "message": "申请已提交，管理员通过后登录密码会发送到该邮箱",
