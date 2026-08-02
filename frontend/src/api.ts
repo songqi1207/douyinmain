@@ -8,6 +8,7 @@ import type {
   RenderStatus,
   RuntimeSettings,
   SiteSummary,
+  UserQuota,
   VoiceCatalog,
   Workflow,
 } from "./types";
@@ -105,6 +106,35 @@ export async function createJob(workflowCode: string, category: string, inputs: 
 
 export async function retryJob(jobId: string) {
   return request<{ job: Job }>(`/api/v1/jobs/${jobId}/retry`, { method: "POST" });
+}
+
+export async function deleteJobVideo(jobId: string) {
+  return request<{ job: Job; quota: UserQuota; released_bytes: number; message: string }>(
+    `/api/v1/jobs/${encodeURIComponent(jobId)}/video`,
+    { method: "DELETE" },
+  );
+}
+
+export async function fetchAccountQuota() {
+  return request<{ quota: UserQuota }>("/api/v1/account/quota", { cache: "no-store" });
+}
+
+export async function fetchAdminUserQuotas() {
+  return request<{ items: UserQuota[]; total: number }>("/api/v1/admin/user-quotas", { cache: "no-store" });
+}
+
+export async function adjustAdminUserQuota(
+  userId: string,
+  payload: { generation_delta: number; storage_limit_gb?: number; detail?: string },
+) {
+  return request<{ quota: UserQuota; message: string }>(
+    `/api/v1/admin/user-quotas/${encodeURIComponent(userId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export async function uploadAsset(file: File) {

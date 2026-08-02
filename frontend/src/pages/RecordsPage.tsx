@@ -1,8 +1,8 @@
-import { ChevronLeft, ChevronRight, Clock3, Download, FileText, LoaderCircle, Play, RotateCcw, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, Download, FileText, LoaderCircle, Play, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { ApiError, fetchJobs, fetchWorkflows, retryJob } from "../api";
+import { ApiError, deleteJobVideo, fetchJobs, fetchWorkflows, retryJob } from "../api";
 import { useAuth } from "../auth";
 import { Layout } from "../components/Layout";
 import type { Job, Workflow } from "../types";
@@ -37,6 +37,7 @@ export function RecordsPage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [retryingId, setRetryingId] = useState("");
+  const [deletingId, setDeletingId] = useState("");
   const [preview, setPreview] = useState<{ jobId: string; url: string; poster?: string | null } | null>(null);
   const [error, setError] = useState("");
 
@@ -96,6 +97,21 @@ export function RecordsPage() {
       else setError(apiError.message);
     } finally {
       setRetryingId("");
+    }
+  }
+
+  async function removeVideo(job: Job) {
+    if (!window.confirm(`确认删除“${job.display_title}”的云端视频吗？删除后无法恢复。`)) return;
+    setDeletingId(job.id);
+    setError("");
+    try {
+      await deleteJobVideo(job.id);
+      if (preview?.jobId === job.id) setPreview(null);
+      await load();
+    } catch (nextError) {
+      setError((nextError as ApiError).message);
+    } finally {
+      setDeletingId("");
     }
   }
 
@@ -160,6 +176,11 @@ export function RecordsPage() {
                       </a>
                     </span>
                   ))}
+                  {job.status === "succeeded" && job.results.some((result) => result.type === "video") && (
+                    <button className="delete-video-action" type="button" disabled={deletingId === job.id} onClick={() => void removeVideo(job)}>
+                      {deletingId === job.id ? <LoaderCircle className="spin" /> : <Trash2 />}{deletingId === job.id ? "删除中" : "删除云端视频"}
+                    </button>
+                  )}
                   {job.workflow_code === "DRAFT_KEY_EXPORT"
                     ? <Link to="/jianying-export">打开手工导出</Link>
                     : <Link to={`/?workflow=${job.workflow_code}`}>再次创作</Link>}

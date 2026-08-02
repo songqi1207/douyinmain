@@ -10,6 +10,7 @@ import { DevicesPage } from "./pages/DevicesPage";
 import { JianyingExportPage } from "./pages/JianyingExportPage";
 import { CatalogPage, DetailPage } from "./pages/MarketplacePages";
 import { RecordsPage } from "./pages/RecordsPage";
+import { AccountUsagePage, AdminUserQuotaPage } from "./pages/QuotaPages";
 import { StudioPage } from "./pages/StudioPage";
 import { VoicesPage } from "./pages/VoicesPage";
 
@@ -35,10 +36,12 @@ export default function App() {
         <Route path="/jianying-export" element={<JianyingExportPage />} />
         <Route path="/jianying-export/test" element={<JianyingExportPage />} />
         <Route path="/account/security" element={<AccountSecurityPage />} />
+        <Route path="/account/usage" element={<AccountUsagePage />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
         <Route path="/admin/registrations" element={<AdminRoute><RegistrationAdminPage /></AdminRoute>} />
         <Route path="/admin/runtime-settings" element={<AdminRoute><RuntimeSettingsPage /></AdminRoute>} />
+        <Route path="/admin/user-quotas" element={<AdminRoute><AdminUserQuotaPage /></AdminRoute>} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

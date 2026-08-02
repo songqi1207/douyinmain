@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import time
+import uuid
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
@@ -39,8 +40,10 @@ from device_rendering import (
     revoke_device,
 )
 from site_accounts import (
+    QuotaError,
     SESSION_TTL_SECONDS,
     active_admin_user,
+    adjust_user_quota,
     authenticate_user,
     change_user_password,
     complete_registration_approval,
@@ -49,12 +52,18 @@ from site_accounts import (
     fail_registration_delivery,
     favorite_ids,
     list_registration_applications,
+    list_user_quotas,
+    mark_video_storage_deleted,
     prepare_registration_approval,
     record_resource_event,
+    record_video_storage,
     reject_registration_application,
     resource_stats,
+    reserve_generation,
+    quota_snapshot,
     site_account_summary,
     submit_registration_application,
+    settle_generation_reservation,
     toggle_favorite,
     user_from_session,
 )
@@ -68,6 +77,7 @@ from workflow_jobs import (
     create_asset,
     create_draft_key_render_job,
     create_job,
+    delete_job_video_results,
     enqueue_job,
     fail_device_render_job,
     get_asset,
@@ -100,7 +110,7 @@ from utils.email_delivery import (
 )
 from utils.local_media_generation import generated_file_path, list_system_voices, synthesize_speech
 from utils.runtime_settings import update_dotenv_file
-from video_delivery import VideoDeliveryError, publish_device_video, r2_export_configured
+from video_delivery import VideoDeliveryError, delete_video_from_r2, publish_device_video, r2_export_configured
 from utils.volcengine_vod_renderer import (
     VodConfigurationError,
     VodRenderError,
@@ -207,6 +217,21 @@ def _preferred_render_device(user: dict) -> tuple[dict | None, bool]:
     admin = active_admin_user()
     shared_device = preferred_device(admin["id"]) if admin else None
     return shared_device, bool(shared_device)
+
+
+def _reserve_job_quota(user: dict, job_id: str) -> None:
+    try:
+        reserve_generation(user["id"], job_id, 1)
+    except QuotaError as exc:
+        code = str(exc)
+        messages = {
+            "generation_quota_exhausted": "视频生成额度已用完，请联系管理员增加额度",
+            "storage_quota_exhausted": "视频云存储空间已满，请先删除旧视频或联系管理员扩容",
+        }
+        raise HTTPException(
+            status_code=402,
+            detail={"code": code, "message": messages.get(code, "当前账号额度不足")},
+        ) from exc
 
 
 def _require_render_device(request: Request) -> dict:
@@ -1013,6 +1038,17 @@ def _publish_device_video_in_background(job_id: str, result_name: str, destinati
         append_job_log(job_id, "R2 视频已经上传，但任务结果已变化，站点原片予以保留", level="warning")
         return
 
+    job = get_job(job_id)
+    if job and job.get("user_id"):
+        storage_bytes = original_bytes + (published_bytes if result_url != download_url else 0)
+        record_video_storage(
+            job_id,
+            job["user_id"],
+            result_url,
+            download_url,
+            storage_bytes,
+        )
+
     if delivery_mode == "original_fallback":
         append_job_log(job_id, "网页预览版生成失败，已自动使用 R2 高清原片")
     else:
@@ -1083,6 +1119,13 @@ async def api_complete_render_agent_job(
         if destination.exists():
             destination.unlink()
         raise HTTPException(status_code=409, detail={"code": "job_not_rendering", "message": "任务状态已变化"})
+    record_video_storage(
+        job_id,
+        job["user_id"],
+        f"/api/v1/job-results/{result_name}",
+        f"/api/v1/job-results/{result_name}",
+        total,
+    )
     if r2_export_configured():
         append_job_log(job_id, "视频已回传，正在后台压缩并上传到 R2")
         background_tasks.add_task(
@@ -1158,6 +1201,8 @@ def api_create_job(
                 "message": "请先配对并启动本机剪映导出助手，再运行这个工作流",
             },
         )
+    job_id = uuid.uuid4().hex
+    _reserve_job_quota(user, job_id)
     try:
         job = create_job(
             workflow_code,
@@ -1165,13 +1210,20 @@ def api_create_job(
             inputs,
             user["id"],
             render_device["id"] if render_device else None,
+            job_id,
         )
     except KeyError as exc:
+        settle_generation_reservation(job_id, False)
         raise HTTPException(status_code=404, detail={"code": "workflow_not_found", "message": "工作流不存在"}) from exc
     except PermissionError as exc:
+        settle_generation_reservation(job_id, False)
         raise HTTPException(status_code=409, detail={"code": "workflow_not_online", "message": "工作流正在接入中"}) from exc
     except ValueError as exc:
+        settle_generation_reservation(job_id, False)
         raise HTTPException(status_code=422, detail={"code": "invalid_inputs", "message": str(exc)}) from exc
+    except Exception:
+        settle_generation_reservation(job_id, False)
+        raise
     enqueue_job(job["id"], background_tasks)
     return {"job": _public_job(job)}
 
@@ -1185,22 +1237,30 @@ def api_create_draft_key_render(
     """Queue a Jianying-native MP4 export without exposing the Windows worker."""
     user = _require_ready_user(request)
     render_device, _ = _preferred_render_device(user)
+    job_id = uuid.uuid4().hex
+    _reserve_job_quota(user, job_id)
     try:
         job = create_draft_key_render_job(
             payload.get("draft_key") or payload.get("key") or payload,
             user["id"],
             render_device["id"] if render_device else None,
+            job_id,
         )
     except PermissionError as exc:
+        settle_generation_reservation(job_id, False)
         raise HTTPException(
             status_code=409,
             detail={"code": "render_device_required", "message": "请先配对并启动本机剪映导出助手"},
         ) from exc
     except ValueError as exc:
+        settle_generation_reservation(job_id, False)
         raise HTTPException(
             status_code=422,
             detail={"code": "invalid_draft_key", "message": str(exc)},
         ) from exc
+    except Exception:
+        settle_generation_reservation(job_id, False)
+        raise
     enqueue_job(job["id"], background_tasks)
     return {"job": _public_job(job)}
 
@@ -1323,6 +1383,60 @@ def api_create_vod_render(payload: dict = Body(default_factory=dict)):
     return response
 
 
+@app.get("/api/v1/account/quota")
+def api_account_quota(request: Request):
+    user = _require_user(request)
+    return {"quota": quota_snapshot(user["id"])}
+
+
+@app.get("/api/v1/admin/user-quotas")
+def api_admin_user_quotas(request: Request):
+    _require_admin(request)
+    items = list_user_quotas()
+    return {"items": items, "total": len(items)}
+
+
+@app.put("/api/v1/admin/user-quotas/{user_id}")
+def api_adjust_user_quota(
+    user_id: str,
+    request: Request,
+    payload: dict = Body(default_factory=dict),
+):
+    _require_admin(request)
+    try:
+        generation_delta = int(payload.get("generation_delta") or 0)
+        storage_limit_gb = payload.get("storage_limit_gb")
+        storage_limit_bytes = None if storage_limit_gb in (None, "") else round(float(storage_limit_gb) * 1024 * 1024 * 1024)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_quota_adjustment", "message": "额度调整数值格式不正确"},
+        ) from exc
+    if not -10_000 <= generation_delta <= 10_000:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_generation_delta", "message": "单次生成额度调整范围为 -10000 到 10000"},
+        )
+    if storage_limit_bytes is not None and not 0 <= storage_limit_bytes <= 10 * 1024**4:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_storage_limit", "message": "云存储上限必须在 0 到 10240GB 之间"},
+        )
+    try:
+        quota = adjust_user_quota(
+            user_id,
+            generation_delta=generation_delta,
+            storage_limit_bytes=storage_limit_bytes,
+            detail=str(payload.get("detail") or "管理员调整额度"),
+        )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "user_not_found", "message": "账号不存在"},
+        ) from exc
+    return {"quota": quota, "message": "用户额度已更新"}
+
+
 @app.get("/api/v1/vod/renders/{req_id}")
 def api_vod_render_status(req_id: str):
     """Return cloud render progress and output media metadata."""
@@ -1363,18 +1477,25 @@ def api_retry_job(job_id: str, request: Request, background_tasks: BackgroundTas
     if old_job["status"] != "failed":
         raise HTTPException(status_code=409, detail={"code": "job_not_failed", "message": "只有失败任务可以重试"})
     render_device, _ = _preferred_render_device(user)
+    next_job_id = uuid.uuid4().hex
+    _reserve_job_quota(user, next_job_id)
     if old_job["workflow_code"] == DRAFT_KEY_RENDER_CODE:
         try:
             job = create_draft_key_render_job(
                 old_job["inputs"],
                 old_job.get("user_id"),
                 render_device["id"] if render_device else None,
+                next_job_id,
             )
         except PermissionError as exc:
+            settle_generation_reservation(next_job_id, False)
             raise HTTPException(
                 status_code=409,
                 detail={"code": "render_device_required", "message": "请先启动本机剪映导出助手再重试"},
             ) from exc
+        except Exception:
+            settle_generation_reservation(next_job_id, False)
+            raise
     else:
         workflow = get_workflow(old_job["workflow_code"], old_job["category"])
         if (
@@ -1383,19 +1504,68 @@ def api_retry_job(job_id: str, request: Request, background_tasks: BackgroundTas
             and not render_device
             and not (os.getenv("WORKFLOW_RENDER_API_URL") or "").strip()
         ):
+            settle_generation_reservation(next_job_id, False)
             raise HTTPException(
                 status_code=409,
                 detail={"code": "render_device_required", "message": "请先启动本机剪映导出助手再重试"},
             )
-        job = create_job(
-            old_job["workflow_code"],
-            old_job["category"],
-            old_job["inputs"],
-            old_job.get("user_id"),
-            render_device["id"] if render_device and workflow and workflow.get("generation_mode") == "draft" else None,
-        )
+        try:
+            job = create_job(
+                old_job["workflow_code"],
+                old_job["category"],
+                old_job["inputs"],
+                old_job.get("user_id"),
+                render_device["id"] if render_device and workflow and workflow.get("generation_mode") == "draft" else None,
+                next_job_id,
+            )
+        except Exception:
+            settle_generation_reservation(next_job_id, False)
+            raise
     enqueue_job(job["id"], background_tasks)
     return {"job": _public_job(job)}
+
+
+@app.delete("/api/v1/jobs/{job_id}/video")
+def api_delete_job_video(job_id: str, request: Request):
+    user = _require_user(request)
+    job = get_job(job_id)
+    if not job or job.get("user_id") != user["id"]:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "job_not_found", "message": "任务不存在"},
+        )
+    video_urls = {
+        str(value).strip()
+        for result in job.get("results") or []
+        if result.get("type") == "video"
+        for value in (result.get("url"), result.get("download_url"))
+        if str(value or "").strip()
+    }
+    if not video_urls:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "video_not_available", "message": "该记录没有可删除的视频"},
+        )
+    try:
+        for url in video_urls:
+            delete_video_from_r2(url)
+    except VideoDeliveryError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "video_delete_failed", "message": str(exc)},
+        ) from exc
+    if not delete_job_video_results(job_id):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "video_delete_failed", "message": "视频状态已发生变化，请刷新后重试"},
+        )
+    released_bytes = mark_video_storage_deleted(job_id, user["id"])
+    return {
+        "job": _public_job(get_job(job_id)),
+        "quota": quota_snapshot(user["id"]),
+        "released_bytes": released_bytes,
+        "message": "云端视频已删除，存储空间已经释放",
+    }
 
 
 @app.get("/api/v1/demo/G218/result", include_in_schema=False)

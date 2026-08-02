@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   Clock3,
+  Coins,
   Headphones,
   HelpCircle,
   Laptop,
@@ -65,7 +66,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {user ? (
             <>
               <JobNotifications />
+              <Link to="/account/usage"><Coins size={14} />额度</Link>
               {user.role === "admin" && <Link to="/admin/runtime-settings"><Settings size={14} />运行配置</Link>}
+              {user.role === "admin" && <Link to="/admin/user-quotas"><Coins size={14} />用户额度</Link>}
               {user.role === "admin" && <Link to="/admin/registrations">注册审核</Link>}
               <Link
                 className={user.must_change_password ? "security-alert-link" : ""}

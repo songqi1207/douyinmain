@@ -147,3 +147,32 @@ export type JobPage = {
   page: number;
   page_size: number;
 };
+
+export type QuotaLedgerEntry = {
+  id: string;
+  job_id?: string | null;
+  event_type: "reserve" | "consume" | "refund" | "adjust";
+  units: number;
+  balance_after: number;
+  detail?: string | null;
+  created_at: number;
+};
+
+export type UserQuota = {
+  user: {
+    id: string;
+    username: string;
+    email?: string | null;
+    role: "user" | "admin";
+    active: boolean;
+  };
+  unlimited: boolean;
+  generation_balance: number;
+  generation_reserved: number;
+  generation_consumed: number;
+  storage_used_bytes: number;
+  storage_limit_bytes: number;
+  storage_available_bytes: number;
+  can_generate: boolean;
+  ledger?: QuotaLedgerEntry[];
+};

@@ -94,6 +94,28 @@ class VideoDeliveryTests(unittest.TestCase):
             self.assertEqual(put.call_args.kwargs["headers"]["Authorization"], "Bearer server-secret")
             self.assertEqual(put.call_args.kwargs["headers"]["Content-Type"], "video/mp4")
 
+    def test_r2_delete_uses_bearer_auth_for_owned_export_url(self):
+        response = MagicMock(status_code=204, text="")
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "R2_EXPORT_UPLOAD_URL": "https://worker.test/exports",
+                    "R2_EXPORT_PUBLIC_BASE_URL": "https://cdn.test/exports",
+                    "R2_EXPORT_UPLOAD_TOKEN": "server-secret",
+                },
+                clear=True,
+            ),
+            patch("video_delivery.requests.delete", return_value=response) as delete,
+        ):
+            removed = video_delivery.delete_video_from_r2(
+                "https://cdn.test/exports/job-device-preview.mp4"
+            )
+
+        self.assertTrue(removed)
+        self.assertEqual(delete.call_args.args[0], "https://worker.test/exports/job-device-preview.mp4")
+        self.assertEqual(delete.call_args.kwargs["headers"]["Authorization"], "Bearer server-secret")
+
     def test_publish_falls_back_to_lossless_remux_when_compression_fails(self):
         with tempfile.TemporaryDirectory(prefix="video-remux-fallback-") as temporary:
             source = Path(temporary) / "source.mp4"

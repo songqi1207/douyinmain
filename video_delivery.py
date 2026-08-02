@@ -6,7 +6,7 @@ import os
 import subprocess
 import threading
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlparse
 from uuid import uuid4
 
 import requests
@@ -255,6 +255,31 @@ def upload_video_to_r2(source: Path, object_name: str) -> str:
     return f"{public_base}/{quote(safe_name)}"
 
 
+def delete_video_from_r2(public_url: str) -> bool:
+    """Delete one exported R2 object through the authenticated media worker."""
+    public_base = (os.getenv("R2_EXPORT_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    upload_base = (os.getenv("R2_EXPORT_UPLOAD_URL") or "").strip().rstrip("/")
+    token = (os.getenv("R2_EXPORT_UPLOAD_TOKEN") or "").strip()
+    candidate = str(public_url or "").strip()
+    if not public_base or not upload_base or not token or not candidate.startswith(f"{public_base}/"):
+        return False
+    object_name = Path(unquote(urlparse(candidate).path)).name
+    if not object_name.lower().endswith(".mp4"):
+        return False
+    target_url = f"{upload_base}/{quote(object_name)}"
+    try:
+        response = requests.delete(
+            target_url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=(_positive_int("R2_EXPORT_CONNECT_TIMEOUT_SECONDS", 20), 60),
+        )
+    except requests.RequestException as exc:
+        raise VideoDeliveryError(f"R2 视频删除失败：{exc}") from exc
+    if response.status_code not in {200, 204, 404}:
+        raise VideoDeliveryError(f"R2 视频删除失败（HTTP {response.status_code}）")
+    return True
+
+
 def publish_device_video(job_id: str, source: Path) -> tuple[str, str, int, int, str]:
     """Upload a full-quality download plus a low-bandwidth browser preview."""
 
@@ -262,7 +287,6 @@ def publish_device_video(job_id: str, source: Path) -> tuple[str, str, int, int,
     delivery_id = uuid4().hex[:12]
     preview_output = source.with_name(f".{job_id}-device-preview.{delivery_id}.mp4")
     download_output = source.with_name(f".{job_id}-device-original.{delivery_id}.mp4")
-    original_size = source.stat().st_size
     preview_source = source
     download_source = source
     delivery_mode = "preview"
@@ -286,7 +310,7 @@ def publish_device_video(job_id: str, source: Path) -> tuple[str, str, int, int,
                 delivery_mode = "original_fallback"
                 preview_source = download_source
                 preview_url = download_url
-            return preview_url, download_url, original_size, preview_source.stat().st_size, delivery_mode
+            return preview_url, download_url, download_source.stat().st_size, preview_source.stat().st_size, delivery_mode
         finally:
             preview_output.unlink(missing_ok=True)
             download_output.unlink(missing_ok=True)

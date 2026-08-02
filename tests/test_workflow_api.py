@@ -14,6 +14,7 @@ os.environ["SITE_ADMIN_EMAIL"] = "admin@example.test"
 os.environ["SITE_ADMIN_PASSWORD"] = "admin-test-password-123"
 os.environ["SMTP_HOST"] = "smtp.example.test"
 os.environ["SMTP_FROM"] = "noreply@example.test"
+os.environ["DEFAULT_GENERATION_CREDITS"] = "10000"
 os.environ["COZE_API_TOKEN"] = ""
 os.environ["COZE_WORKFLOW_GOD"] = ""
 os.environ["COZE_WORKFLOW_OWN01"] = ""
@@ -242,6 +243,29 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(voices.json()["total"], len(voices.json()["voices"]))
         self.assertEqual(voices.json()["available"], voices.json()["total"] > 0)
         self.assertIn(voices.json()["provider"], {"local-system", "external"})
+
+    def test_account_quota_is_private_and_admin_can_adjust_it(self):
+        before = self.client.get("/api/v1/account/quota")
+        self.assertEqual(before.status_code, 200, before.text)
+        quota = before.json()["quota"]
+        self.assertFalse(quota["unlimited"])
+        self.assertEqual(quota["storage_limit_bytes"], 5 * 1024**3)
+        self.assertEqual(TestClient(app).get("/api/v1/account/quota").status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/admin/user-quotas").status_code, 403)
+
+        adjusted = self.admin_client.put(
+            f"/api/v1/admin/user-quotas/{quota['user']['id']}",
+            json={"generation_delta": 3, "storage_limit_gb": 7},
+        )
+        self.assertEqual(adjusted.status_code, 200, adjusted.text)
+        self.assertEqual(adjusted.json()["quota"]["generation_balance"], quota["generation_balance"] + 3)
+        self.assertEqual(adjusted.json()["quota"]["storage_limit_bytes"], 7 * 1024**3)
+
+        restored = self.admin_client.put(
+            f"/api/v1/admin/user-quotas/{quota['user']['id']}",
+            json={"generation_delta": -3, "storage_limit_gb": 5},
+        )
+        self.assertEqual(restored.status_code, 200, restored.text)
 
     def test_job_result_files_require_owner_and_completed_status(self):
         user_id = self.client.get("/api/v1/auth/me").json()["user"]["id"]

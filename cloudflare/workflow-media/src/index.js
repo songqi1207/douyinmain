@@ -3,7 +3,7 @@ const MAX_EXPORT_BYTES = 512 * 1024 * 1024;
 
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, HEAD, OPTIONS",
+  "access-control-allow-methods": "GET, HEAD, PUT, DELETE, OPTIONS",
   "access-control-allow-headers": "Range, If-Match, If-None-Match, If-Modified-Since",
   "access-control-expose-headers":
     "Accept-Ranges, Content-Length, Content-Range, Content-Type, ETag, Last-Modified",
@@ -94,6 +94,17 @@ async function uploadExport(request, env, key) {
   );
 }
 
+async function deleteExport(request, env, key) {
+  if (!key.startsWith("exports/") || !key.toLowerCase().endsWith(".mp4")) {
+    return errorResponse(404, "Not found");
+  }
+  if (!authorizedUpload(request, env)) {
+    return errorResponse(401, "Unauthorized");
+  }
+  await env.PUBLIC_BUCKET.delete(key);
+  return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") {
@@ -105,6 +116,10 @@ export default {
 
     if (request.method === "PUT") {
       return uploadExport(request, env, key);
+    }
+
+    if (request.method === "DELETE") {
+      return deleteExport(request, env, key);
     }
 
     if (request.method !== "GET" && request.method !== "HEAD") {

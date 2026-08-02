@@ -18,8 +18,14 @@ from workflow_jobs import DATA_DIR
 
 DB_PATH = Path(os.getenv("SITE_DB_PATH") or DATA_DIR / "site.sqlite3").resolve()
 SESSION_TTL_SECONDS = int(os.getenv("SITE_SESSION_TTL_SECONDS") or 30 * 24 * 60 * 60)
+DEFAULT_GENERATION_CREDITS = int(os.getenv("DEFAULT_GENERATION_CREDITS") or 10)
+DEFAULT_STORAGE_LIMIT_BYTES = int(os.getenv("DEFAULT_STORAGE_LIMIT_BYTES") or 5 * 1024 * 1024 * 1024)
 USERNAME_PATTERN = re.compile(r"^[\w\u4e00-\u9fff]{3,20}$", re.UNICODE)
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+class QuotaError(RuntimeError):
+    pass
 
 
 def _connect():
@@ -72,6 +78,51 @@ def init_site_database():
             );
             CREATE INDEX IF NOT EXISTS idx_resource_events_lookup
                 ON resource_events(resource_type, resource_id, event_type);
+            CREATE TABLE IF NOT EXISTS user_quotas (
+                user_id TEXT PRIMARY KEY,
+                generation_balance INTEGER NOT NULL,
+                storage_limit_bytes INTEGER NOT NULL,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS generation_reservations (
+                job_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                units INTEGER NOT NULL,
+                state TEXT NOT NULL,
+                reserved_at REAL NOT NULL,
+                settled_at REAL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_generation_reservations_user
+                ON generation_reservations(user_id, state, reserved_at);
+            CREATE TABLE IF NOT EXISTS quota_ledger (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                job_id TEXT,
+                event_type TEXT NOT NULL,
+                units INTEGER NOT NULL,
+                balance_after INTEGER NOT NULL,
+                detail TEXT,
+                created_at REAL NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_quota_ledger_user
+                ON quota_ledger(user_id, created_at DESC);
+            CREATE TABLE IF NOT EXISTS video_storage (
+                job_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                preview_url TEXT,
+                download_url TEXT,
+                size_bytes INTEGER NOT NULL,
+                state TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_video_storage_user
+                ON video_storage(user_id, state, updated_at DESC);
             CREATE TABLE IF NOT EXISTS registration_applications (
                 id TEXT PRIMARY KEY,
                 email TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -94,6 +145,17 @@ def init_site_database():
         if "must_change_password" not in columns:
             db.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE) WHERE email IS NOT NULL")
+        now = time.time()
+        db.execute(
+            """INSERT OR IGNORE INTO user_quotas
+               (user_id, generation_balance, storage_limit_bytes, created_at, updated_at)
+               SELECT id,
+                      CASE WHEN role = 'admin' THEN -1 ELSE ? END,
+                      CASE WHEN role = 'admin' THEN -1 ELSE ? END,
+                      ?, ?
+               FROM users""",
+            (DEFAULT_GENERATION_CREDITS, DEFAULT_STORAGE_LIMIT_BYTES, now, now),
+        )
         db.commit()
 
 
@@ -120,6 +182,287 @@ def active_admin_user() -> dict | None:
                ORDER BY created_at ASC LIMIT 1"""
         ).fetchone()
     return _public_user(row) if row else None
+
+
+def _ensure_quota_row(db: sqlite3.Connection, user_id: str):
+    user = db.execute(
+        "SELECT id, username, email, role, active FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    if not user:
+        raise KeyError("user_not_found")
+    now = time.time()
+    unlimited = user["role"] == "admin"
+    db.execute(
+        """INSERT OR IGNORE INTO user_quotas
+           (user_id, generation_balance, storage_limit_bytes, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (
+            user_id,
+            -1 if unlimited else DEFAULT_GENERATION_CREDITS,
+            -1 if unlimited else DEFAULT_STORAGE_LIMIT_BYTES,
+            now,
+            now,
+        ),
+    )
+    if unlimited:
+        db.execute(
+            "UPDATE user_quotas SET generation_balance = -1, storage_limit_bytes = -1, updated_at = ? WHERE user_id = ?",
+            (now, user_id),
+        )
+    quota = db.execute("SELECT * FROM user_quotas WHERE user_id = ?", (user_id,)).fetchone()
+    return user, quota
+
+
+def _quota_snapshot(db: sqlite3.Connection, user_id: str, *, include_ledger: bool = True) -> dict:
+    user, quota = _ensure_quota_row(db, user_id)
+    storage_used = int(
+        db.execute(
+            "SELECT COALESCE(SUM(size_bytes), 0) FROM video_storage WHERE user_id = ? AND state = 'active'",
+            (user_id,),
+        ).fetchone()[0]
+    )
+    reserved = int(
+        db.execute(
+            "SELECT COALESCE(SUM(units), 0) FROM generation_reservations WHERE user_id = ? AND state = 'reserved'",
+            (user_id,),
+        ).fetchone()[0]
+    )
+    consumed = int(
+        db.execute(
+            "SELECT COALESCE(SUM(units), 0) FROM generation_reservations WHERE user_id = ? AND state = 'consumed'",
+            (user_id,),
+        ).fetchone()[0]
+    )
+    unlimited = user["role"] == "admin"
+    storage_limit = int(quota["storage_limit_bytes"])
+    result = {
+        "user": {
+            "id": user["id"],
+            "username": user["username"],
+            "email": user["email"],
+            "role": user["role"],
+            "active": bool(user["active"]),
+        },
+        "unlimited": unlimited,
+        "generation_balance": -1 if unlimited else int(quota["generation_balance"]),
+        "generation_reserved": reserved,
+        "generation_consumed": consumed,
+        "storage_used_bytes": storage_used,
+        "storage_limit_bytes": -1 if unlimited else storage_limit,
+        "storage_available_bytes": -1 if unlimited else max(0, storage_limit - storage_used),
+        "can_generate": unlimited or (
+            int(quota["generation_balance"]) > 0 and storage_used < storage_limit
+        ),
+    }
+    if include_ledger:
+        rows = db.execute(
+            """SELECT id, job_id, event_type, units, balance_after, detail, created_at
+               FROM quota_ledger WHERE user_id = ? ORDER BY created_at DESC LIMIT 50""",
+            (user_id,),
+        ).fetchall()
+        result["ledger"] = [dict(row) for row in rows]
+    return result
+
+
+def quota_snapshot(user_id: str) -> dict:
+    with _connect() as db:
+        result = _quota_snapshot(db, user_id)
+        db.commit()
+    return result
+
+
+def list_user_quotas() -> list[dict]:
+    with _connect() as db:
+        user_ids = [
+            row["id"]
+            for row in db.execute(
+                "SELECT id FROM users WHERE active = 1 ORDER BY role DESC, created_at ASC"
+            ).fetchall()
+        ]
+        result = [_quota_snapshot(db, user_id, include_ledger=False) for user_id in user_ids]
+        db.commit()
+    return result
+
+
+def reserve_generation(user_id: str, job_id: str, units: int = 1) -> dict:
+    units = max(1, int(units))
+    now = time.time()
+    with _connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        user, quota = _ensure_quota_row(db, user_id)
+        if user["role"] == "admin":
+            db.commit()
+            return _quota_snapshot(db, user_id, include_ledger=False)
+        existing = db.execute(
+            "SELECT state FROM generation_reservations WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+        if existing:
+            db.commit()
+            return _quota_snapshot(db, user_id, include_ledger=False)
+        storage_used = int(
+            db.execute(
+                "SELECT COALESCE(SUM(size_bytes), 0) FROM video_storage WHERE user_id = ? AND state = 'active'",
+                (user_id,),
+            ).fetchone()[0]
+        )
+        if storage_used >= int(quota["storage_limit_bytes"]):
+            db.rollback()
+            raise QuotaError("storage_quota_exhausted")
+        balance = int(quota["generation_balance"])
+        if balance < units:
+            db.rollback()
+            raise QuotaError("generation_quota_exhausted")
+        balance_after = balance - units
+        db.execute(
+            "UPDATE user_quotas SET generation_balance = ?, updated_at = ? WHERE user_id = ?",
+            (balance_after, now, user_id),
+        )
+        db.execute(
+            """INSERT INTO generation_reservations
+               (job_id, user_id, units, state, reserved_at, settled_at)
+               VALUES (?, ?, ?, 'reserved', ?, NULL)""",
+            (job_id, user_id, units, now),
+        )
+        db.execute(
+            """INSERT INTO quota_ledger
+               (id, user_id, job_id, event_type, units, balance_after, detail, created_at)
+               VALUES (?, ?, ?, 'reserve', ?, ?, ?, ?)""",
+            (uuid.uuid4().hex, user_id, job_id, -units, balance_after, "生成任务已创建，暂时冻结额度", now),
+        )
+        db.commit()
+        return _quota_snapshot(db, user_id, include_ledger=False)
+
+
+def settle_generation_reservation(job_id: str, succeeded: bool) -> bool:
+    now = time.time()
+    with _connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        reservation = db.execute(
+            "SELECT * FROM generation_reservations WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+        if not reservation or reservation["state"] != "reserved":
+            db.commit()
+            return False
+        user_id = reservation["user_id"]
+        units = int(reservation["units"])
+        _, quota = _ensure_quota_row(db, user_id)
+        balance = int(quota["generation_balance"])
+        if succeeded:
+            state = "consumed"
+            event_type = "consume"
+            ledger_units = 0
+            detail = "视频生成成功，冻结额度已确认消费"
+            balance_after = balance
+        else:
+            state = "refunded"
+            event_type = "refund"
+            ledger_units = units
+            detail = "任务失败，生成额度已自动退回"
+            balance_after = balance + units
+            db.execute(
+                "UPDATE user_quotas SET generation_balance = ?, updated_at = ? WHERE user_id = ?",
+                (balance_after, now, user_id),
+            )
+        db.execute(
+            "UPDATE generation_reservations SET state = ?, settled_at = ? WHERE job_id = ?",
+            (state, now, job_id),
+        )
+        db.execute(
+            """INSERT INTO quota_ledger
+               (id, user_id, job_id, event_type, units, balance_after, detail, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (uuid.uuid4().hex, user_id, job_id, event_type, ledger_units, balance_after, detail, now),
+        )
+        db.commit()
+    return True
+
+
+def adjust_user_quota(
+    user_id: str,
+    *,
+    generation_delta: int = 0,
+    storage_limit_bytes: int | None = None,
+    detail: str = "管理员调整额度",
+) -> dict:
+    now = time.time()
+    with _connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        user, quota = _ensure_quota_row(db, user_id)
+        if user["role"] == "admin":
+            db.commit()
+            return _quota_snapshot(db, user_id)
+        balance_after = max(0, int(quota["generation_balance"]) + int(generation_delta))
+        next_storage_limit = int(quota["storage_limit_bytes"])
+        if storage_limit_bytes is not None:
+            next_storage_limit = max(0, int(storage_limit_bytes))
+        db.execute(
+            """UPDATE user_quotas SET generation_balance = ?, storage_limit_bytes = ?, updated_at = ?
+               WHERE user_id = ?""",
+            (balance_after, next_storage_limit, now, user_id),
+        )
+        if int(generation_delta):
+            db.execute(
+                """INSERT INTO quota_ledger
+                   (id, user_id, job_id, event_type, units, balance_after, detail, created_at)
+                   VALUES (?, ?, NULL, 'adjust', ?, ?, ?, ?)""",
+                (uuid.uuid4().hex, user_id, int(generation_delta), balance_after, str(detail)[:200], now),
+            )
+        db.commit()
+        return _quota_snapshot(db, user_id)
+
+
+def record_video_storage(
+    job_id: str,
+    user_id: str,
+    preview_url: str,
+    download_url: str,
+    size_bytes: int,
+) -> None:
+    now = time.time()
+    with _connect() as db:
+        _ensure_quota_row(db, user_id)
+        db.execute(
+            """INSERT INTO video_storage
+               (job_id, user_id, preview_url, download_url, size_bytes, state, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+               ON CONFLICT(job_id) DO UPDATE SET
+                 user_id = excluded.user_id,
+                 preview_url = excluded.preview_url,
+                 download_url = excluded.download_url,
+                 size_bytes = excluded.size_bytes,
+                 state = 'active',
+                 updated_at = excluded.updated_at""",
+            (
+                job_id,
+                user_id,
+                str(preview_url or "")[:2000],
+                str(download_url or "")[:2000],
+                max(0, int(size_bytes)),
+                now,
+                now,
+            ),
+        )
+        db.commit()
+
+
+def mark_video_storage_deleted(job_id: str, user_id: str) -> int:
+    now = time.time()
+    with _connect() as db:
+        row = db.execute(
+            "SELECT size_bytes FROM video_storage WHERE job_id = ? AND user_id = ? AND state = 'active'",
+            (job_id, user_id),
+        ).fetchone()
+        if not row:
+            return 0
+        db.execute(
+            "UPDATE video_storage SET state = 'deleted', size_bytes = 0, updated_at = ? WHERE job_id = ?",
+            (now, job_id),
+        )
+        db.commit()
+    return int(row["size_bytes"])
 
 
 def register_user(username: str, password: str) -> dict:

@@ -186,6 +186,7 @@ def create_job(
     inputs: dict,
     user_id: str | None = None,
     render_device_id: str | None = None,
+    job_id: str | None = None,
 ) -> dict:
     workflow = get_workflow(workflow_code, category)
     if not workflow:
@@ -206,7 +207,7 @@ def create_job(
         inputs = _normalize_book_inputs(inputs, lookup_missing=False)
     validate_inputs(workflow, inputs)
     now = time.time()
-    job_id = uuid.uuid4().hex
+    job_id = str(job_id or uuid.uuid4().hex)
     with _connect() as db:
         db.execute(
             """INSERT INTO jobs
@@ -234,6 +235,7 @@ def create_draft_key_render_job(
     payload: Any,
     user_id: str | None = None,
     render_device_id: str | None = None,
+    job_id: str | None = None,
 ) -> dict:
     """Create a normal background job for an already generated draft_key."""
     from desktop_bridge.core import BridgeError, extract_draft_key
@@ -254,7 +256,7 @@ def create_draft_key_render_job(
         raise PermissionError("render_not_configured")
 
     now = time.time()
-    job_id = uuid.uuid4().hex
+    job_id = str(job_id or uuid.uuid4().hex)
     inputs = {"draft_key": draft_key}
     with _connect() as db:
         db.execute(
@@ -445,6 +447,14 @@ def _update_job(job_id: str, **changes):
     with _connect() as db:
         db.execute(f"UPDATE jobs SET {assignments} WHERE id = ?", (*values.values(), job_id))
         db.commit()
+    terminal_status = values.get("status")
+    if terminal_status in {"succeeded", "failed"}:
+        try:
+            from site_accounts import settle_generation_reservation
+
+            settle_generation_reservation(job_id, terminal_status == "succeeded")
+        except Exception:
+            logger.exception("job_quota_settlement_failed job_id=%s status=%s", job_id, terminal_status)
     if {"status", "stage", "progress"} & values.keys():
         logger.info(
             "job_state job_id=%s status=%s stage=%s progress=%s",
@@ -2183,6 +2193,37 @@ def promote_device_render_result(
     if not changed:
         return False
     _update_job(job_id, results_json=json.dumps(results, ensure_ascii=False))
+    return True
+
+
+def delete_job_video_results(job_id: str) -> bool:
+    """Remove local video files and clear video links while preserving job history."""
+    job = get_job(job_id)
+    if not job or job.get("status") != "succeeded":
+        return False
+    results = list(job.get("results") or [])
+    retained = []
+    removed = False
+    for result in results:
+        if result.get("type") != "video":
+            retained.append(result)
+            continue
+        removed = True
+        for raw_url in {str(result.get("url") or ""), str(result.get("download_url") or "")}:
+            prefix = "/api/v1/job-results/"
+            if not raw_url.startswith(prefix):
+                continue
+            local_path = get_result_path(Path(raw_url.removeprefix(prefix)).name)
+            if local_path:
+                local_path.unlink(missing_ok=True)
+    if not removed:
+        return False
+    _update_job(
+        job_id,
+        stage="video_deleted",
+        results_json=json.dumps(retained, ensure_ascii=False),
+    )
+    append_job_log(job_id, "用户已删除云端视频，存储空间已经释放")
     return True
 
 
