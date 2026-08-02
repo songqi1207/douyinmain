@@ -19,7 +19,17 @@ from workflow_jobs import DATA_DIR
 DB_PATH = Path(os.getenv("SITE_DB_PATH") or DATA_DIR / "site.sqlite3").resolve()
 SESSION_TTL_SECONDS = int(os.getenv("SITE_SESSION_TTL_SECONDS") or 30 * 24 * 60 * 60)
 DEFAULT_GENERATION_CREDITS = int(os.getenv("DEFAULT_GENERATION_CREDITS") or 10)
+LEGACY_CREDIT_POINT_RATE = max(1, int(os.getenv("LEGACY_CREDIT_POINT_RATE") or 4))
+DEFAULT_POINTS_BALANCE = int(
+    os.getenv("DEFAULT_POINTS_BALANCE") or DEFAULT_GENERATION_CREDITS * LEGACY_CREDIT_POINT_RATE
+)
 DEFAULT_STORAGE_LIMIT_BYTES = int(os.getenv("DEFAULT_STORAGE_LIMIT_BYTES") or 5 * 1024 * 1024 * 1024)
+DEFAULT_INVITER_REWARD_POINTS = int(os.getenv("DEFAULT_INVITER_REWARD_POINTS") or 10)
+DEFAULT_INVITEE_REWARD_POINTS = int(os.getenv("DEFAULT_INVITEE_REWARD_POINTS") or 10)
+BILLING_MARKUP_MULTIPLIER = max(2, int(os.getenv("BILLING_MARKUP_MULTIPLIER") or 2))
+DEFAULT_COZE_COST_POINTS = max(0, int(os.getenv("DEFAULT_COZE_COST_POINTS") or 1))
+DEFAULT_MIHE_COST_POINTS = max(0, int(os.getenv("DEFAULT_MIHE_COST_POINTS") or 0))
+DEFAULT_LOCAL_MIHE_COST_POINTS = max(0, int(os.getenv("DEFAULT_LOCAL_MIHE_COST_POINTS") or 1))
 USERNAME_PATTERN = re.compile(r"^[\w\u4e00-\u9fff]{3,20}$", re.UNICODE)
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
@@ -86,6 +96,11 @@ def init_site_database():
                 updated_at REAL NOT NULL,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS schema_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at REAL NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS generation_reservations (
                 job_id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -123,6 +138,23 @@ def init_site_database():
             );
             CREATE INDEX IF NOT EXISTS idx_video_storage_user
                 ON video_storage(user_id, state, updated_at DESC);
+            CREATE TABLE IF NOT EXISTS invite_rewards (
+                invitee_user_id TEXT PRIMARY KEY,
+                inviter_user_id TEXT NOT NULL,
+                inviter_points INTEGER NOT NULL,
+                invitee_points INTEGER NOT NULL,
+                created_at REAL NOT NULL,
+                FOREIGN KEY(invitee_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY(inviter_user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_invite_rewards_inviter
+                ON invite_rewards(inviter_user_id, created_at DESC);
+            CREATE TABLE IF NOT EXISTS workflow_pricing (
+                workflow_code TEXT PRIMARY KEY,
+                coze_cost_points INTEGER NOT NULL,
+                mihe_cost_points INTEGER NOT NULL,
+                updated_at REAL NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS registration_applications (
                 id TEXT PRIMARY KEY,
                 email TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -144,8 +176,47 @@ def init_site_database():
             db.execute("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
         if "must_change_password" not in columns:
             db.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
+        if "invite_code" not in columns:
+            db.execute("ALTER TABLE users ADD COLUMN invite_code TEXT")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE) WHERE email IS NOT NULL")
+        application_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(registration_applications)").fetchall()
+        }
+        if "invite_code" not in application_columns:
+            db.execute("ALTER TABLE registration_applications ADD COLUMN invite_code TEXT")
+        if "inviter_user_id" not in application_columns:
+            db.execute("ALTER TABLE registration_applications ADD COLUMN inviter_user_id TEXT")
+        for row in db.execute("SELECT id FROM users WHERE invite_code IS NULL OR invite_code = ''").fetchall():
+            db.execute(
+                "UPDATE users SET invite_code = ? WHERE id = ?",
+                (str(row["id"])[:8].upper(), row["id"]),
+            )
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_invite_code ON users(invite_code COLLATE NOCASE) WHERE invite_code IS NOT NULL"
+        )
         now = time.time()
+        points_migration = db.execute(
+            "SELECT value FROM schema_meta WHERE key = 'points_wallet_v1'"
+        ).fetchone()
+        if not points_migration:
+            existing_quotas = int(db.execute("SELECT COUNT(*) FROM user_quotas").fetchone()[0])
+            if existing_quotas:
+                db.execute(
+                    "UPDATE user_quotas SET generation_balance = generation_balance * ? WHERE generation_balance >= 0",
+                    (LEGACY_CREDIT_POINT_RATE,),
+                )
+                db.execute(
+                    "UPDATE generation_reservations SET units = units * ?",
+                    (LEGACY_CREDIT_POINT_RATE,),
+                )
+                db.execute(
+                    "UPDATE quota_ledger SET units = units * ?, balance_after = balance_after * ?",
+                    (LEGACY_CREDIT_POINT_RATE, LEGACY_CREDIT_POINT_RATE),
+                )
+            db.execute(
+                "INSERT INTO schema_meta (key, value, updated_at) VALUES ('points_wallet_v1', ?, ?)",
+                (str(LEGACY_CREDIT_POINT_RATE), now),
+            )
         db.execute(
             """INSERT OR IGNORE INTO user_quotas
                (user_id, generation_balance, storage_limit_bytes, created_at, updated_at)
@@ -154,7 +225,7 @@ def init_site_database():
                       CASE WHEN role = 'admin' THEN -1 ELSE ? END,
                       ?, ?
                FROM users""",
-            (DEFAULT_GENERATION_CREDITS, DEFAULT_STORAGE_LIMIT_BYTES, now, now),
+            (DEFAULT_POINTS_BALANCE, DEFAULT_STORAGE_LIMIT_BYTES, now, now),
         )
         db.commit()
 
@@ -170,6 +241,7 @@ def _public_user(row) -> dict:
         "email": row["email"],
         "role": row["role"],
         "must_change_password": bool(row["must_change_password"]),
+        "invite_code": row["invite_code"] if "invite_code" in row.keys() else None,
     }
 
 
@@ -186,7 +258,7 @@ def active_admin_user() -> dict | None:
 
 def _ensure_quota_row(db: sqlite3.Connection, user_id: str):
     user = db.execute(
-        "SELECT id, username, email, role, active FROM users WHERE id = ?",
+        "SELECT id, username, email, role, active, invite_code FROM users WHERE id = ?",
         (user_id,),
     ).fetchone()
     if not user:
@@ -199,7 +271,7 @@ def _ensure_quota_row(db: sqlite3.Connection, user_id: str):
            VALUES (?, ?, ?, ?, ?)""",
         (
             user_id,
-            -1 if unlimited else DEFAULT_GENERATION_CREDITS,
+            -1 if unlimited else DEFAULT_POINTS_BALANCE,
             -1 if unlimited else DEFAULT_STORAGE_LIMIT_BYTES,
             now,
             now,
@@ -236,6 +308,11 @@ def _quota_snapshot(db: sqlite3.Connection, user_id: str, *, include_ledger: boo
     )
     unlimited = user["role"] == "admin"
     storage_limit = int(quota["storage_limit_bytes"])
+    invited = db.execute(
+        "SELECT COUNT(*), COALESCE(SUM(inviter_points), 0) FROM invite_rewards WHERE inviter_user_id = ?",
+        (user_id,),
+    ).fetchone()
+    balance = -1 if unlimited else int(quota["generation_balance"])
     result = {
         "user": {
             "id": user["id"],
@@ -245,15 +322,26 @@ def _quota_snapshot(db: sqlite3.Connection, user_id: str, *, include_ledger: boo
             "active": bool(user["active"]),
         },
         "unlimited": unlimited,
-        "generation_balance": -1 if unlimited else int(quota["generation_balance"]),
+        "generation_balance": balance,
         "generation_reserved": reserved,
         "generation_consumed": consumed,
+        "points_balance": balance,
+        "points_reserved": reserved,
+        "points_consumed": consumed,
         "storage_used_bytes": storage_used,
         "storage_limit_bytes": -1 if unlimited else storage_limit,
         "storage_available_bytes": -1 if unlimited else max(0, storage_limit - storage_used),
         "can_generate": unlimited or (
             int(quota["generation_balance"]) > 0 and storage_used < storage_limit
         ),
+        "invite": {
+            "code": user["invite_code"],
+            "invited_count": int(invited[0]),
+            "rewarded_points": int(invited[1]),
+            "inviter_reward_points": DEFAULT_INVITER_REWARD_POINTS,
+            "invitee_reward_points": DEFAULT_INVITEE_REWARD_POINTS,
+        },
+        "billing_multiplier": BILLING_MARKUP_MULTIPLIER,
     }
     if include_ledger:
         rows = db.execute(
@@ -285,13 +373,80 @@ def list_user_quotas() -> list[dict]:
     return result
 
 
+def _default_workflow_costs(workflow_code: str) -> tuple[int, int]:
+    code = str(workflow_code or "").strip().upper()
+    if code == "DRAFT_KEY_EXPORT":
+        return 0, 0
+    mihe_points = DEFAULT_LOCAL_MIHE_COST_POINTS if code in {"OWN01", "OWN02", "OWN03"} else DEFAULT_MIHE_COST_POINTS
+    return DEFAULT_COZE_COST_POINTS, mihe_points
+
+
+def workflow_pricing_snapshot(workflow_code: str) -> dict:
+    code = str(workflow_code or "").strip().upper()
+    if not code:
+        raise ValueError("workflow_code_required")
+    default_coze, default_mihe = _default_workflow_costs(code)
+    now = time.time()
+    with _connect() as db:
+        db.execute(
+            """INSERT OR IGNORE INTO workflow_pricing
+               (workflow_code, coze_cost_points, mihe_cost_points, updated_at)
+               VALUES (?, ?, ?, ?)""",
+            (code, default_coze, default_mihe, now),
+        )
+        row = db.execute(
+            "SELECT * FROM workflow_pricing WHERE workflow_code = ?", (code,)
+        ).fetchone()
+        db.commit()
+    coze_points = max(0, int(row["coze_cost_points"]))
+    mihe_points = max(0, int(row["mihe_cost_points"]))
+    provider_cost_points = coze_points + mihe_points
+    return {
+        "workflow_code": code,
+        "coze_cost_points": coze_points,
+        "mihe_cost_points": mihe_points,
+        "provider_cost_points": provider_cost_points,
+        "billing_multiplier": BILLING_MARKUP_MULTIPLIER,
+        "price_points": provider_cost_points * BILLING_MARKUP_MULTIPLIER,
+        "updated_at": float(row["updated_at"]),
+    }
+
+
+def update_workflow_pricing(
+    workflow_code: str,
+    *,
+    coze_cost_points: int,
+    mihe_cost_points: int,
+) -> dict:
+    code = str(workflow_code or "").strip().upper()
+    coze_points = int(coze_cost_points)
+    mihe_points = int(mihe_cost_points)
+    if not code:
+        raise ValueError("workflow_code_required")
+    if not 0 <= coze_points <= 1_000_000 or not 0 <= mihe_points <= 1_000_000:
+        raise ValueError("invalid_workflow_cost")
+    with _connect() as db:
+        db.execute(
+            """INSERT INTO workflow_pricing
+               (workflow_code, coze_cost_points, mihe_cost_points, updated_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(workflow_code) DO UPDATE SET
+                 coze_cost_points = excluded.coze_cost_points,
+                 mihe_cost_points = excluded.mihe_cost_points,
+                 updated_at = excluded.updated_at""",
+            (code, coze_points, mihe_points, time.time()),
+        )
+        db.commit()
+    return workflow_pricing_snapshot(code)
+
+
 def reserve_generation(user_id: str, job_id: str, units: int = 1) -> dict:
-    units = max(1, int(units))
+    units = max(0, int(units))
     now = time.time()
     with _connect() as db:
         db.execute("BEGIN IMMEDIATE")
         user, quota = _ensure_quota_row(db, user_id)
-        if user["role"] == "admin":
+        if user["role"] == "admin" or units == 0:
             db.commit()
             return _quota_snapshot(db, user_id, include_ledger=False)
         existing = db.execute(
@@ -329,7 +484,7 @@ def reserve_generation(user_id: str, job_id: str, units: int = 1) -> dict:
             """INSERT INTO quota_ledger
                (id, user_id, job_id, event_type, units, balance_after, detail, created_at)
                VALUES (?, ?, ?, 'reserve', ?, ?, ?, ?)""",
-            (uuid.uuid4().hex, user_id, job_id, -units, balance_after, "生成任务已创建，暂时冻结额度", now),
+            (uuid.uuid4().hex, user_id, job_id, -units, balance_after, "生成任务已创建，暂时冻结积分", now),
         )
         db.commit()
         return _quota_snapshot(db, user_id, include_ledger=False)
@@ -354,13 +509,13 @@ def settle_generation_reservation(job_id: str, succeeded: bool) -> bool:
             state = "consumed"
             event_type = "consume"
             ledger_units = 0
-            detail = "视频生成成功，冻结额度已确认消费"
+            detail = "视频生成成功，冻结积分已确认消费"
             balance_after = balance
         else:
             state = "refunded"
             event_type = "refund"
             ledger_units = units
-            detail = "任务失败，生成额度已自动退回"
+            detail = "任务失败，冻结积分已自动退回"
             balance_after = balance + units
             db.execute(
                 "UPDATE user_quotas SET generation_balance = ?, updated_at = ? WHERE user_id = ?",
@@ -477,9 +632,17 @@ def register_user(username: str, password: str) -> dict:
         with _connect() as db:
             db.execute(
                 """INSERT INTO users
-                   (id, username, email, password_hash, password_salt, role, active, must_change_password, created_at)
-                   VALUES (?, ?, NULL, ?, ?, 'user', 1, 0, ?)""",
-                (user_id, username, _hash_password(password, salt), salt.hex(), time.time()),
+                   (id, username, email, password_hash, password_salt, role, active,
+                    must_change_password, invite_code, created_at)
+                   VALUES (?, ?, NULL, ?, ?, 'user', 1, 0, ?, ?)""",
+                (
+                    user_id,
+                    username,
+                    _hash_password(password, salt),
+                    salt.hex(),
+                    user_id[:8].upper(),
+                    time.time(),
+                ),
             )
             db.commit()
     except sqlite3.IntegrityError as exc:
@@ -518,13 +681,23 @@ def _public_application(row) -> dict:
         "reviewed_at": row["reviewed_at"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+        "invite_code": row["invite_code"] if "invite_code" in row.keys() else None,
     }
 
 
-def submit_registration_application(email: str) -> dict:
+def submit_registration_application(email: str, invite_code: str = "") -> dict:
     email = _normalize_email(email)
+    normalized_invite_code = str(invite_code or "").strip().upper()
     now = time.time()
     with _connect() as db:
+        inviter = None
+        if normalized_invite_code:
+            inviter = db.execute(
+                "SELECT id FROM users WHERE invite_code = ? COLLATE NOCASE AND active = 1",
+                (normalized_invite_code,),
+            ).fetchone()
+            if not inviter:
+                raise ValueError("邀请码不存在或已失效")
         existing_user = db.execute(
             "SELECT active FROM users WHERE email = ? COLLATE NOCASE", (email,)
         ).fetchone()
@@ -541,17 +714,26 @@ def submit_registration_application(email: str) -> dict:
             db.execute(
                 """UPDATE registration_applications
                    SET status = 'pending', delivery_status = 'not_sent', delivery_error = NULL,
-                       reviewed_by = NULL, reviewed_at = NULL, updated_at = ? WHERE id = ?""",
-                (now, existing["id"]),
+                       reviewed_by = NULL, reviewed_at = NULL, invite_code = ?,
+                       inviter_user_id = ?, updated_at = ? WHERE id = ?""",
+                (normalized_invite_code or None, inviter["id"] if inviter else None, now, existing["id"]),
             )
             application_id = existing["id"]
         else:
             application_id = uuid.uuid4().hex
             db.execute(
                 """INSERT INTO registration_applications
-                   (id, email, status, delivery_status, delivery_error, reviewed_by, reviewed_at, created_at, updated_at)
-                   VALUES (?, ?, 'pending', 'not_sent', NULL, NULL, NULL, ?, ?)""",
-                (application_id, email, now, now),
+                   (id, email, status, delivery_status, delivery_error, reviewed_by, reviewed_at,
+                    created_at, updated_at, invite_code, inviter_user_id)
+                   VALUES (?, ?, 'pending', 'not_sent', NULL, NULL, NULL, ?, ?, ?, ?)""",
+                (
+                    application_id,
+                    email,
+                    now,
+                    now,
+                    normalized_invite_code or None,
+                    inviter["id"] if inviter else None,
+                ),
             )
         db.commit()
         row = db.execute("SELECT * FROM registration_applications WHERE id = ?", (application_id,)).fetchone()
@@ -601,16 +783,19 @@ def prepare_registration_approval(application_id: str, reviewer_id: str) -> tupl
                 (_hash_password(temporary_password, salt), salt.hex(), existing_user["id"]),
             )
         else:
+            user_id = uuid.uuid4().hex
             db.execute(
                 """INSERT INTO users
-                   (id, username, email, password_hash, password_salt, role, active, must_change_password, created_at)
-                   VALUES (?, ?, ?, ?, ?, 'user', 0, 0, ?)""",
+                   (id, username, email, password_hash, password_salt, role, active,
+                    must_change_password, invite_code, created_at)
+                   VALUES (?, ?, ?, ?, ?, 'user', 0, 0, ?, ?)""",
                 (
-                    uuid.uuid4().hex,
+                    user_id,
                     application["email"],
                     application["email"],
                     _hash_password(temporary_password, salt),
                     salt.hex(),
+                    user_id[:8].upper(),
                     now,
                 ),
             )
@@ -642,6 +827,44 @@ def complete_registration_approval(application_id: str) -> dict:
                delivery_error = NULL, updated_at = ? WHERE id = ?""",
             (now, application_id),
         )
+        invitee = db.execute(
+            "SELECT id, role FROM users WHERE email = ? COLLATE NOCASE",
+            (application["email"],),
+        ).fetchone()
+        inviter_user_id = application["inviter_user_id"]
+        if invitee and inviter_user_id and inviter_user_id != invitee["id"]:
+            inviter = db.execute(
+                "SELECT id, role FROM users WHERE id = ? AND active = 1",
+                (inviter_user_id,),
+            ).fetchone()
+            if inviter:
+                inviter_points = 0 if inviter["role"] == "admin" else DEFAULT_INVITER_REWARD_POINTS
+                invitee_points = 0 if invitee["role"] == "admin" else DEFAULT_INVITEE_REWARD_POINTS
+                inserted = db.execute(
+                    """INSERT OR IGNORE INTO invite_rewards
+                       (invitee_user_id, inviter_user_id, inviter_points, invitee_points, created_at)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (invitee["id"], inviter["id"], inviter_points, invitee_points, now),
+                )
+                if inserted.rowcount:
+                    for rewarded_user_id, points, event_type, detail in (
+                        (inviter["id"], inviter_points, "invite_reward", "邀请的新用户已通过审核，奖励积分到账"),
+                        (invitee["id"], invitee_points, "welcome_bonus", "使用邀请码注册并通过审核，奖励积分到账"),
+                    ):
+                        if points <= 0:
+                            continue
+                        _, rewarded_quota = _ensure_quota_row(db, rewarded_user_id)
+                        balance_after = int(rewarded_quota["generation_balance"]) + points
+                        db.execute(
+                            "UPDATE user_quotas SET generation_balance = ?, updated_at = ? WHERE user_id = ?",
+                            (balance_after, now, rewarded_user_id),
+                        )
+                        db.execute(
+                            """INSERT INTO quota_ledger
+                               (id, user_id, job_id, event_type, units, balance_after, detail, created_at)
+                               VALUES (?, ?, NULL, ?, ?, ?, ?, ?)""",
+                            (uuid.uuid4().hex, rewarded_user_id, event_type, points, balance_after, detail, now),
+                        )
         db.commit()
         row = db.execute("SELECT * FROM registration_applications WHERE id = ?", (application_id,)).fetchone()
     return _public_application(row)
@@ -728,11 +951,13 @@ def ensure_configured_admin() -> None:
             if not password:
                 raise RuntimeError("管理员账号不存在，首次创建时必须配置 SITE_ADMIN_PASSWORD")
             salt = secrets.token_bytes(16)
+            user_id = uuid.uuid4().hex
             db.execute(
                 """INSERT INTO users
-                   (id, username, email, password_hash, password_salt, role, active, must_change_password, created_at)
-                   VALUES (?, ?, ?, ?, ?, 'admin', 1, 0, ?)""",
-                (uuid.uuid4().hex, email, email, _hash_password(password, salt), salt.hex(), now),
+                   (id, username, email, password_hash, password_salt, role, active,
+                    must_change_password, invite_code, created_at)
+                   VALUES (?, ?, ?, ?, ?, 'admin', 1, 0, ?, ?)""",
+                (user_id, email, email, _hash_password(password, salt), salt.hex(), user_id[:8].upper(), now),
             )
         db.commit()
 

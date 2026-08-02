@@ -338,7 +338,7 @@ export function StudioPage() {
               {configMessage && <div className="notice success"><Check />{configMessage}</div>}
               <button className="studio-submit" disabled={busy || !theme.trim()} type="submit">
                 {busy ? <span className="spin-ring" /> : <Sparkles />}
-                {busy ? "正在创建任务" : !user ? "登录后开始创作" : !ready ? "完成准备后生成" : "一键生成视频"}
+                {busy ? "正在创建任务" : !user ? "登录后开始创作" : !ready ? "完成准备后生成" : `一键生成视频 · ${workflow?.pricing?.price_points ?? 0} 积分`}
               </button>
               <p className="privacy-note"><ShieldCheck />不会向浏览器发送生成服务或渲染密钥</p>
             </form>

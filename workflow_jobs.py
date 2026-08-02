@@ -187,6 +187,8 @@ def create_job(
     user_id: str | None = None,
     render_device_id: str | None = None,
     job_id: str | None = None,
+    cost_points: int = 0,
+    price_points: int = 0,
 ) -> dict:
     workflow = get_workflow(workflow_code, category)
     if not workflow:
@@ -214,7 +216,7 @@ def create_job(
             (id, workflow_code, category, status, stage, progress, inputs_json, results_json,
              error_code, error_message, user_id, render_device_id, render_claimed_at,
              cost_cents, price_cents, created_at, updated_at)
-            VALUES (?, ?, ?, 'queued', 'queued', 0, ?, '[]', NULL, NULL, ?, ?, NULL, 0, 0, ?, ?)""",
+            VALUES (?, ?, ?, 'queued', 'queued', 0, ?, '[]', NULL, NULL, ?, ?, NULL, ?, ?, ?, ?)""",
             (
                 job_id,
                 workflow_code.upper(),
@@ -222,6 +224,8 @@ def create_job(
                 json.dumps(inputs, ensure_ascii=False),
                 user_id,
                 render_device_id,
+                max(0, int(cost_points)),
+                max(0, int(price_points)),
                 now,
                 now,
             ),
@@ -236,6 +240,8 @@ def create_draft_key_render_job(
     user_id: str | None = None,
     render_device_id: str | None = None,
     job_id: str | None = None,
+    cost_points: int = 0,
+    price_points: int = 0,
 ) -> dict:
     """Create a normal background job for an already generated draft_key."""
     from desktop_bridge.core import BridgeError, extract_draft_key
@@ -264,7 +270,7 @@ def create_draft_key_render_job(
             (id, workflow_code, category, status, stage, progress, inputs_json, results_json,
              error_code, error_message, user_id, render_device_id, render_claimed_at,
              cost_cents, price_cents, created_at, updated_at)
-            VALUES (?, ?, ?, 'queued', 'queued', 0, ?, '[]', NULL, NULL, ?, ?, NULL, 0, 0, ?, ?)""",
+            VALUES (?, ?, ?, 'queued', 'queued', 0, ?, '[]', NULL, NULL, ?, ?, NULL, ?, ?, ?, ?)""",
             (
                 job_id,
                 DRAFT_KEY_RENDER_CODE,
@@ -272,6 +278,8 @@ def create_draft_key_render_job(
                 json.dumps(inputs, ensure_ascii=False),
                 user_id,
                 render_device_id,
+                max(0, int(cost_points)),
+                max(0, int(price_points)),
                 now,
                 now,
             ),
@@ -602,8 +610,8 @@ def execute_job(job_id: str):
                 return
             logger.info("job_render_route job_id=%s route=server", job_id)
             results = _render_drafts(job, results)
-        cost_cents = int(os.getenv(f"WORKFLOW_COST_CENTS_{job['workflow_code']}") or 0)
-        price_cents = int(os.getenv(f"WORKFLOW_PRICE_CENTS_{job['workflow_code']}") or 0)
+        cost_cents = int(job.get("cost_cents") or os.getenv(f"WORKFLOW_COST_CENTS_{job['workflow_code']}") or 0)
+        price_cents = int(job.get("price_cents") or os.getenv(f"WORKFLOW_PRICE_CENTS_{job['workflow_code']}") or 0)
         _update_job(
             job_id,
             status="succeeded",

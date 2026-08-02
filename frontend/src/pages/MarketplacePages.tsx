@@ -254,7 +254,7 @@ export function DetailPage() {
                   </label>
                 ))}
                 {error && <div className="notice error">{error}</div>}
-                <button className="primary-button" disabled={busy || assetBusy || workflow.status !== "online"} type="submit">{busy ? <LoaderCircle className="spin" /> : <Sparkles />}{busy ? "正在创建任务" : workflow.status === "online" ? "开始生成" : "后台接入中"}</button>
+                <button className="primary-button" disabled={busy || assetBusy || workflow.status !== "online"} type="submit">{busy ? <LoaderCircle className="spin" /> : <Sparkles />}{busy ? "正在创建任务" : workflow.status === "online" ? `开始生成 · ${workflow.pricing?.price_points ?? 0} 积分` : "后台接入中"}</button>
               </form>
             </section>
             <aside className="execution-column">{job ? <JobProgress job={job} onRetry={() => void retry()} retrying={busy} /> : <div className="execution-placeholder"><strong>执行过程</strong><p>任务提交后，这里会显示生成和渲染状态。</p></div>}</aside>

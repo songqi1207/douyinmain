@@ -1,11 +1,11 @@
-import { Cloud, Coins, HardDrive, History, LoaderCircle, Save, ShieldCheck } from "lucide-react";
+import { Cloud, Coins, Copy, Gift, HardDrive, History, LoaderCircle, Save, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { adjustAdminUserQuota, fetchAccountQuota, fetchAdminUserQuotas } from "../api";
+import { adjustAdminUserQuota, fetchAccountQuota, fetchAdminUserQuotas, fetchAdminWorkflowPricing, updateAdminWorkflowPricing } from "../api";
 import { useAuth } from "../auth";
 import { Layout } from "../components/Layout";
-import type { QuotaLedgerEntry, UserQuota } from "../types";
+import type { AdminWorkflowPricing, QuotaLedgerEntry, UserQuota } from "../types";
 
 function formatBytes(value: number) {
   if (value < 0) return "不限";
@@ -15,10 +15,12 @@ function formatBytes(value: number) {
 }
 
 const LEDGER_LABELS: Record<QuotaLedgerEntry["event_type"], string> = {
-  reserve: "创建任务，冻结额度",
-  consume: "生成成功，确认消费",
-  refund: "任务失败，自动退回",
-  adjust: "管理员调整额度",
+  reserve: "创建任务，冻结积分",
+  consume: "生成成功，确认扣分",
+  refund: "任务失败，自动退分",
+  adjust: "管理员调整积分",
+  invite_reward: "邀请好友奖励",
+  welcome_bonus: "受邀注册奖励",
 };
 
 export function AccountUsagePage() {
@@ -27,6 +29,7 @@ export function AccountUsagePage() {
   const [quota, setQuota] = useState<UserQuota | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -43,29 +46,54 @@ export function AccountUsagePage() {
   const storagePercent = quota?.unlimited
     ? 0
     : Math.min(100, Math.round((quota?.storage_used_bytes || 0) / Math.max(1, quota?.storage_limit_bytes || 1) * 100));
+  const inviteUrl = quota?.invite?.code
+    ? `${window.location.origin}/business/register?invite=${encodeURIComponent(quota.invite.code)}`
+    : "";
+
+  async function copyInviteLink() {
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(inviteUrl);
+      else throw new Error("clipboard unavailable");
+    } catch {
+      const input = document.createElement("textarea");
+      input.value = inviteUrl;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      input.remove();
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  }
 
   return (
     <Layout>
       <main className="content-page page-width usage-page">
-        <div className="page-heading"><span className="page-icon"><Cloud /></span><div><h1>额度与云存储</h1><p>查看视频生成次数、云端空间和每一笔额度变化。</p></div></div>
+        <div className="page-heading"><span className="page-icon"><Cloud /></span><div><h1>积分与云存储</h1><p>查看平台积分、供应商成本计价、邀请奖励和云端空间。</p></div></div>
         {error && <div className="notice error">{error}</div>}
         {loading || !quota ? <div className="loading-state"><LoaderCircle className="spin" />正在读取额度</div> : (
           <>
             <section className="quota-overview-grid">
-              <article><span><Coins /></span><div><small>可用生成额度</small><strong>{quota.unlimited ? "不限" : `${quota.generation_balance} 次`}</strong><p>{quota.generation_reserved ? `${quota.generation_reserved} 次正在任务中` : "当前没有冻结额度"}</p></div></article>
+              <article><span><Coins /></span><div><small>可用平台积分</small><strong>{quota.unlimited ? "不限" : `${quota.points_balance} 分`}</strong><p>{quota.points_reserved ? `${quota.points_reserved} 分正在任务中` : "当前没有冻结积分"}</p></div></article>
               <article><span><HardDrive /></span><div><small>视频云存储</small><strong>{formatBytes(quota.storage_used_bytes)} / {formatBytes(quota.storage_limit_bytes)}</strong><p>{quota.unlimited ? "管理员账号不限制空间" : `剩余 ${formatBytes(quota.storage_available_bytes)}`}</p></div></article>
-              <article className={quota.can_generate ? "ready" : "blocked"}><span><ShieldCheck /></span><div><small>创作状态</small><strong>{quota.can_generate ? "可以生成视频" : "额度或存储不足"}</strong><p>{quota.can_generate ? "每次成功生成消费 1 次" : "请删除旧视频或联系管理员扩容"}</p></div></article>
+              <article className={quota.can_generate ? "ready" : "blocked"}><span><ShieldCheck /></span><div><small>创作状态</small><strong>{quota.can_generate ? "可以生成视频" : "积分或存储不足"}</strong><p>{quota.can_generate ? "每个工作流按实际配置价格扣分" : "请邀请好友、充值积分或释放存储"}</p></div></article>
             </section>
             {!quota.unlimited && <div className="storage-meter"><div><span>云存储使用率</span><strong>{storagePercent}%</strong></div><progress max="100" value={storagePercent} /></div>}
+            {!quota.unlimited && <section className="invite-reward-card">
+              <span><Gift /></span><div><h2>邀请好友送积分</h2><p>好友使用邀请码注册并通过审核后，你获得 {quota.invite.inviter_reward_points} 积分，好友获得 {quota.invite.invitee_reward_points} 积分。</p><small>已成功邀请 {quota.invite.invited_count} 人，累计奖励 {quota.invite.rewarded_points} 积分</small></div>
+              <div className="invite-code-box"><strong>{quota.invite.code}</strong><button type="button" onClick={() => void copyInviteLink()}><Copy />{copied ? "已复制" : "复制邀请链接"}</button></div>
+            </section>}
             <section className="quota-rules-card">
               <h2>消费规则</h2>
-              <ol><li>创建任务时先冻结 1 次生成额度。</li><li>视频成功后正式消费；任务失败自动退回。</li><li>网页预览版和高清下载版都计入实际云存储。</li><li>删除创作记录中的云端视频后立即释放空间。</li></ol>
+              <ol><li>每个工作流按照内容与素材生成服务的计费成本核算积分。</li><li>用户售价 = 工作流成本 × {quota.billing_multiplier}，创建任务时先冻结对应积分。</li><li>视频成功后正式扣分；任务失败自动退回全部冻结积分。</li><li>网页预览版和高清下载版计入云存储，删除视频后立即释放空间。</li></ol>
             </section>
             <section className="quota-ledger-card">
-              <div className="section-title"><span>额度明细</span><History /></div>
+              <div className="section-title"><span>积分明细</span><History /></div>
               {quota.ledger?.length ? quota.ledger.map((entry) => (
-                <article key={entry.id}><div><strong>{LEDGER_LABELS[entry.event_type]}</strong><small>{entry.detail || "额度变动"} · {new Date(entry.created_at * 1000).toLocaleString("zh-CN")}</small></div><span className={entry.units > 0 ? "positive" : entry.units < 0 ? "negative" : ""}>{entry.units > 0 ? `+${entry.units}` : entry.units || "确认"}</span></article>
-              )) : <div className="small-empty">还没有额度消费记录</div>}
+                <article key={entry.id}><div><strong>{LEDGER_LABELS[entry.event_type]}</strong><small>{entry.detail || "积分变动"} · {new Date(entry.created_at * 1000).toLocaleString("zh-CN")}</small></div><span className={entry.units > 0 ? "positive" : entry.units < 0 ? "negative" : ""}>{entry.units > 0 ? `+${entry.units}` : entry.units || "确认"}</span></article>
+              )) : <div className="small-empty">还没有积分消费记录</div>}
             </section>
           </>
         )}
@@ -80,14 +108,18 @@ export function AdminUserQuotaPage() {
   const [items, setItems] = useState<UserQuota[]>([]);
   const [generationValues, setGenerationValues] = useState<Record<string, string>>({});
   const [storageValues, setStorageValues] = useState<Record<string, string>>({});
+  const [pricingItems, setPricingItems] = useState<AdminWorkflowPricing[]>([]);
+  const [pricingValues, setPricingValues] = useState<Record<string, { coze: string; mihe: string }>>({});
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
   async function load() {
-    const result = await fetchAdminUserQuotas();
-    setItems(result.items);
-    setStorageValues(Object.fromEntries(result.items.map((item) => [item.user.id, item.unlimited ? "" : (item.storage_limit_bytes / 1024 ** 3).toFixed(0)])));
+    const [quotaResult, pricingResult] = await Promise.all([fetchAdminUserQuotas(), fetchAdminWorkflowPricing()]);
+    setItems(quotaResult.items);
+    setStorageValues(Object.fromEntries(quotaResult.items.map((item) => [item.user.id, item.unlimited ? "" : (item.storage_limit_bytes / 1024 ** 3).toFixed(0)])));
+    setPricingItems(pricingResult.items);
+    setPricingValues(Object.fromEntries(pricingResult.items.map((item) => [item.workflow.code, { coze: String(item.pricing.coze_cost_points), mihe: String(item.pricing.mihe_cost_points) }])));
   }
 
   useEffect(() => {
@@ -103,13 +135,28 @@ export function AdminUserQuotaPage() {
       const delta = Number(generationValues[item.user.id] || 0);
       const storage = Number(storageValues[item.user.id] || 0);
       const result = await adjustAdminUserQuota(item.user.id, {
-        generation_delta: delta,
+        points_delta: delta,
         storage_limit_gb: storage,
-        detail: "管理员在用户额度页面调整",
+        detail: "管理员在用户积分页面调整",
       });
-      setMessage(`${item.user.email || item.user.username} 的额度已更新`);
+      setMessage(`${item.user.email || item.user.username} 的积分与存储额度已更新`);
       setGenerationValues((current) => ({ ...current, [item.user.id]: "" }));
       setItems((current) => current.map((row) => row.user.id === item.user.id ? result.quota : row));
+    } catch (nextError) { setError((nextError as Error).message); }
+    finally { setBusyId(""); }
+  }
+
+  async function savePricing(item: AdminWorkflowPricing) {
+    const code = item.workflow.code;
+    const values = pricingValues[code] || { coze: "0", mihe: "0" };
+    setBusyId(`pricing-${code}`); setError(""); setMessage("");
+    try {
+      const result = await updateAdminWorkflowPricing(code, {
+        coze_cost_points: Number(values.coze || 0),
+        mihe_cost_points: Number(values.mihe || 0),
+      });
+      setPricingItems((current) => current.map((row) => row.workflow.code === code ? { ...row, pricing: result.pricing } : row));
+      setMessage(`${item.workflow.name} 的售价已更新为 ${result.pricing.price_points} 积分`);
     } catch (nextError) { setError((nextError as Error).message); }
     finally { setBusyId(""); }
   }
@@ -117,20 +164,36 @@ export function AdminUserQuotaPage() {
   return (
     <Layout>
       <main className="content-page page-width admin-quota-page">
-        <div className="page-heading"><span className="page-icon"><Coins /></span><div><h1>用户额度管理</h1><p>增加或扣减生成次数，并调整每个普通用户的云存储上限。</p></div></div>
+        <div className="page-heading"><span className="page-icon"><Coins /></span><div><h1>积分与成本管理</h1><p>调整用户积分、云存储上限，以及每个工作流的供应商成本。</p></div></div>
         {error && <div className="notice error">{error}</div>}{message && <div className="notice success">{message}</div>}
         <div className="admin-quota-list">
           {items.map((item) => (
             <article key={item.user.id}>
-              <div className="admin-quota-user"><strong>{item.user.email || item.user.username}</strong><small>{item.unlimited ? "管理员 · 不限额度" : `剩余 ${item.generation_balance} 次 · 已用 ${formatBytes(item.storage_used_bytes)}`}</small></div>
+              <div className="admin-quota-user"><strong>{item.user.email || item.user.username}</strong><small>{item.unlimited ? "管理员 · 不限积分" : `剩余 ${item.points_balance} 积分 · 已用 ${formatBytes(item.storage_used_bytes)}`}</small></div>
               {item.unlimited ? <span className="unlimited-badge">不限</span> : <>
-                <label><span>次数增减</span><input type="number" min="-10000" max="10000" placeholder="例如 10 或 -2" value={generationValues[item.user.id] || ""} onChange={(event) => setGenerationValues((current) => ({ ...current, [item.user.id]: event.target.value }))} /></label>
+                <label><span>积分增减</span><input type="number" min="-10000" max="10000" placeholder="例如 100 或 -20" value={generationValues[item.user.id] || ""} onChange={(event) => setGenerationValues((current) => ({ ...current, [item.user.id]: event.target.value }))} /></label>
                 <label><span>存储上限 GB</span><input type="number" min="0" max="10240" value={storageValues[item.user.id] || ""} onChange={(event) => setStorageValues((current) => ({ ...current, [item.user.id]: event.target.value }))} /></label>
                 <button type="button" disabled={busyId === item.user.id} onClick={() => void save(item)}>{busyId === item.user.id ? <LoaderCircle className="spin" /> : <Save />}保存</button>
               </>}
             </article>
           ))}
         </div>
+        <section className="workflow-pricing-section">
+          <div className="section-title"><span>工作流供应商成本</span><small>售价 =（内容生成额度 + 素材生成积分）× 2</small></div>
+          <div className="workflow-pricing-list">
+            {pricingItems.map((item) => {
+              const values = pricingValues[item.workflow.code] || { coze: "0", mihe: "0" };
+              const price = (Number(values.coze || 0) + Number(values.mihe || 0)) * item.pricing.billing_multiplier;
+              return <article key={item.workflow.code}>
+                <div><strong>{item.workflow.name}</strong><small>{item.workflow.code} · {item.workflow.status === "online" ? "已上线" : "接入中"}</small></div>
+                <label><span>内容生成额度</span><input type="number" min="0" max="1000000" value={values.coze} onChange={(event) => setPricingValues((current) => ({ ...current, [item.workflow.code]: { ...values, coze: event.target.value } }))} /></label>
+                <label><span>素材生成积分</span><input type="number" min="0" max="1000000" value={values.mihe} onChange={(event) => setPricingValues((current) => ({ ...current, [item.workflow.code]: { ...values, mihe: event.target.value } }))} /></label>
+                <div className="workflow-price-total"><small>用户售价</small><strong>{price} 积分</strong></div>
+                <button type="button" disabled={busyId === `pricing-${item.workflow.code}`} onClick={() => void savePricing(item)}>{busyId === `pricing-${item.workflow.code}` ? <LoaderCircle className="spin" /> : <Save />}保存价格</button>
+              </article>;
+            })}
+          </div>
+        </section>
       </main>
     </Layout>
   );

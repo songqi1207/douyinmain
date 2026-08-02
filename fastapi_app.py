@@ -65,7 +65,9 @@ from site_accounts import (
     submit_registration_application,
     settle_generation_reservation,
     toggle_favorite,
+    update_workflow_pricing,
     user_from_session,
+    workflow_pricing_snapshot,
 )
 from workflow_catalog import IMAGE_WORKFLOWS, workflow_categories
 from workflow_jobs import (
@@ -219,19 +221,21 @@ def _preferred_render_device(user: dict) -> tuple[dict | None, bool]:
     return shared_device, bool(shared_device)
 
 
-def _reserve_job_quota(user: dict, job_id: str) -> None:
+def _reserve_job_quota(user: dict, job_id: str, workflow_code: str) -> dict:
+    pricing = workflow_pricing_snapshot(workflow_code)
     try:
-        reserve_generation(user["id"], job_id, 1)
+        reserve_generation(user["id"], job_id, pricing["price_points"])
     except QuotaError as exc:
         code = str(exc)
         messages = {
-            "generation_quota_exhausted": "视频生成额度已用完，请联系管理员增加额度",
+            "generation_quota_exhausted": "平台积分不足，请联系管理员充值或邀请新用户获得积分",
             "storage_quota_exhausted": "视频云存储空间已满，请先删除旧视频或联系管理员扩容",
         }
         raise HTTPException(
             status_code=402,
-            detail={"code": code, "message": messages.get(code, "当前账号额度不足")},
+            detail={"code": code, "message": messages.get(code, "当前账号积分不足")},
         ) from exc
+    return pricing
 
 
 def _require_render_device(request: Request) -> dict:
@@ -351,6 +355,11 @@ def _workflow_stats(items: list[dict]) -> list[dict]:
             item["code"], {"views": 0, "favorites": 0, "downloads": 0, "runs": 0}
         )
         public_item["stats"]["runs"] = runs.get(item["code"], 0)
+        pricing = workflow_pricing_snapshot(item["code"])
+        public_item["pricing"] = {
+            "workflow_code": pricing["workflow_code"],
+            "price_points": pricing["price_points"],
+        }
         result.append(public_item)
     return result
 
@@ -454,7 +463,10 @@ def _notify_admin_of_registration(application: dict) -> None:
 @app.post("/api/v1/auth/register", status_code=202)
 def api_register(background_tasks: BackgroundTasks, payload: dict = Body(default_factory=dict)):
     try:
-        application = submit_registration_application(str(payload.get("email") or ""))
+        application = submit_registration_application(
+            str(payload.get("email") or ""),
+            str(payload.get("invite_code") or ""),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"code": "invalid_registration", "message": str(exc)}) from exc
     if (os.getenv("REGISTRATION_NOTIFICATION_EMAIL") or "").strip():
@@ -1202,7 +1214,7 @@ def api_create_job(
             },
         )
     job_id = uuid.uuid4().hex
-    _reserve_job_quota(user, job_id)
+    pricing = _reserve_job_quota(user, job_id, workflow_code)
     try:
         job = create_job(
             workflow_code,
@@ -1211,6 +1223,8 @@ def api_create_job(
             user["id"],
             render_device["id"] if render_device else None,
             job_id,
+            pricing["provider_cost_points"],
+            pricing["price_points"],
         )
     except KeyError as exc:
         settle_generation_reservation(job_id, False)
@@ -1238,13 +1252,15 @@ def api_create_draft_key_render(
     user = _require_ready_user(request)
     render_device, _ = _preferred_render_device(user)
     job_id = uuid.uuid4().hex
-    _reserve_job_quota(user, job_id)
+    pricing = _reserve_job_quota(user, job_id, DRAFT_KEY_RENDER_CODE)
     try:
         job = create_draft_key_render_job(
             payload.get("draft_key") or payload.get("key") or payload,
             user["id"],
             render_device["id"] if render_device else None,
             job_id,
+            pricing["provider_cost_points"],
+            pricing["price_points"],
         )
     except PermissionError as exc:
         settle_generation_reservation(job_id, False)
@@ -1404,7 +1420,7 @@ def api_adjust_user_quota(
 ):
     _require_admin(request)
     try:
-        generation_delta = int(payload.get("generation_delta") or 0)
+        generation_delta = int(payload.get("points_delta", payload.get("generation_delta")) or 0)
         storage_limit_gb = payload.get("storage_limit_gb")
         storage_limit_bytes = None if storage_limit_gb in (None, "") else round(float(storage_limit_gb) * 1024 * 1024 * 1024)
     except (TypeError, ValueError) as exc:
@@ -1415,7 +1431,7 @@ def api_adjust_user_quota(
     if not -10_000 <= generation_delta <= 10_000:
         raise HTTPException(
             status_code=422,
-            detail={"code": "invalid_generation_delta", "message": "单次生成额度调整范围为 -10000 到 10000"},
+            detail={"code": "invalid_generation_delta", "message": "单次积分调整范围为 -10000 到 10000"},
         )
     if storage_limit_bytes is not None and not 0 <= storage_limit_bytes <= 10 * 1024**4:
         raise HTTPException(
@@ -1427,14 +1443,61 @@ def api_adjust_user_quota(
             user_id,
             generation_delta=generation_delta,
             storage_limit_bytes=storage_limit_bytes,
-            detail=str(payload.get("detail") or "管理员调整额度"),
+            detail=str(payload.get("detail") or "管理员调整积分"),
         )
     except KeyError as exc:
         raise HTTPException(
             status_code=404,
             detail={"code": "user_not_found", "message": "账号不存在"},
         ) from exc
-    return {"quota": quota, "message": "用户额度已更新"}
+    return {"quota": quota, "message": "用户积分与存储额度已更新"}
+
+
+@app.get("/api/v1/admin/workflow-pricing")
+def api_admin_workflow_pricing(request: Request):
+    _require_admin(request)
+    items = []
+    for workflow in list_workflows("全部"):
+        items.append(
+            {
+                "workflow": {
+                    "code": workflow["code"],
+                    "name": workflow["name"],
+                    "status": workflow["status"],
+                    "categories": workflow.get("categories") or [],
+                },
+                "pricing": workflow_pricing_snapshot(workflow["code"]),
+            }
+        )
+    items.sort(key=lambda item: (item["workflow"]["status"] != "online", item["workflow"]["code"]))
+    return {"items": items, "total": len(items)}
+
+
+@app.put("/api/v1/admin/workflow-pricing/{workflow_code}")
+def api_update_workflow_pricing(
+    workflow_code: str,
+    request: Request,
+    payload: dict = Body(default_factory=dict),
+):
+    _require_admin(request)
+    workflow = get_workflow(workflow_code)
+    if not workflow:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "workflow_not_found", "message": "工作流不存在"},
+        )
+    try:
+        pricing = update_workflow_pricing(
+            workflow_code,
+            coze_cost_points=int(payload.get("coze_cost_points") or 0),
+            mihe_cost_points=int(payload.get("mihe_cost_points") or 0),
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_workflow_pricing", "message": "供应商成本积分必须是 0 到 1000000 的整数"},
+        ) from exc
+    return {"pricing": pricing, "message": "工作流积分价格已更新"}
 
 
 @app.get("/api/v1/vod/renders/{req_id}")
@@ -1478,7 +1541,7 @@ def api_retry_job(job_id: str, request: Request, background_tasks: BackgroundTas
         raise HTTPException(status_code=409, detail={"code": "job_not_failed", "message": "只有失败任务可以重试"})
     render_device, _ = _preferred_render_device(user)
     next_job_id = uuid.uuid4().hex
-    _reserve_job_quota(user, next_job_id)
+    pricing = _reserve_job_quota(user, next_job_id, old_job["workflow_code"])
     if old_job["workflow_code"] == DRAFT_KEY_RENDER_CODE:
         try:
             job = create_draft_key_render_job(
@@ -1486,6 +1549,8 @@ def api_retry_job(job_id: str, request: Request, background_tasks: BackgroundTas
                 old_job.get("user_id"),
                 render_device["id"] if render_device else None,
                 next_job_id,
+                pricing["provider_cost_points"],
+                pricing["price_points"],
             )
         except PermissionError as exc:
             settle_generation_reservation(next_job_id, False)
@@ -1517,6 +1582,8 @@ def api_retry_job(job_id: str, request: Request, background_tasks: BackgroundTas
                 old_job.get("user_id"),
                 render_device["id"] if render_device and workflow and workflow.get("generation_mode") == "draft" else None,
                 next_job_id,
+                pricing["provider_cost_points"],
+                pricing["price_points"],
             )
         except Exception:
             settle_generation_reservation(next_job_id, False)
@@ -1613,6 +1680,7 @@ def _public_job(job: dict) -> dict:
         "status": job["status"],
         "stage": job["stage"],
         "progress": job["progress"],
+        "price_points": int(job.get("price_cents") or 0),
         "results": public_results,
         "error": (
             {"code": job["error_code"], "message": job["error_message"]}

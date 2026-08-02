@@ -16,7 +16,11 @@ class QuotaTests(unittest.TestCase):
         self.patchers = [
             patch.object(site_accounts, "DB_PATH", self.database),
             patch.object(site_accounts, "DEFAULT_GENERATION_CREDITS", 10),
+            patch.object(site_accounts, "DEFAULT_POINTS_BALANCE", 10),
             patch.object(site_accounts, "DEFAULT_STORAGE_LIMIT_BYTES", 5 * 1024**3),
+            patch.object(site_accounts, "DEFAULT_INVITER_REWARD_POINTS", 10),
+            patch.object(site_accounts, "DEFAULT_INVITEE_REWARD_POINTS", 10),
+            patch.object(site_accounts, "BILLING_MARKUP_MULTIPLIER", 2),
         ]
         for patcher in self.patchers:
             patcher.start()
@@ -72,6 +76,59 @@ class QuotaTests(unittest.TestCase):
         self.assertEqual(adjusted["generation_balance"], 15)
         self.assertEqual(adjusted["storage_limit_bytes"], 8 * 1024**3)
         self.assertEqual(adjusted["ledger"][0]["event_type"], "adjust")
+
+    def test_workflow_price_is_twice_the_configured_provider_cost(self):
+        pricing = site_accounts.update_workflow_pricing(
+            "OWN02",
+            coze_cost_points=3,
+            mihe_cost_points=2,
+        )
+        self.assertEqual(pricing["provider_cost_points"], 5)
+        self.assertEqual(pricing["price_points"], 10)
+
+        site_accounts.reserve_generation(self.user["id"], "priced-job", pricing["price_points"])
+        self.assertEqual(site_accounts.quota_snapshot(self.user["id"])["points_balance"], 0)
+        site_accounts.settle_generation_reservation("priced-job", False)
+        self.assertEqual(site_accounts.quota_snapshot(self.user["id"])["points_balance"], 10)
+
+    def test_approved_invitation_rewards_both_users_once(self):
+        inviter_before = site_accounts.quota_snapshot(self.user["id"])
+        invite_code = inviter_before["invite"]["code"]
+        application = site_accounts.submit_registration_application(
+            "invited@example.test",
+            invite_code,
+        )
+        prepared, temporary_password = site_accounts.prepare_registration_approval(
+            application["id"],
+            self.user["id"],
+        )
+        self.assertEqual(prepared["invite_code"], invite_code)
+        site_accounts.complete_registration_approval(application["id"])
+
+        invitee = site_accounts.authenticate_user("invited@example.test", temporary_password)
+        self.assertIsNotNone(invitee)
+        inviter_after = site_accounts.quota_snapshot(self.user["id"])
+        invitee_after = site_accounts.quota_snapshot(invitee["id"])
+        self.assertEqual(inviter_after["points_balance"], 20)
+        self.assertEqual(invitee_after["points_balance"], 20)
+        self.assertEqual(inviter_after["invite"]["invited_count"], 1)
+        self.assertEqual(inviter_after["ledger"][0]["event_type"], "invite_reward")
+        self.assertEqual(invitee_after["ledger"][0]["event_type"], "welcome_bonus")
+
+    def test_legacy_generation_balance_converts_to_points_only_once(self):
+        site_accounts.quota_snapshot(self.user["id"])
+        with site_accounts._connect() as db:
+            db.execute(
+                "UPDATE user_quotas SET generation_balance = 10 WHERE user_id = ?",
+                (self.user["id"],),
+            )
+            db.execute("DELETE FROM schema_meta WHERE key = 'points_wallet_v1'")
+            db.commit()
+        with patch.object(site_accounts, "LEGACY_CREDIT_POINT_RATE", 4):
+            site_accounts.init_site_database()
+            self.assertEqual(site_accounts.quota_snapshot(self.user["id"])["points_balance"], 40)
+            site_accounts.init_site_database()
+            self.assertEqual(site_accounts.quota_snapshot(self.user["id"])["points_balance"], 40)
 
 
 if __name__ == "__main__":

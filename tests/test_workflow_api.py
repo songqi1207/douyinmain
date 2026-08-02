@@ -267,6 +267,38 @@ class WorkflowApiTests(unittest.TestCase):
         )
         self.assertEqual(restored.status_code, 200, restored.text)
 
+    def test_admin_configures_double_cost_pricing_without_exposing_provider_breakdown(self):
+        self.assertEqual(self.client.get("/api/v1/admin/workflow-pricing").status_code, 403)
+        listing = self.admin_client.get("/api/v1/admin/workflow-pricing")
+        self.assertEqual(listing.status_code, 200, listing.text)
+        original = next(
+            item["pricing"] for item in listing.json()["items"]
+            if item["workflow"]["code"] == "OWN02"
+        )
+        updated = self.admin_client.put(
+            "/api/v1/admin/workflow-pricing/OWN02",
+            json={"coze_cost_points": 7, "mihe_cost_points": 3},
+        )
+        self.assertEqual(updated.status_code, 200, updated.text)
+        self.assertEqual(updated.json()["pricing"]["provider_cost_points"], 10)
+        self.assertEqual(updated.json()["pricing"]["price_points"], 20)
+
+        public = self.client.get("/api/v1/workflows/OWN02?category=自有工作流")
+        self.assertEqual(public.status_code, 200, public.text)
+        public_pricing = public.json()["workflow"]["pricing"]
+        self.assertEqual(public_pricing["price_points"], 20)
+        self.assertNotIn("coze_cost_points", public_pricing)
+        self.assertNotIn("mihe_cost_points", public_pricing)
+
+        restored = self.admin_client.put(
+            "/api/v1/admin/workflow-pricing/OWN02",
+            json={
+                "coze_cost_points": original["coze_cost_points"],
+                "mihe_cost_points": original["mihe_cost_points"],
+            },
+        )
+        self.assertEqual(restored.status_code, 200, restored.text)
+
     def test_job_result_files_require_owner_and_completed_status(self):
         user_id = self.client.get("/api/v1/auth/me").json()["user"]["id"]
         with tempfile.TemporaryDirectory(prefix="private-job-results-") as temporary:

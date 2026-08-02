@@ -13,6 +13,16 @@ export type InputField = {
   options?: Array<{ label: string; value: string }>;
 };
 
+export type WorkflowPricing = {
+  workflow_code: string;
+  coze_cost_points: number;
+  mihe_cost_points: number;
+  provider_cost_points: number;
+  billing_multiplier: number;
+  price_points: number;
+  updated_at: number;
+};
+
 export type Workflow = {
   code: string;
   name: string;
@@ -28,6 +38,7 @@ export type Workflow = {
   output_type: "image" | "video" | "draft";
   generation_mode: "workflow_template" | "draft" | "video";
   stats: { views: number; favorites: number; downloads: number; runs: number };
+  pricing?: Pick<WorkflowPricing, "workflow_code" | "price_points">;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -50,6 +61,7 @@ export type Job = {
   status: "queued" | "running" | "rendering" | "succeeded" | "failed";
   stage: string;
   progress: number;
+  price_points?: number;
   results: JobResult[];
   error?: { code: string; message: string } | null;
   created_at: number;
@@ -66,7 +78,7 @@ export type RenderDevice = {
   created_at: number;
 };
 
-export type AuthUser = { id: string; username: string; email?: string | null; role: "user" | "admin"; must_change_password?: boolean };
+export type AuthUser = { id: string; username: string; email?: string | null; role: "user" | "admin"; must_change_password?: boolean; invite_code?: string | null };
 
 export type RuntimeWorkflowSetting = {
   code: string;
@@ -95,6 +107,7 @@ export type RegistrationApplication = {
   reviewed_at?: number | null;
   created_at: number;
   updated_at: number;
+  invite_code?: string | null;
 };
 
 export type Voice = {
@@ -151,7 +164,7 @@ export type JobPage = {
 export type QuotaLedgerEntry = {
   id: string;
   job_id?: string | null;
-  event_type: "reserve" | "consume" | "refund" | "adjust";
+  event_type: "reserve" | "consume" | "refund" | "adjust" | "invite_reward" | "welcome_bonus";
   units: number;
   balance_after: number;
   detail?: string | null;
@@ -170,9 +183,25 @@ export type UserQuota = {
   generation_balance: number;
   generation_reserved: number;
   generation_consumed: number;
+  points_balance: number;
+  points_reserved: number;
+  points_consumed: number;
   storage_used_bytes: number;
   storage_limit_bytes: number;
   storage_available_bytes: number;
   can_generate: boolean;
+  billing_multiplier: number;
+  invite: {
+    code: string;
+    invited_count: number;
+    rewarded_points: number;
+    inviter_reward_points: number;
+    invitee_reward_points: number;
+  };
   ledger?: QuotaLedgerEntry[];
+};
+
+export type AdminWorkflowPricing = {
+  workflow: Pick<Workflow, "code" | "name" | "status" | "categories">;
+  pricing: WorkflowPricing;
 };

@@ -131,7 +131,7 @@ describe("StudioPage", () => {
     await screen.findByText("已发布");
     fireEvent.click(screen.getByRole("tab", { name: /香烟故事/ }));
     fireEvent.change(screen.getByPlaceholderText("输入香烟名称"), { target: { value: "中华" } });
-    fireEvent.click(screen.getByRole("button", { name: "一键生成视频" }));
+    fireEvent.click(screen.getByRole("button", { name: /一键生成视频/ }));
 
     await waitFor(() => expect(api.createJob).toHaveBeenCalledWith(
       "OWN02",

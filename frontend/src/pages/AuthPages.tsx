@@ -1,4 +1,4 @@
-import { Check, LoaderCircle, LockKeyhole, Mail, ShieldCheck, Sparkles } from "lucide-react";
+import { Check, Gift, LoaderCircle, LockKeyhole, Mail, ShieldCheck, Sparkles } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -12,6 +12,7 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState(() => searchParams.get("invite") || "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -24,7 +25,7 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
     setSuccess("");
     try {
       if (isRegister) {
-        const result = await register(email);
+        const result = await register(email, inviteCode);
         setSuccess(result.message);
         setEmail("");
         return;
@@ -57,6 +58,12 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
               <span>{isRegister ? "申请邮箱" : "邮箱 / 用户名"}</span>
               <div className="input-with-icon"><Mail /><input autoComplete="username" type={isRegister ? "email" : "text"} value={email} onChange={(event) => setEmail(event.target.value)} placeholder={isRegister ? "name@example.com" : "输入邮箱或用户名"} required /></div>
             </label>
+            {isRegister && (
+              <label>
+                <span>邀请码（选填）</span>
+                <div className="input-with-icon"><Gift /><input value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toUpperCase())} placeholder="填写后双方可获得积分" maxLength={32} /></div>
+              </label>
+            )}
             {!isRegister && (
               <label>
                 <span>登录密码</span>

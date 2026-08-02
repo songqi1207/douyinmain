@@ -1,5 +1,6 @@
 import type {
   AuthUser,
+  AdminWorkflowPricing,
   Job,
   JobLogEntry,
   JobPage,
@@ -11,6 +12,7 @@ import type {
   UserQuota,
   VoiceCatalog,
   Workflow,
+  WorkflowPricing,
 } from "./types";
 
 type ApiErrorShape = {
@@ -125,10 +127,31 @@ export async function fetchAdminUserQuotas() {
 
 export async function adjustAdminUserQuota(
   userId: string,
-  payload: { generation_delta: number; storage_limit_gb?: number; detail?: string },
+  payload: { points_delta: number; storage_limit_gb?: number; detail?: string },
 ) {
   return request<{ quota: UserQuota; message: string }>(
     `/api/v1/admin/user-quotas/${encodeURIComponent(userId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function fetchAdminWorkflowPricing() {
+  return request<{ items: AdminWorkflowPricing[]; total: number }>(
+    "/api/v1/admin/workflow-pricing",
+    { cache: "no-store" },
+  );
+}
+
+export async function updateAdminWorkflowPricing(
+  workflowCode: string,
+  payload: { coze_cost_points: number; mihe_cost_points: number },
+) {
+  return request<{ pricing: WorkflowPricing; message: string }>(
+    `/api/v1/admin/workflow-pricing/${encodeURIComponent(workflowCode)}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -201,11 +224,11 @@ export async function changePassword(currentPassword: string, newPassword: strin
   });
 }
 
-export async function register(email: string) {
+export async function register(email: string, inviteCode = "") {
   return request<{ application: RegistrationApplication; message: string }>("/api/v1/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, invite_code: inviteCode }),
   });
 }
 

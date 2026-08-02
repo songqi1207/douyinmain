@@ -829,6 +829,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .quota-ledger-card article > span { color: #aaa49a; font-weight: 700; }
 .quota-ledger-card article > span.positive { color: #73c58c; }
 .quota-ledger-card article > span.negative { color: #db8b80; }
+.invite-reward-card { margin-top: 16px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 20px; border: 1px solid #5b4627; border-radius: 14px; background: linear-gradient(135deg, #241b10, #191816); }
+.invite-reward-card > span { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 14px; color: #e5ba70; background: #36250f; }
+.invite-reward-card h2, .invite-reward-card p { margin: 0; }
+.invite-reward-card h2 { color: #eadcc4; font-size: 16px; }
+.invite-reward-card p, .invite-reward-card small { color: #968b79; font-size: 11px; line-height: 1.7; }
+.invite-code-box { display: grid; justify-items: end; gap: 8px; }
+.invite-code-box strong { color: #edc47b; letter-spacing: 2px; }
+.invite-code-box button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #70542b; border-radius: 8px; padding: 8px 11px; color: #e0b66c; background: #21180e; cursor: pointer; }
+.invite-code-box button svg { width: 14px; }
 .admin-quota-list { display: grid; gap: 10px; }
 .admin-quota-list article { display: grid; grid-template-columns: minmax(220px, 1fr) 170px 170px auto; align-items: end; gap: 12px; padding: 16px; border: 1px solid #37342f; border-radius: 13px; background: #191816; }
 .admin-quota-user { align-self: center; min-width: 0; display: grid; gap: 5px; }
@@ -838,6 +847,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .admin-quota-list input { min-height: 38px; border: 1px solid #403c35; border-radius: 8px; padding: 0 10px; color: #eee8de; background: #111; }
 .admin-quota-list button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #6e5532; border-radius: 8px; padding: 0 13px; color: #e0b86f; background: #211a11; cursor: pointer; }
 .admin-quota-list button svg { width: 14px; }
+.workflow-pricing-section { margin-top: 24px; }
+.workflow-pricing-section > .section-title { margin-bottom: 10px; }
+.workflow-pricing-section > .section-title small { color: #8f887d; }
+.workflow-pricing-list { display: grid; gap: 10px; }
+.workflow-pricing-list article { display: grid; grid-template-columns: minmax(210px, 1fr) 150px 150px 130px auto; align-items: end; gap: 12px; padding: 16px; border: 1px solid #37342f; border-radius: 13px; background: #191816; }
+.workflow-pricing-list article > div:first-child, .workflow-price-total { display: grid; gap: 5px; }
+.workflow-pricing-list small { color: #7d7870; font-size: 10px; }
+.workflow-pricing-list label { display: grid; gap: 6px; color: #8c867d; font-size: 10px; }
+.workflow-pricing-list input { min-height: 38px; border: 1px solid #403c35; border-radius: 8px; padding: 0 10px; color: #eee8de; background: #111; }
+.workflow-pricing-list button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #6e5532; border-radius: 8px; padding: 0 13px; color: #e0b86f; background: #211a11; cursor: pointer; }
+.workflow-pricing-list button svg { width: 14px; }
+.workflow-price-total strong { color: #e5b96d; }
 .unlimited-badge { align-self: center; justify-self: end; padding: 6px 10px; border-radius: 99px; color: #84c89a; background: #17291d; font-size: 11px; }
 .password-card { padding: 24px; }
 .password-card .section-title > svg { color: #c69b58; }
@@ -905,6 +926,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .quota-overview-grid { grid-template-columns: 1fr; }
   .admin-quota-list article { grid-template-columns: 1fr 1fr; }
   .admin-quota-user { grid-column: 1 / -1; }
+  .workflow-pricing-list article { grid-template-columns: 1fr 1fr; }
+  .workflow-pricing-list article > div:first-child { grid-column: 1 / -1; }
   .footer-grid { grid-template-columns: repeat(2, 1fr); gap: 30px; }
 }
 
@@ -965,6 +988,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .admin-quota-list article { grid-template-columns: 1fr; }
   .admin-quota-user { grid-column: auto; }
   .admin-quota-list button { width: 100%; }
+  .invite-reward-card { grid-template-columns: 1fr; }
+  .invite-code-box { justify-items: start; }
+  .workflow-pricing-list article { grid-template-columns: 1fr; }
+  .workflow-pricing-list article > div:first-child { grid-column: auto; }
+  .workflow-pricing-list button { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
