@@ -1453,6 +1453,68 @@ class WorkflowApiTests(unittest.TestCase):
         traversal = self.client.get("/api/v1/workflows/G259/download/json", params={"category": "../"})
         self.assertEqual(traversal.status_code, 404)
 
+    def test_shared_admin_render_device_serves_ordinary_users_without_exposure(self):
+        pairing = self.admin_client.post("/api/v1/render-devices/pairing-codes")
+        self.assertEqual(pairing.status_code, 201, pairing.text)
+        paired = TestClient(app).post(
+            "/api/v1/render-agent/pair",
+            json={
+                "code": pairing.json()["code"],
+                "name": "ADMIN-RENDER",
+                "platform": "windows",
+                "capabilities": {"jianying_native_export": True},
+            },
+        )
+        self.assertEqual(paired.status_code, 200, paired.text)
+        device_id = paired.json()["device_id"]
+        headers = {"Authorization": f"Bearer {paired.json()['device_token']}"}
+        heartbeat = TestClient(app).post(
+            "/api/v1/render-agent/heartbeat",
+            headers=headers,
+            json={"capabilities": {"jianying_native_export": True}},
+        )
+        self.assertEqual(heartbeat.status_code, 200, heartbeat.text)
+
+        try:
+            status = self.client.get("/api/v1/draft-key-renders/status")
+            self.assertEqual(status.status_code, 200, status.text)
+            self.assertTrue(status.json()["configured"])
+            self.assertTrue(status.json()["device_online"])
+            self.assertTrue(status.json()["shared_device"])
+            self.assertEqual(status.json()["devices"], [])
+            self.assertEqual(self.client.get("/api/v1/render-devices").json()["items"], [])
+
+            key = {
+                "kind": "jianying_draft_key",
+                "run_id": "shared-admin-device-test",
+                "draft": {"name": "共享设备测试", "width": 1080, "height": 1920, "fps": 30},
+                "calls": [
+                    {
+                        "call_id": "caption",
+                        "tool": "add_captions",
+                        "params": {"captions": [{"text": "共享设备", "start": 0, "end": 1_000_000}]},
+                    }
+                ],
+            }
+            created = self.client.post("/api/v1/draft-key-renders", json={"draft_key": key})
+            self.assertEqual(created.status_code, 202, created.text)
+            job_id = created.json()["job"]["id"]
+
+            claimed = TestClient(app).post("/api/v1/render-agent/claim", headers=headers)
+            self.assertEqual(claimed.status_code, 200, claimed.text)
+            self.assertEqual(claimed.json()["task"]["job_id"], job_id)
+
+            failed = TestClient(app).post(
+                f"/api/v1/render-agent/jobs/{job_id}/fail",
+                headers=headers,
+                json={"code": "test_cleanup", "message": "测试完成"},
+            )
+            self.assertEqual(failed.status_code, 200, failed.text)
+            self.assertEqual(self.client.get(f"/api/v1/jobs/{job_id}").json()["job"]["status"], "failed")
+        finally:
+            removed = self.admin_client.delete(f"/api/v1/render-devices/{device_id}")
+            self.assertEqual(removed.status_code, 204, removed.text)
+
     def test_z_user_computer_can_pair_claim_and_return_native_mp4(self):
         pairing = self.client.post("/api/v1/render-devices/pairing-codes")
         self.assertEqual(pairing.status_code, 201, pairing.text)

@@ -233,12 +233,20 @@ export function DevicesPage() {
           <span>{status.configured ? <Check /> : <Laptop />}</span>
           <div>
             <strong>{status.message}</strong>
-            <p>{status.device_online ? "你的电脑已准备好接收视频任务。" : status.central_configured ? "当前使用服务端视频渲染。" : "完成下方四步，即可从首页一键生成视频。"}</p>
+            <p>{status.shared_device ? "普通用户无需单独配对，任务会自动进入管理员电脑的渲染队列。" : status.device_online ? "你的电脑已准备好接收视频任务。" : status.central_configured ? "当前使用服务端视频渲染。" : "完成下方四步，即可从首页一键生成视频。"}</p>
           </div>
           <button type="button" onClick={() => void refresh()}><RefreshCw />刷新状态</button>
         </div>
 
-        <section className="device-onboarding">
+        {status.shared_device ? (
+          <section className="shared-render-device-card">
+            <span><Check /></span>
+            <div>
+              <h2>全站共享渲染设备已连接</h2>
+              <p>你的任务会自动排队到管理员的剪映电脑，无需下载安装助手，也不需要再次配对。</p>
+            </div>
+          </section>
+        ) : <section className="device-onboarding">
           <article>
             <em>01</em>
             <span><Download /></span>
@@ -289,9 +297,9 @@ export function DevicesPage() {
             <p>助手会静默常驻；只有剪映原生渲染阶段会短暂打开剪映，完成后自动最小化。</p>
             <button className="secondary-button" type="button" onClick={() => wakeHelper()}><Laptop />唤醒助手</button>
           </article>
-        </section>
+        </section>}
 
-        {pairing && (
+        {!status.shared_device && pairing && (
           <section className="pairing-display" aria-live="polite">
             <div><span>网站地址</span><strong>{window.location.origin}</strong></div>
             <div><span>一次性配对码</span><strong className="pairing-number">{pairing.code}</strong></div>
@@ -301,7 +309,7 @@ export function DevicesPage() {
         {message && <div className="notice success">{message}</div>}
         {error && <div className="notice error">{error}</div>}
 
-        <section className="connected-devices">
+        {!status.shared_device && <section className="connected-devices">
           <div className="section-title"><span>已连接设备</span><small>{status.devices.length} 台</small></div>
           {status.devices.length ? (
             <div className="connected-device-grid">
@@ -323,7 +331,7 @@ export function DevicesPage() {
               ))}
             </div>
           ) : <div className="small-empty">还没有配对设备，请按上方步骤完成首次连接。</div>}
-        </section>
+        </section>}
       </main>
     </Layout>
   );

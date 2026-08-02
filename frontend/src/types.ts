@@ -128,6 +128,7 @@ export type RenderStatus = {
   configured: boolean;
   device_online: boolean;
   central_configured: boolean;
+  shared_device?: boolean;
   latest_helper_version?: string;
   devices: RenderDevice[];
   message: string;

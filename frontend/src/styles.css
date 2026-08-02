@@ -738,6 +738,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .device-hero-status p { margin: 0; color: #807b72; font-size: 11px; }
 .device-hero-status button { display: inline-flex; align-items: center; gap: 6px; border: 0; color: #a99c88; background: transparent; cursor: pointer; font-size: 11px; }
 .device-hero-status button svg { width: 14px; }
+.shared-render-device-card { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 16px; margin: 18px 0; padding: 24px; border: 1px solid #365b43; border-radius: 15px; background: linear-gradient(135deg, #17271d, #171915); }
+.shared-render-device-card > span { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 50%; color: #8bd0a2; background: #213b2a; }
+.shared-render-device-card > span svg { width: 24px; }
+.shared-render-device-card h2 { margin: 0 0 7px; color: #dce9df; font-size: 17px; }
+.shared-render-device-card p { margin: 0; color: #8b9a8e; font-size: 12px; line-height: 1.7; }
 .device-onboarding { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 18px 0; }
 .device-onboarding article { position: relative; min-height: 270px; display: flex; align-items: flex-start; flex-direction: column; padding: 23px; border: 1px solid #37342e; border-radius: 15px; background: #191816; }
 .device-onboarding em { position: absolute; right: 18px; top: 16px; color: #6e5736; font-style: normal; font-size: 11px; }

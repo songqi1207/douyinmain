@@ -2000,19 +2000,23 @@ def _queue_device_render(job: dict, results: list[dict]) -> None:
     append_job_log(job["id"], "视频草稿已加入本机导出队列，等待导出助手领取")
 
 
-def claim_device_render_job(device_id: str, user_id: str, lease_seconds: int = 600) -> dict | None:
-    """Atomically lease one waiting job to its paired device."""
+def claim_device_render_job(device_id: str, lease_seconds: int = 600) -> dict | None:
+    """Atomically lease one waiting job explicitly assigned to this device.
+
+    The job owner may differ from the device owner when an administrator shares
+    one rendering computer with ordinary site users.
+    """
     now = time.time()
     expired = now - max(60, int(lease_seconds))
     with _connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
             """SELECT id FROM jobs
-               WHERE render_device_id = ? AND user_id = ? AND status = 'rendering'
+               WHERE render_device_id = ? AND status = 'rendering'
                  AND (stage = 'waiting_for_device'
                       OR (stage LIKE 'device_%' AND COALESCE(render_claimed_at, 0) < ?))
                ORDER BY created_at LIMIT 1""",
-            (device_id, user_id, expired),
+            (device_id, expired),
         ).fetchone()
         if not row:
             db.commit()

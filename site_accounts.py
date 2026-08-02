@@ -111,6 +111,17 @@ def _public_user(row) -> dict:
     }
 
 
+def active_admin_user() -> dict | None:
+    """Return the single configured active administrator, if available."""
+    with _connect() as db:
+        row = db.execute(
+            """SELECT * FROM users
+               WHERE role = 'admin' AND active = 1
+               ORDER BY created_at ASC LIMIT 1"""
+        ).fetchone()
+    return _public_user(row) if row else None
+
+
 def register_user(username: str, password: str) -> dict:
     username = str(username or "").strip()
     if not USERNAME_PATTERN.fullmatch(username):

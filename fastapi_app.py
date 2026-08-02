@@ -40,6 +40,7 @@ from device_rendering import (
 )
 from site_accounts import (
     SESSION_TTL_SECONDS,
+    active_admin_user,
     authenticate_user,
     change_user_password,
     complete_registration_approval,
@@ -195,6 +196,16 @@ def _require_admin(request: Request) -> dict:
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail={"code": "admin_required", "message": "仅管理员可以审核注册申请"})
     return user
+
+
+def _preferred_render_device(user: dict) -> tuple[dict | None, bool]:
+    """Select the user's own device, then the administrator's shared device."""
+    own_device = preferred_device(user["id"])
+    if own_device or user.get("role") == "admin":
+        return own_device, False
+    admin = active_admin_user()
+    shared_device = preferred_device(admin["id"]) if admin else None
+    return shared_device, bool(shared_device)
 
 
 def _require_render_device(request: Request) -> dict:
@@ -978,7 +989,6 @@ def api_render_agent_claim(request: Request):
     heartbeat_device(device["id"])
     task = claim_device_render_job(
         device["id"],
-        device["user_id"],
         int(os.getenv("DEVICE_RENDER_LEASE_SECONDS") or 900),
     )
     if not task:
@@ -1022,7 +1032,6 @@ async def api_complete_render_agent_job(
     owned_by_device = bool(
         job
         and job.get("render_device_id") == device["id"]
-        and job.get("user_id") == device["user_id"]
     )
     if owned_by_device and job.get("status") == "succeeded":
         heartbeat_device(device["id"])
@@ -1132,7 +1141,7 @@ def api_create_job(
         raise HTTPException(status_code=422, detail={"code": "invalid_inputs", "message": "inputs 必须是对象"})
     workflow = get_workflow(workflow_code, category)
     needs_render = bool(workflow and workflow.get("output_type") == "draft")
-    render_device = preferred_device(user["id"]) if needs_render else None
+    render_device, _ = _preferred_render_device(user) if needs_render else (None, False)
     if (
         needs_render
         and not render_device
@@ -1171,7 +1180,7 @@ def api_create_draft_key_render(
 ):
     """Queue a Jianying-native MP4 export without exposing the Windows worker."""
     user = _require_ready_user(request)
-    render_device = preferred_device(user["id"])
+    render_device, _ = _preferred_render_device(user)
     try:
         job = create_draft_key_render_job(
             payload.get("draft_key") or payload.get("key") or payload,
@@ -1196,16 +1205,18 @@ def api_create_draft_key_render(
 def api_draft_key_render_status(request: Request):
     user = _request_user(request)
     devices = list_devices(user["id"]) if user else []
-    device_online = any(device["online"] for device in devices)
+    render_device, shared_device = _preferred_render_device(user) if user else (None, False)
+    device_online = bool(render_device)
     central_configured = bool((os.getenv("WORKFLOW_RENDER_API_URL") or "").strip())
     configured = device_online or central_configured
     return {
         "configured": configured,
         "device_online": device_online,
         "central_configured": central_configured,
+        "shared_device": shared_device,
         "latest_helper_version": HELPER_VERSION,
         "devices": devices,
-        "message": "本机剪映导出助手在线" if device_online else (
+        "message": "管理员共享剪映导出助手在线" if shared_device else "本机剪映导出助手在线" if device_online else (
             "剪映原生导出服务可用" if central_configured else "请先配对并启动本机剪映导出助手"
         ),
     }
@@ -1347,7 +1358,7 @@ def api_retry_job(job_id: str, request: Request, background_tasks: BackgroundTas
         raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "任务不存在"})
     if old_job["status"] != "failed":
         raise HTTPException(status_code=409, detail={"code": "job_not_failed", "message": "只有失败任务可以重试"})
-    render_device = preferred_device(user["id"])
+    render_device, _ = _preferred_render_device(user)
     if old_job["workflow_code"] == DRAFT_KEY_RENDER_CODE:
         try:
             job = create_draft_key_render_job(
