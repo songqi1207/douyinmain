@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  ArrowRight,
   Download,
   Eye,
   Heart,
@@ -16,6 +17,7 @@ import {
   ApiError,
   createJob,
   fetchCategories,
+  fetchJobs,
   fetchWorkflow,
   fetchWorkflows,
   retryJob,
@@ -78,7 +80,7 @@ function WorkflowCard({
 
 export function CatalogPage() {
   const { user, workflow_favorites } = useAuth();
-  const { tr } = usePreferences();
+  const { tr, locale } = usePreferences();
   const navigate = useNavigate();
   const [categories, setCategories] = useState<Array<{ name: string; count: number }>>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -89,6 +91,8 @@ export function CatalogPage() {
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [videoJobs, setVideoJobs] = useState<Job[]>([]);
+  const [videosLoading, setVideosLoading] = useState(false);
 
   useEffect(() => setFavorites(new Set(workflow_favorites)), [workflow_favorites.join("|")]);
 
@@ -108,6 +112,27 @@ export function CatalogPage() {
     }, 180);
     return () => window.clearTimeout(timer);
   }, [category, query, sort]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setVideoJobs([]);
+      setVideosLoading(false);
+      return () => { cancelled = true; };
+    }
+    setVideosLoading(true);
+    fetchJobs({ page: 1, pageSize: 12, status: "succeeded" })
+      .then(({ items }) => {
+        if (!cancelled) setVideoJobs(items.filter((job) => job.results.some((result) => result.type === "video")).slice(0, 4));
+      })
+      .catch(() => {
+        if (!cancelled) setVideoJobs([]);
+      })
+      .finally(() => {
+        if (!cancelled) setVideosLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   async function save(code: string) {
     if (!user) {
@@ -134,6 +159,47 @@ export function CatalogPage() {
     <Layout>
       <main className="catalog-page page-width">
         <section className="hero-copy"><span className="eyebrow">WORKFLOW LIBRARY</span><h1>{tr("工作流库", "Workflow Library")}</h1><p>{tr("探索更多创作能力，或下载成熟工作流供自己使用。", "Explore proven creative workflows and find the right starting point for your content.")}</p></section>
+        {user && (
+          <section className="catalog-user-videos" aria-labelledby="catalog-user-videos-title">
+            <div className="catalog-video-heading">
+              <div>
+                <span className="eyebrow">MY CREATIONS</span>
+                <h2 id="catalog-user-videos-title">{tr("我做的视频", "My videos")}</h2>
+                <p>{tr("最新生成的成片会自动出现在这里。", "Your latest finished videos appear here automatically.")}</p>
+              </div>
+              <Link to="/records">{tr("查看全部作品", "View all creations")}<ArrowRight /></Link>
+            </div>
+            {videosLoading ? (
+              <div className="catalog-video-state"><LoaderCircle className="spin" />{tr("正在加载成片", "Loading your videos")}</div>
+            ) : videoJobs.length ? (
+              <div className="catalog-video-grid">
+                {videoJobs.map((job) => {
+                  const result = job.results.find((item) => item.type === "video")!;
+                  return (
+                    <article className="catalog-video-card" key={job.id}>
+                      <div className="catalog-video-media">
+                        <video src={result.url} poster={result.poster_url || undefined} controls playsInline preload="none" />
+                      </div>
+                      <div className="catalog-video-body">
+                        <div>
+                          <strong>{job.display_title}</strong>
+                          <span>{job.workflow_code} · {new Date(job.created_at * 1000).toLocaleDateString(locale)}</span>
+                        </div>
+                        <a href={result.download_url || result.url} target="_blank" rel="noreferrer" download={result.downloadable || undefined} aria-label={tr(`下载 ${job.display_title}`, `Download ${job.display_title}`)}><Download /></a>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="catalog-video-empty">
+                <Play />
+                <div><strong>{tr("还没有完成的视频", "No finished videos yet")}</strong><span>{tr("完成第一次生成后，成片会显示在这里。", "Your first completed video will show up here.")}</span></div>
+                <Link to="/business">{tr("去创作", "Create video")}</Link>
+              </div>
+            )}
+          </section>
+        )}
         <section className="toolbar-panel expanded-toolbar">
           <div className="category-tabs" role="tablist" aria-label={tr("工作流分类", "Workflow categories")}>
             {categories.map((item) => <button type="button" className={category === item.name ? "active" : ""} key={item.name} onClick={() => setCategory(item.name)}>{item.name}<em>{item.count}</em></button>)}
