@@ -1622,6 +1622,72 @@ html[data-theme="pastel"] .site-footer { border-color: #dce5ef; color: #7c8ca1; 
 html[data-theme="pastel"] .notice.error { border-color: #f0c3c8; color: #b54f5e; background: #fff2f4; }
 html[data-theme="pastel"] .notice.success { border-color: #bfe4d7; color: #287b61; background: #effbf7; }
 
+/* Pastel surfaces must stay airy: never inherit dark-theme filled panels. */
+html[data-theme="pastel"] :where(
+  .admin-creation-summary article, .admin-creation-card, .admin-password-auth,
+  .admin-quota-list article, .workflow-pricing-list article, .runtime-workflow-card,
+  .runtime-workflow-grid label, .runtime-parameter-fields, .connected-devices,
+  .connected-device-grid article, .pairing-display, .shared-render-device-card,
+  .job-logs-body, .workflow-input-modal, .quick-create-section, .quick-create-form,
+  .quick-create-empty, .result-item, .profile-invite-stats
+) {
+  border-color: #d7e4f1;
+  background: rgba(255, 255, 255, .82);
+  box-shadow: 0 16px 42px rgba(66, 99, 144, .055);
+}
+html[data-theme="pastel"] :where(
+  .admin-creation-toolbar .search-box, .admin-creation-toolbar select,
+  .admin-quota-list input, .workflow-pricing-list input, .admin-password-auth input,
+  .password-card input, .input-with-icon, .runtime-workflow-select select,
+  .runtime-parameter-fields textarea, .runtime-input-schema-list > span,
+  .workflow-input-modal-fields input, .workflow-input-modal-fields select,
+  .workflow-input-modal-fields textarea, .workflow-input-modal-note,
+  .job-logs-body, .quick-theme-input input, .quick-workflow-tabs button,
+  .revealed-password, .admin-creation-facts > span
+) {
+  border-color: #d8e5f2;
+  color: #2b3d56;
+  background: rgba(246, 250, 255, .9);
+  box-shadow: none;
+}
+html[data-theme="pastel"] .admin-creation-card > header,
+html[data-theme="pastel"] .admin-password-actions,
+html[data-theme="pastel"] .workflow-input-modal > header {
+  border-color: #e0e9f3;
+  background: rgba(255, 255, 255, .94);
+}
+html[data-theme="pastel"] :where(
+  .admin-creation-user strong, .admin-creation-body h3, .admin-creation-summary strong,
+  .admin-password-auth strong, .runtime-workflow-card h2, .workflow-price-total strong,
+  .revealed-password code
+) { color: #263a55; }
+html[data-theme="pastel"] :where(
+  .admin-creation-user small, .admin-creation-body p, .admin-creation-facts,
+  .admin-creation-summary small, .admin-password-auth small, .admin-password-auth label span
+) { color: #70839a; }
+html[data-theme="pastel"] .admin-creation-user > span { color: #245d8f; background: linear-gradient(145deg, #d8edff, #ffe1ef); }
+html[data-theme="pastel"] .admin-creation-summary article > svg { color: #4f99e5; }
+html[data-theme="pastel"] .admin-creation-progress { color: #4c8fd3; }
+html[data-theme="pastel"] .admin-creation-toolbar > button,
+html[data-theme="pastel"] :where(.admin-quota-list, .workflow-pricing-list, .admin-password-actions) button {
+  border-color: #c9def3;
+  color: #326fae;
+  background: linear-gradient(105deg, #edf7ff, #fff0f7);
+}
+html[data-theme="pastel"] .record-progress { background: #e5edf6; }
+html[data-theme="pastel"] .record-status { color: #6956aa; background: #f0ecff; }
+html[data-theme="pastel"] .record-status.queued { color: #687b92; background: #eef3f8; }
+html[data-theme="pastel"] .record-status.running,
+html[data-theme="pastel"] .record-status.rendering { color: #3476b9; background: #eaf5ff; }
+html[data-theme="pastel"] .record-status.succeeded { color: #27785f; background: #e9f8f2; }
+html[data-theme="pastel"] .record-status.failed { color: #b45463; background: #fff0f3; }
+html[data-theme="pastel"] .result-actions { color: #687c94; background: #f6f9fd; }
+html[data-theme="pastel"] .workflow-input-modal { box-shadow: 0 28px 80px rgba(60, 85, 120, .2); }
+html[data-theme="pastel"] .workflow-input-modal > header > span,
+html[data-theme="pastel"] .device-onboarding article > span,
+html[data-theme="pastel"] .device-computer { color: #6a70b9; background: linear-gradient(145deg, #eef3ff, #ffeaf4); }
+html[data-theme="pastel"] .job-logs-body { color: #526b86; }
+
 .theme-options button:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .profile-theme-options { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 
