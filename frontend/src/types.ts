@@ -190,7 +190,7 @@ export type AdminJobPage = {
 export type QuotaLedgerEntry = {
   id: string;
   job_id?: string | null;
-  event_type: "reserve" | "consume" | "refund" | "adjust" | "invite_reward" | "welcome_bonus";
+  event_type: "reserve" | "consume" | "refund" | "adjust" | "invite_reward" | "welcome_bonus" | "storage_reserve" | "storage_release";
   units: number;
   balance_after: number;
   detail?: string | null;
@@ -211,6 +211,8 @@ export type UserQuota = {
   generation_consumed: number;
   points_balance: number;
   points_reserved: number;
+  storage_points_reserved: number;
+  points_reserved_total: number;
   points_consumed: number;
   storage_used_bytes: number;
   storage_limit_bytes: number;

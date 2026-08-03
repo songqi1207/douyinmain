@@ -26,6 +26,8 @@ DEFAULT_POINTS_BALANCE = int(
     os.getenv("DEFAULT_POINTS_BALANCE") or 1000
 )
 DEFAULT_STORAGE_LIMIT_BYTES = int(os.getenv("DEFAULT_STORAGE_LIMIT_BYTES") or 5 * 1024 * 1024 * 1024)
+VIDEO_STORAGE_POINT_MB = max(1, int(os.getenv("VIDEO_STORAGE_POINT_MB") or 100))
+VIDEO_STORAGE_POINT_UNIT_BYTES = VIDEO_STORAGE_POINT_MB * 1024 * 1024
 POINT_DENOMINATION_SCALE = max(1, int(os.getenv("POINT_DENOMINATION_SCALE") or 25))
 DEFAULT_INVITER_REWARD_POINTS = int(os.getenv("DEFAULT_INVITER_REWARD_POINTS") or 250)
 DEFAULT_INVITEE_REWARD_POINTS = int(os.getenv("DEFAULT_INVITEE_REWARD_POINTS") or 250)
@@ -134,6 +136,7 @@ def init_site_database():
                 preview_url TEXT,
                 download_url TEXT,
                 size_bytes INTEGER NOT NULL,
+                storage_points INTEGER NOT NULL DEFAULT 0,
                 state TEXT NOT NULL,
                 created_at REAL NOT NULL,
                 updated_at REAL NOT NULL,
@@ -200,6 +203,9 @@ def init_site_database():
         if "invite_code" not in columns:
             db.execute("ALTER TABLE users ADD COLUMN invite_code TEXT")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE) WHERE email IS NOT NULL")
+        video_storage_columns = {row["name"] for row in db.execute("PRAGMA table_info(video_storage)").fetchall()}
+        if "storage_points" not in video_storage_columns:
+            db.execute("ALTER TABLE video_storage ADD COLUMN storage_points INTEGER NOT NULL DEFAULT 0")
         application_columns = {
             row["name"] for row in db.execute("PRAGMA table_info(registration_applications)").fetchall()
         }
@@ -338,6 +344,50 @@ def init_site_database():
                FROM users""",
             (DEFAULT_POINTS_BALANCE, DEFAULT_STORAGE_LIMIT_BYTES, now, now),
         )
+        storage_points_migration = db.execute(
+            "SELECT value FROM schema_meta WHERE key = 'cloud_storage_points_v1'"
+        ).fetchone()
+        if not storage_points_migration:
+            # Existing cloud videos are included once, without charging them again on
+            # every startup.  Admin storage remains unlimited and is never debited.
+            rows = db.execute(
+                """SELECT s.job_id, s.user_id, s.size_bytes, q.generation_balance
+                   FROM video_storage s
+                   JOIN users u ON u.id = s.user_id
+                   JOIN user_quotas q ON q.user_id = s.user_id
+                   WHERE s.state = 'active' AND s.storage_points = 0 AND u.role <> 'admin'"""
+            ).fetchall()
+            for row in rows:
+                points = storage_points_for_bytes(int(row["size_bytes"]))
+                if points <= 0:
+                    continue
+                balance_after = int(row["generation_balance"]) - points
+                db.execute(
+                    "UPDATE video_storage SET storage_points = ?, updated_at = ? WHERE job_id = ?",
+                    (points, now, row["job_id"]),
+                )
+                db.execute(
+                    "UPDATE user_quotas SET generation_balance = ?, updated_at = ? WHERE user_id = ?",
+                    (balance_after, now, row["user_id"]),
+                )
+                db.execute(
+                    """INSERT INTO quota_ledger
+                       (id, user_id, job_id, event_type, units, balance_after, detail, created_at)
+                       VALUES (?, ?, ?, 'storage_reserve', ?, ?, ?, ?)""",
+                    (
+                        uuid.uuid4().hex,
+                        row["user_id"],
+                        row["job_id"],
+                        -points,
+                        balance_after,
+                        f"历史云视频保留占用 {points} 积分（每 {VIDEO_STORAGE_POINT_MB}MB 计 1 分）",
+                        now,
+                    ),
+                )
+            db.execute(
+                "INSERT INTO schema_meta (key, value, updated_at) VALUES ('cloud_storage_points_v1', ?, ?)",
+                (str(VIDEO_STORAGE_POINT_MB), now),
+            )
         db.commit()
 
 
@@ -525,6 +575,12 @@ def _quota_snapshot(db: sqlite3.Connection, user_id: str, *, include_ledger: boo
             (user_id,),
         ).fetchone()[0]
     )
+    storage_points_reserved = int(
+        db.execute(
+            "SELECT COALESCE(SUM(storage_points), 0) FROM video_storage WHERE user_id = ? AND state = 'active'",
+            (user_id,),
+        ).fetchone()[0]
+    )
     consumed = int(
         db.execute(
             "SELECT COALESCE(SUM(units), 0) FROM generation_reservations WHERE user_id = ? AND state = 'consumed'",
@@ -552,6 +608,8 @@ def _quota_snapshot(db: sqlite3.Connection, user_id: str, *, include_ledger: boo
         "generation_consumed": consumed,
         "points_balance": balance,
         "points_reserved": reserved,
+        "storage_points_reserved": 0 if unlimited else storage_points_reserved,
+        "points_reserved_total": reserved if unlimited else reserved + storage_points_reserved,
         "points_consumed": consumed,
         "storage_used_bytes": storage_used,
         "storage_limit_bytes": -1 if unlimited else storage_limit,
@@ -800,19 +858,51 @@ def record_video_storage(
     preview_url: str,
     download_url: str,
     size_bytes: int,
+    *,
+    billable_bytes: int | None = None,
 ) -> None:
     now = time.time()
     with _connect() as db:
-        _ensure_quota_row(db, user_id)
+        db.execute("BEGIN IMMEDIATE")
+        user, quota = _ensure_quota_row(db, user_id)
+        existing = db.execute(
+            "SELECT storage_points FROM video_storage WHERE job_id = ? AND user_id = ?",
+            (job_id, user_id),
+        ).fetchone()
+        old_points = int(existing["storage_points"]) if existing else 0
+        required_points = 0 if user["role"] == "admin" else storage_points_for_bytes(
+            int(size_bytes if billable_bytes is None else billable_bytes)
+        )
+        delta = required_points - old_points
+        balance_after = int(quota["generation_balance"])
+        if delta:
+            balance_after -= delta
+            db.execute(
+                "UPDATE user_quotas SET generation_balance = ?, updated_at = ? WHERE user_id = ?",
+                (balance_after, now, user_id),
+            )
+            event_type = "storage_reserve" if delta > 0 else "storage_release"
+            detail = (
+                f"云视频保留占用 {delta} 积分（每 {VIDEO_STORAGE_POINT_MB}MB 计 1 分，删除后释放）"
+                if delta > 0
+                else f"云视频大小更新，释放 {-delta} 积分"
+            )
+            db.execute(
+                """INSERT INTO quota_ledger
+                   (id, user_id, job_id, event_type, units, balance_after, detail, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (uuid.uuid4().hex, user_id, job_id, event_type, -delta, balance_after, detail, now),
+            )
         db.execute(
             """INSERT INTO video_storage
-               (job_id, user_id, preview_url, download_url, size_bytes, state, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+               (job_id, user_id, preview_url, download_url, size_bytes, storage_points, state, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
                ON CONFLICT(job_id) DO UPDATE SET
                  user_id = excluded.user_id,
                  preview_url = excluded.preview_url,
                  download_url = excluded.download_url,
                  size_bytes = excluded.size_bytes,
+                 storage_points = excluded.storage_points,
                  state = 'active',
                  updated_at = excluded.updated_at""",
             (
@@ -821,6 +911,7 @@ def record_video_storage(
                 str(preview_url or "")[:2000],
                 str(download_url or "")[:2000],
                 max(0, int(size_bytes)),
+                required_points,
                 now,
                 now,
             ),
@@ -832,17 +923,49 @@ def mark_video_storage_deleted(job_id: str, user_id: str) -> int:
     now = time.time()
     with _connect() as db:
         row = db.execute(
-            "SELECT size_bytes FROM video_storage WHERE job_id = ? AND user_id = ? AND state = 'active'",
+            "SELECT size_bytes, storage_points FROM video_storage WHERE job_id = ? AND user_id = ? AND state = 'active'",
             (job_id, user_id),
         ).fetchone()
         if not row:
             return 0
+        storage_points = int(row["storage_points"])
+        if storage_points:
+            quota = db.execute(
+                "SELECT generation_balance FROM user_quotas WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            balance_after = int(quota["generation_balance"]) + storage_points
+            db.execute(
+                "UPDATE user_quotas SET generation_balance = ?, updated_at = ? WHERE user_id = ?",
+                (balance_after, now, user_id),
+            )
+            db.execute(
+                """INSERT INTO quota_ledger
+                   (id, user_id, job_id, event_type, units, balance_after, detail, created_at)
+                   VALUES (?, ?, ?, 'storage_release', ?, ?, ?, ?)""",
+                (
+                    uuid.uuid4().hex,
+                    user_id,
+                    job_id,
+                    storage_points,
+                    balance_after,
+                    f"删除云视频，释放 {storage_points} 积分",
+                    now,
+                ),
+            )
         db.execute(
-            "UPDATE video_storage SET state = 'deleted', size_bytes = 0, updated_at = ? WHERE job_id = ?",
+            "UPDATE video_storage SET state = 'deleted', size_bytes = 0, storage_points = 0, updated_at = ? WHERE job_id = ?",
             (now, job_id),
         )
         db.commit()
     return int(row["size_bytes"])
+
+
+def storage_points_for_bytes(size_bytes: int) -> int:
+    """Return the non-recurring cloud retention deposit for a video."""
+    size = max(0, int(size_bytes))
+    if size <= 0:
+        return 0
+    return max(1, (size + VIDEO_STORAGE_POINT_UNIT_BYTES - 1) // VIDEO_STORAGE_POINT_UNIT_BYTES)
 
 
 def register_user(username: str, password: str) -> dict:

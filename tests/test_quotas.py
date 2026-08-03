@@ -67,6 +67,39 @@ class QuotaTests(unittest.TestCase):
         self.assertEqual(released, 5 * 1024**3)
         self.assertTrue(site_accounts.quota_snapshot(self.user["id"])["can_generate"])
 
+    def test_cloud_video_reserves_points_once_and_releases_on_delete(self):
+        unit = site_accounts.VIDEO_STORAGE_POINT_UNIT_BYTES
+        site_accounts.record_video_storage(
+            "billed-job",
+            self.user["id"],
+            "https://media.test/preview.mp4",
+            "https://media.test/original.mp4",
+            unit + 1,
+        )
+        reserved = site_accounts.quota_snapshot(self.user["id"])
+        self.assertEqual(reserved["points_balance"], 8)
+        self.assertEqual(reserved["storage_points_reserved"], 2)
+        self.assertEqual(reserved["ledger"][0]["event_type"], "storage_reserve")
+
+        # R2 publication updates the same row and must not charge twice.
+        site_accounts.record_video_storage(
+            "billed-job",
+            self.user["id"],
+            "https://media.test/preview-1080.mp4",
+            "https://media.test/original.mp4",
+            unit,
+        )
+        unchanged = site_accounts.quota_snapshot(self.user["id"])
+        self.assertEqual(unchanged["points_balance"], 9)
+        self.assertEqual(unchanged["storage_points_reserved"], 1)
+
+        released = site_accounts.mark_video_storage_deleted("billed-job", self.user["id"])
+        self.assertEqual(released, unit)
+        restored = site_accounts.quota_snapshot(self.user["id"])
+        self.assertEqual(restored["points_balance"], 10)
+        self.assertEqual(restored["storage_points_reserved"], 0)
+        self.assertEqual(restored["ledger"][0]["event_type"], "storage_release")
+
     def test_admin_can_adjust_generation_and_storage_allowance(self):
         adjusted = site_accounts.adjust_user_quota(
             self.user["id"],

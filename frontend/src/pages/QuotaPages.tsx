@@ -15,7 +15,7 @@ function formatBytes(value: number) {
   return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
-const LEDGER_LABELS: Record<QuotaLedgerEntry["event_type"], string> = {
+const LEDGER_LABELS: Record<string, string> = {
   reserve: "创建任务，冻结积分",
   consume: "生成成功，确认扣分",
   refund: "任务失败，自动退分",
@@ -23,6 +23,9 @@ const LEDGER_LABELS: Record<QuotaLedgerEntry["event_type"], string> = {
   invite_reward: "邀请好友奖励",
   welcome_bonus: "受邀注册奖励",
 };
+
+LEDGER_LABELS.storage_reserve = "云视频保留占用";
+LEDGER_LABELS.storage_release = "删除云视频释放";
 
 export function AccountUsagePage() {
   const { user, loading: authLoading } = useAuth();
@@ -78,6 +81,7 @@ export function AccountUsagePage() {
         {loading || !quota ? <div className="loading-state"><LoaderCircle className="spin" />{tr("正在读取额度", "Loading account limits")}</div> : (
           <>
             <section className="quota-overview-grid">
+              {!quota.unlimited && <article className="quota-storage-points-card"><span><Coins /></span><div><small>Cloud video retention</small><strong>{quota.storage_points_reserved} credits reserved</strong><p>Charged by 100 MB and released when you delete the video.</p></div></article>}
               <article><span><Coins /></span><div><small>{tr("可用平台积分", "Available credits")}</small><strong>{quota.unlimited ? tr("不限", "Unlimited") : tr(`${quota.points_balance} 分`, `${quota.points_balance} credits`)}</strong><p>{quota.points_reserved ? tr(`${quota.points_reserved} 分正在任务中`, `${quota.points_reserved} credits reserved`) : tr("当前没有冻结积分", "No reserved credits")}</p></div></article>
               <article><span><HardDrive /></span><div><small>{tr("视频云存储", "Video cloud storage")}</small><strong>{formatBytes(quota.storage_used_bytes)} / {formatBytes(quota.storage_limit_bytes)}</strong><p>{quota.unlimited ? tr("管理员账号不限制空间", "Unlimited administrator storage") : tr(`剩余 ${formatBytes(quota.storage_available_bytes)}`, `${formatBytes(quota.storage_available_bytes)} available`)}</p></div></article>
               <article className={quota.can_generate ? "ready" : "blocked"}><span><ShieldCheck /></span><div><small>{tr("创作状态", "Creation status")}</small><strong>{quota.can_generate ? tr("可以生成视频", "Ready to generate") : tr("积分或存储不足", "Insufficient credits or storage")}</strong><p>{quota.can_generate ? tr("每个工作流按实际配置价格扣分", "Each workflow uses its configured credit price") : tr("请邀请好友、充值积分或释放存储", "Invite friends, add credits or free storage")}</p></div></article>

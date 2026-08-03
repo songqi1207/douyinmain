@@ -1761,11 +1761,19 @@ def api_delete_job_video(job_id: str, request: Request):
             status_code=409,
             detail={"code": "video_delete_failed", "message": "视频状态已发生变化，请刷新后重试"},
         )
+    quota_before_delete = quota_snapshot(user["id"])
     released_bytes = mark_video_storage_deleted(job_id, user["id"])
+    quota_after_delete = quota_snapshot(user["id"])
+    released_points = max(
+        0,
+        int(quota_after_delete.get("points_balance", 0))
+        - int(quota_before_delete.get("points_balance", 0)),
+    )
     return {
         "job": _public_job(get_job(job_id)),
-        "quota": quota_snapshot(user["id"]),
+        "quota": quota_after_delete,
         "released_bytes": released_bytes,
+        "released_points": released_points,
         "message": "云端视频已删除，存储空间已经释放",
     }
 

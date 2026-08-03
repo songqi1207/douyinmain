@@ -24,7 +24,7 @@ import { Layout } from "../components/Layout";
 import { COLOR_THEMES, usePreferences } from "../preferences";
 import type { QuotaLedgerEntry, UserQuota } from "../types";
 
-const LEDGER_LABELS: Record<QuotaLedgerEntry["event_type"], [string, string]> = {
+const LEDGER_LABELS: Record<string, [string, string]> = {
   reserve: ["任务预留", "Task reservation"],
   consume: ["视频生成", "Video generation"],
   refund: ["失败退回", "Automatic refund"],
@@ -32,6 +32,9 @@ const LEDGER_LABELS: Record<QuotaLedgerEntry["event_type"], [string, string]> = 
   invite_reward: ["邀请奖励", "Referral reward"],
   welcome_bonus: ["新用户奖励", "Welcome bonus"],
 };
+
+LEDGER_LABELS.storage_reserve = ["云视频保留", "Cloud video retention"];
+LEDGER_LABELS.storage_release = ["云视频释放", "Cloud video released"];
 
 function formatBytes(value: number) {
   if (value < 0) return "不限";
@@ -113,6 +116,7 @@ export function ProfilePage() {
             <article className="profile-storage-card">
               <div className="profile-card-label"><HardDrive />{tr("视频云空间", "Video cloud storage")}</div>
               <strong>{formatBytes(quota.storage_used_bytes)}</strong>
+              {!quota.unlimited && <small>Cloud retention: {quota.storage_points_reserved} credits reserved (released when deleted)</small>}
               <p>{quota.unlimited ? tr("空间不限", "Unlimited storage") : tr(`总容量 ${formatBytes(quota.storage_limit_bytes)}`, `${formatBytes(quota.storage_limit_bytes)} total`)}</p>
               {!quota.unlimited && <><progress max="100" value={storagePercent} /><small>{tr(`已使用 ${storagePercent}%`, `${storagePercent}% used`)}</small></>}
             </article>
