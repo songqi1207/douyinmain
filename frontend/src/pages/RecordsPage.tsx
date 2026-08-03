@@ -164,13 +164,13 @@ export function RecordsPage() {
                         <button
                           type="button"
                           onClick={() => setPreview(
-                            preview?.jobId === job.id && preview.url === result.url
+                            preview?.jobId === job.id && preview.url === (result.download_url || result.url)
                               ? null
-                              : { jobId: job.id, url: result.url, poster: result.poster_url },
+                              : { jobId: job.id, url: result.download_url || result.url, poster: result.poster_url },
                           )}
                         >
-                          {preview?.jobId === job.id && preview.url === result.url ? <X /> : <Play />}
-                          {preview?.jobId === job.id && preview.url === result.url ? "收起视频" : "播放视频"}
+                          {preview?.jobId === job.id && preview.url === (result.download_url || result.url) ? <X /> : <Play />}
+                          {preview?.jobId === job.id && preview.url === (result.download_url || result.url) ? "收起视频" : result.download_url ? "播放高清原片" : "播放视频"}
                         </button>
                       )}
                       <a href={result.download_url || result.url} target="_blank" rel="noreferrer" download={result.downloadable || undefined}>

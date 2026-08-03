@@ -138,7 +138,7 @@ export function AdminCreationsPage() {
                 {job.error && <div className="record-error">{job.error.message}</div>}
                 {job.status === "succeeded" && job.results.length > 0 && <div className="record-actions admin-creation-actions">
                   {job.results.map((result, index) => <span className="record-result-actions" key={`${result.url}-${index}`}>
-                    {result.type === "video" && <button type="button" onClick={() => setPreview(preview?.jobId === job.id && preview.url === result.url ? null : { jobId: job.id, url: result.url, poster: result.poster_url })}>{preview?.jobId === job.id && preview.url === result.url ? <X /> : <Play />}{preview?.jobId === job.id && preview.url === result.url ? tr("收起视频", "Close video") : tr("播放视频", "Play video")}</button>}
+                    {result.type === "video" && <button type="button" onClick={() => setPreview(preview?.jobId === job.id && preview.url === (result.download_url || result.url) ? null : { jobId: job.id, url: result.download_url || result.url, poster: result.poster_url })}>{preview?.jobId === job.id && preview.url === (result.download_url || result.url) ? <X /> : <Play />}{preview?.jobId === job.id && preview.url === (result.download_url || result.url) ? tr("收起视频", "Close video") : result.download_url ? tr("播放高清原片", "Play original") : tr("播放视频", "Play video")}</button>}
                     <a href={result.download_url || result.url} target="_blank" rel="noreferrer" download={result.downloadable || undefined}><Download />{result.type === "video" && result.download_url ? tr("下载高清原片", "Download original") : `${tr("下载结果", "Download")} ${index + 1}`}</a>
                   </span>)}
                 </div>}
