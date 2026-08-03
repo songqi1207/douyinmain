@@ -32,7 +32,7 @@ const NAV_ITEMS = [
   { to: "/workflows", zh: "工作流库", en: "Workflows", icon: Store },
   { to: "/voices", zh: "声音工作室", en: "Voice Studio", icon: Headphones },
   { to: "/records", zh: "我的作品", en: "My Creations", icon: Clock3 },
-  { to: "/devices", zh: "渲染设备", en: "Render Devices", icon: Laptop },
+  { to: "/devices", zh: "渲染设备", en: "Render Devices", icon: Laptop, adminOnly: true },
 ] as const;
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -80,7 +80,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </Link>
         <div className="rail-section-label">{tr("创作空间", "WORKSPACE")}</div>
         <nav className="topnav" aria-label={tr("主导航", "Main navigation")}>
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) => !("adminOnly" in item) || user?.role === "admin").map((item) => {
             const { to, zh, en, icon: Icon } = item;
             return <NavLink end={"end" in item ? item.end : false} key={to} to={to} onClick={() => setMenuOpen(false)}>
               <Icon size={18} /><span>{tr(zh, en)}</span>

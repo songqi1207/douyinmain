@@ -33,7 +33,7 @@ export default function App() {
         <Route path="/workflows/:code" element={<DetailPage />} />
         <Route path="/voices" element={<VoicesPage />} />
         <Route path="/records" element={<RecordsPage />} />
-        <Route path="/devices" element={<DevicesPage />} />
+        <Route path="/devices" element={<AdminRoute><DevicesPage /></AdminRoute>} />
         <Route path="/jianying-export" element={<JianyingExportPage />} />
         <Route path="/jianying-export/test" element={<JianyingExportPage />} />
         <Route path="/account" element={<ProfilePage />} />
