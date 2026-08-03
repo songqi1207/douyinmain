@@ -174,7 +174,7 @@ export function RecordsPage() {
                         </button>
                       )}
                       <a href={result.download_url || result.url} target="_blank" rel="noreferrer" download={result.downloadable || undefined}>
-                        <Download />下载结果 {index + 1}
+                        <Download />{result.type === "video" && result.download_url ? "下载高清原片" : `下载结果 ${index + 1}`}
                       </a>
                     </span>
                   ))}

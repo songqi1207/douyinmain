@@ -70,9 +70,9 @@ def _crf() -> int:
 
 def _preview_crf() -> int:
     try:
-        return min(30, max(18, int(os.getenv("R2_EXPORT_PREVIEW_CRF") or 23)))
+        return min(30, max(18, int(os.getenv("R2_EXPORT_PREVIEW_CRF") or 20)))
     except ValueError:
-        return 23
+        return 20
 
 
 def compress_video_for_web(source: Path, destination: Path) -> Path:
@@ -87,9 +87,12 @@ def compress_video_for_web(source: Path, destination: Path) -> Path:
         f".{destination.stem}.{uuid4().hex}.encoding.mp4"
     )
     preset = (os.getenv("R2_EXPORT_VIDEO_PRESET") or "medium").strip() or "medium"
-    audio_bitrate = (os.getenv("R2_EXPORT_PREVIEW_AUDIO_BITRATE") or "96k").strip() or "96k"
-    video_bitrate = (os.getenv("R2_EXPORT_PREVIEW_MAXRATE") or "1200k").strip() or "1200k"
-    video_buffer = (os.getenv("R2_EXPORT_PREVIEW_BUFSIZE") or "2400k").strip() or "2400k"
+    audio_bitrate = (os.getenv("R2_EXPORT_PREVIEW_AUDIO_BITRATE") or "128k").strip() or "128k"
+    video_bitrate = (os.getenv("R2_EXPORT_PREVIEW_MAXRATE") or "5000k").strip() or "5000k"
+    video_buffer = (os.getenv("R2_EXPORT_PREVIEW_BUFSIZE") or "10000k").strip() or "10000k"
+    preview_width = min(3840, max(640, _positive_int("R2_EXPORT_PREVIEW_WIDTH", 1920)))
+    preview_height = min(2160, max(360, _positive_int("R2_EXPORT_PREVIEW_HEIGHT", 1080)))
+    preview_fps = min(60, max(24, _positive_int("R2_EXPORT_PREVIEW_FPS", 30)))
     command = [
         os.getenv("FFMPEG_BINARY") or "ffmpeg",
         "-y",
@@ -111,7 +114,7 @@ def compress_video_for_web(source: Path, destination: Path) -> Path:
         "-c:v",
         "libx264",
         "-vf",
-        "scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2,fps=30",
+        f"scale={preview_width}:{preview_height}:force_original_aspect_ratio=decrease:force_divisible_by=2,fps={preview_fps}",
         "-preset",
         preset,
         "-crf",

@@ -791,8 +791,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .record-actions svg { width: 13px; height: 13px; }
 .record-actions .record-result-actions { display: inline-flex; align-items: center; gap: 12px; margin: 0; }
 .record-actions .delete-video-action { color: #c78379; }
-.record-video-preview { overflow: hidden; margin-top: 14px; border: 1px solid #363531; border-radius: 11px; background: #080808; }
-.record-video-preview video { display: block; width: 100%; max-height: 72vh; object-fit: contain; background: #080808; }
+.record-video-preview { width: min(100%, 128vh); aspect-ratio: 16 / 9; overflow: hidden; margin: 14px auto 0; border: 1px solid #363531; border-radius: 11px; background: #080808; }
+.record-video-preview video { display: block; width: 100%; height: 100%; object-fit: contain; background: #080808; }
 .pagination { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 24px; color: #7e7a73; font-size: 11px; }
 .pagination button { min-height: 34px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #403a31; border-radius: 8px; padding: 0 10px; color: #b79b70; background: #181612; cursor: pointer; }
 .pagination button:disabled { opacity: .35; cursor: not-allowed; }
