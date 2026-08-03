@@ -116,7 +116,7 @@ export function ProfilePage() {
             <article className="profile-storage-card">
               <div className="profile-card-label"><HardDrive />{tr("视频云空间", "Video cloud storage")}</div>
               <strong>{formatBytes(quota.storage_used_bytes)}</strong>
-              {!quota.unlimited && <small>Cloud retention: {quota.storage_points_reserved} credits reserved (released when deleted)</small>}
+              {!quota.unlimited && <small>{tr(`云端保留占用 ${quota.storage_points_reserved} 积分，删除视频后释放`, `Cloud retention: ${quota.storage_points_reserved} credits reserved (released when deleted)`)}</small>}
               <p>{quota.unlimited ? tr("空间不限", "Unlimited storage") : tr(`总容量 ${formatBytes(quota.storage_limit_bytes)}`, `${formatBytes(quota.storage_limit_bytes)} total`)}</p>
               {!quota.unlimited && <><progress max="100" value={storagePercent} /><small>{tr(`已使用 ${storagePercent}%`, `${storagePercent}% used`)}</small></>}
             </article>
