@@ -57,6 +57,14 @@ export function JobNotifications() {
   }, [user?.id]);
 
   useEffect(() => {
+    // Browser permissions can be revoked after this preference was saved.
+    if (enabled && typeof Notification !== "undefined" && Notification.permission === "denied") {
+      localStorage.setItem(JOB_NOTIFICATIONS_ENABLED_KEY, "false");
+      setEnabled(false);
+    }
+  }, [enabled]);
+
+  useEffect(() => {
     if (!user || !enabled) return;
     let active = true;
     let timer: number | undefined;
@@ -114,9 +122,25 @@ export function JobNotifications() {
       setToast({ kind: "error", title: tr("无法开启通知", "Notifications unavailable"), body: tr("当前浏览器不支持系统通知。", "This browser does not support system notifications.") });
       return;
     }
-    const permission = Notification.permission === "default"
-      ? await Notification.requestPermission()
-      : Notification.permission;
+    // Chrome and Edge require HTTPS for system notifications (localhost is exempt).
+    const localHost = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
+    if (window.isSecureContext === false && !localHost) {
+      setToast({
+        kind: "error",
+        title: tr("请使用安全连接", "Use a secure connection"),
+        body: tr("系统通知需要 HTTPS，请打开 https://api.songqi.online/business/ 后再开启。", "System notifications require HTTPS. Open https://api.songqi.online/business/ and try again."),
+      });
+      return;
+    }
+    let permission: NotificationPermission;
+    try {
+      permission = Notification.permission === "default"
+        ? await Notification.requestPermission()
+        : Notification.permission;
+    } catch {
+      setToast({ kind: "error", title: tr("通知未开启", "Notifications blocked"), body: tr("浏览器没有返回通知权限，请检查网站权限设置。", "The browser did not grant permission. Check this site's notification settings.") });
+      return;
+    }
     if (permission !== "granted") {
       setToast({ kind: "error", title: tr("通知未开启", "Notifications blocked"), body: tr("浏览器已阻止通知，请在网站权限中允许通知。", "Allow notifications in your browser's site permissions.") });
       return;
@@ -125,6 +149,15 @@ export function JobNotifications() {
     setEnabled(true);
     window.dispatchEvent(new Event(JOB_NOTIFICATIONS_STATE_EVENT));
     setToast({ kind: "success", title: tr("任务通知已开启", "Task notifications enabled"), body: tr("视频完成或失败时会立即提醒你。", "You will be notified when a video completes or fails.") });
+    try {
+      const confirmation = new Notification(tr("任务通知已连接", "Task notifications connected"), {
+        body: tr("视频完成或失败时会提醒你。", "You will be alerted when a video completes or fails."),
+        tag: "workflow-notifications-connected",
+      });
+      window.setTimeout(() => confirmation?.close?.(), 5000);
+    } catch {
+      // The in-page confirmation remains available when the OS notification fails.
+    }
   }
 
   if (!user) return null;
