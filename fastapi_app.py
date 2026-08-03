@@ -55,11 +55,13 @@ from site_accounts import (
     list_user_quotas,
     mark_video_storage_deleted,
     prepare_registration_approval,
+    reveal_user_password,
     record_resource_event,
     record_video_storage,
     reject_registration_application,
     resource_stats,
     reserve_generation,
+    reset_user_password_for_admin,
     quota_snapshot,
     site_account_summary,
     submit_registration_application,
@@ -67,6 +69,7 @@ from site_accounts import (
     toggle_favorite,
     update_workflow_pricing,
     user_from_session,
+    verify_user_password,
     workflow_pricing_snapshot,
 )
 from workflow_catalog import IMAGE_WORKFLOWS, workflow_categories
@@ -1410,6 +1413,89 @@ def api_admin_user_quotas(request: Request):
     _require_admin(request)
     items = list_user_quotas()
     return {"items": items, "total": len(items)}
+
+
+def _admin_password_reauthentication(admin: dict, password: str) -> None:
+    if not password or not verify_user_password(admin["id"], password):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "admin_password_invalid", "message": "管理员密码不正确"},
+        )
+
+
+def _request_source_ip(request: Request) -> str:
+    forwarded = str(request.headers.get("x-forwarded-for") or "").split(",", 1)[0].strip()
+    return forwarded or (request.client.host if request.client else "")
+
+
+@app.post("/api/v1/admin/users/{user_id}/password/reveal")
+def api_admin_reveal_user_password(
+    user_id: str,
+    request: Request,
+    response: Response,
+    payload: dict = Body(default_factory=dict),
+):
+    admin = _require_admin(request)
+    _admin_password_reauthentication(admin, str(payload.get("admin_password") or ""))
+    try:
+        password = reveal_user_password(admin["id"], user_id, _request_source_ip(request))
+    except KeyError as exc:
+        code = str(exc.args[0]) if exc.args else "password_not_recoverable"
+        status = 404 if code == "user_not_found" else 409
+        message = "用户不存在" if code == "user_not_found" else "该账号尚无可恢复密码，请先重置一次"
+        raise HTTPException(status_code=status, detail={"code": code, "message": message}) from exc
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": str(exc), "message": "管理员密码不允许通过此入口查看"},
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": str(exc), "message": "密码保险库暂不可用"},
+        ) from exc
+    response.headers["Cache-Control"] = "no-store, private"
+    return {"user_id": user_id, "password": password}
+
+
+@app.post("/api/v1/admin/users/{user_id}/password/reset")
+def api_admin_reset_user_password(
+    user_id: str,
+    request: Request,
+    response: Response,
+    payload: dict = Body(default_factory=dict),
+):
+    admin = _require_admin(request)
+    _admin_password_reauthentication(admin, str(payload.get("admin_password") or ""))
+    try:
+        password = reset_user_password_for_admin(
+            admin["id"],
+            user_id,
+            str(payload.get("new_password") or ""),
+            _request_source_ip(request),
+        )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "user_not_found", "message": "用户不存在"},
+        ) from exc
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": str(exc), "message": "管理员密码不允许通过此入口重置"},
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": str(exc), "message": "新密码长度必须为 8 至 128 个字符"},
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": str(exc), "message": "密码保险库暂不可用"},
+        ) from exc
+    response.headers["Cache-Control"] = "no-store, private"
+    return {"user_id": user_id, "password": password, "message": "密码已重置并写入保险库"}
 
 
 @app.put("/api/v1/admin/user-quotas/{user_id}")

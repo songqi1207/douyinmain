@@ -1,7 +1,9 @@
 import hashlib
+import base64
 import inspect
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,6 +23,7 @@ os.environ["COZE_WORKFLOW_OWN01"] = ""
 os.environ["COZE_WORKFLOW_OWN02"] = ""
 os.environ["COZE_WORKFLOW_OWN03"] = ""
 os.environ["MIHE_KEY"] = ""
+os.environ["PASSWORD_VAULT_KEY"] = base64.urlsafe_b64encode(bytes(range(32))).decode("ascii")
 
 from fastapi.testclient import TestClient
 
@@ -266,6 +269,49 @@ class WorkflowApiTests(unittest.TestCase):
             json={"generation_delta": -3, "storage_limit_gb": 5},
         )
         self.assertEqual(restored.status_code, 200, restored.text)
+
+    def test_admin_can_reveal_and_reset_encrypted_user_password(self):
+        from site_accounts import DB_PATH, authenticate_user, register_user
+
+        created = register_user("vaultuser", "vault-password-123")
+        endpoint = f"/api/v1/admin/users/{created['id']}/password"
+
+        self.assertEqual(
+            self.client.post(f"{endpoint}/reveal", json={"admin_password": "admin-test-password-123"}).status_code,
+            403,
+        )
+        wrong_admin = self.admin_client.post(
+            f"{endpoint}/reveal",
+            json={"admin_password": "wrong-admin-password"},
+        )
+        self.assertEqual(wrong_admin.status_code, 403)
+
+        revealed = self.admin_client.post(
+            f"{endpoint}/reveal",
+            json={"admin_password": "admin-test-password-123"},
+        )
+        self.assertEqual(revealed.status_code, 200, revealed.text)
+        self.assertEqual(revealed.json()["password"], "vault-password-123")
+        self.assertIn("no-store", revealed.headers["cache-control"])
+
+        reset = self.admin_client.post(
+            f"{endpoint}/reset",
+            json={
+                "admin_password": "admin-test-password-123",
+                "new_password": "vault-password-456",
+            },
+        )
+        self.assertEqual(reset.status_code, 200, reset.text)
+        self.assertEqual(reset.json()["password"], "vault-password-456")
+        self.assertIsNone(authenticate_user("vaultuser", "vault-password-123"))
+        self.assertIsNotNone(authenticate_user("vaultuser", "vault-password-456"))
+
+        with sqlite3.connect(DB_PATH) as db:
+            actions = [row[0] for row in db.execute(
+                "SELECT action FROM password_vault_audit WHERE target_user_id = ? ORDER BY created_at",
+                (created["id"],),
+            )]
+        self.assertEqual(actions, ["reveal", "reset"])
 
     def test_admin_configures_double_cost_pricing_without_exposing_provider_breakdown(self):
         self.assertEqual(self.client.get("/api/v1/admin/workflow-pricing").status_code, 403)

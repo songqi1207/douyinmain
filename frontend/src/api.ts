@@ -139,6 +139,34 @@ export async function adjustAdminUserQuota(
   );
 }
 
+export async function revealAdminUserPassword(userId: string, adminPassword: string) {
+  return request<{ user_id: string; password: string }>(
+    `/api/v1/admin/users/${encodeURIComponent(userId)}/password/reveal`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ admin_password: adminPassword }),
+      cache: "no-store",
+    },
+  );
+}
+
+export async function resetAdminUserPassword(
+  userId: string,
+  adminPassword: string,
+  newPassword = "",
+) {
+  return request<{ user_id: string; password: string }>(
+    `/api/v1/admin/users/${encodeURIComponent(userId)}/password/reset`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ admin_password: adminPassword, new_password: newPassword }),
+      cache: "no-store",
+    },
+  );
+}
+
 export async function fetchAdminWorkflowPricing() {
   return request<{ items: AdminWorkflowPricing[]; total: number }>(
     "/api/v1/admin/workflow-pricing",

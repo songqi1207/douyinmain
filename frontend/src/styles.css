@@ -838,6 +838,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .invite-code-box strong { color: #edc47b; letter-spacing: 2px; }
 .invite-code-box button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #70542b; border-radius: 8px; padding: 8px 11px; color: #e0b66c; background: #21180e; cursor: pointer; }
 .invite-code-box button svg { width: 14px; }
+.admin-password-auth { margin-bottom: 14px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 380px); align-items: end; gap: 18px; padding: 16px; border: 1px solid #30463e; border-radius: 13px; background: #131d19; }
+.admin-password-auth > div, .admin-password-auth label { display: grid; gap: 6px; }
+.admin-password-auth strong { color: #d8e5df; }
+.admin-password-auth small, .admin-password-auth label span { color: #82958c; font-size: 11px; line-height: 1.6; }
+.admin-password-auth input { min-height: 40px; border: 1px solid #3b5348; border-radius: 8px; padding: 0 11px; color: #edf6f2; background: #0d1411; }
 .admin-quota-list { display: grid; gap: 10px; }
 .admin-quota-list article { display: grid; grid-template-columns: minmax(220px, 1fr) 170px 170px auto; align-items: end; gap: 12px; padding: 16px; border: 1px solid #37342f; border-radius: 13px; background: #191816; }
 .admin-quota-user { align-self: center; min-width: 0; display: grid; gap: 5px; }
@@ -847,6 +852,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .admin-quota-list input { min-height: 38px; border: 1px solid #403c35; border-radius: 8px; padding: 0 10px; color: #eee8de; background: #111; }
 .admin-quota-list button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #6e5532; border-radius: 8px; padding: 0 13px; color: #e0b86f; background: #211a11; cursor: pointer; }
 .admin-quota-list button svg { width: 14px; }
+.admin-password-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid #2d2b27; }
+.revealed-password { min-height: 38px; display: flex; align-items: center; gap: 9px; margin-left: auto; padding: 5px 6px 5px 11px; border: 1px solid #3f544b; border-radius: 8px; background: #0d1512; }
+.revealed-password > span { color: #7f9289; font-size: 10px; }
+.revealed-password code { color: #b9ead3; font-size: 13px; user-select: all; }
+.revealed-password button { min-height: 28px; }
 .workflow-pricing-section { margin-top: 24px; }
 .workflow-pricing-section > .section-title { margin-bottom: 10px; }
 .workflow-pricing-section > .section-title small { color: #8f887d; }
@@ -924,6 +934,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .record-toolbar .search-box { grid-column: 1 / -1; }
   .security-layout { grid-template-columns: 1fr; }
   .quota-overview-grid { grid-template-columns: 1fr; }
+  .admin-password-auth { grid-template-columns: 1fr; }
   .admin-quota-list article { grid-template-columns: 1fr 1fr; }
   .admin-quota-user { grid-column: 1 / -1; }
   .workflow-pricing-list article { grid-template-columns: 1fr 1fr; }
@@ -988,6 +999,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .admin-quota-list article { grid-template-columns: 1fr; }
   .admin-quota-user { grid-column: auto; }
   .admin-quota-list button { width: 100%; }
+  .admin-password-actions, .revealed-password { width: 100%; }
+  .revealed-password { margin-left: 0; flex-wrap: wrap; }
+  .revealed-password button { width: auto; margin-left: auto; }
   .invite-reward-card { grid-template-columns: 1fr; }
   .invite-code-box { justify-items: start; }
   .workflow-pricing-list article { grid-template-columns: 1fr; }

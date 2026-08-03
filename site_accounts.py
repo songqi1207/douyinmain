@@ -13,6 +13,8 @@ import uuid
 from pathlib import Path
 from typing import Iterable
 
+from cryptography.fernet import Fernet, InvalidToken
+
 from workflow_jobs import DATA_DIR
 
 
@@ -168,6 +170,24 @@ def init_site_database():
                 updated_at REAL NOT NULL,
                 FOREIGN KEY(reviewed_by) REFERENCES users(id)
             );
+            CREATE TABLE IF NOT EXISTS password_vault (
+                user_id TEXT PRIMARY KEY,
+                ciphertext TEXT NOT NULL,
+                updated_at REAL NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS password_vault_audit (
+                id TEXT PRIMARY KEY,
+                admin_user_id TEXT NOT NULL,
+                target_user_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                source_ip TEXT,
+                created_at REAL NOT NULL,
+                FOREIGN KEY(admin_user_id) REFERENCES users(id),
+                FOREIGN KEY(target_user_id) REFERENCES users(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_password_vault_audit_created
+                ON password_vault_audit(created_at DESC);
             """
         )
         columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
@@ -323,6 +343,120 @@ def init_site_database():
 
 def _hash_password(password: str, salt: bytes) -> str:
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 240_000).hex()
+
+
+def password_vault_configured() -> bool:
+    return bool((os.getenv("PASSWORD_VAULT_KEY") or "").strip())
+
+
+def _password_vault_cipher() -> Fernet:
+    key = (os.getenv("PASSWORD_VAULT_KEY") or "").strip()
+    if not key:
+        raise RuntimeError("password_vault_not_configured")
+    try:
+        return Fernet(key.encode("ascii"))
+    except (ValueError, TypeError) as exc:
+        raise RuntimeError("password_vault_key_invalid") from exc
+
+
+def _store_password_vault(db: sqlite3.Connection, user_id: str, password: str) -> None:
+    if not password_vault_configured():
+        return
+    ciphertext = _password_vault_cipher().encrypt(str(password).encode("utf-8")).decode("ascii")
+    db.execute(
+        """INSERT INTO password_vault (user_id, ciphertext, updated_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(user_id) DO UPDATE SET
+             ciphertext = excluded.ciphertext,
+             updated_at = excluded.updated_at""",
+        (user_id, ciphertext, time.time()),
+    )
+
+
+def verify_user_password(user_id: str, password: str) -> bool:
+    with _connect() as db:
+        row = db.execute("SELECT password_hash, password_salt FROM users WHERE id = ? AND active = 1", (user_id,)).fetchone()
+    if not row:
+        return False
+    expected = _hash_password(str(password or ""), bytes.fromhex(row["password_salt"]))
+    return hmac.compare_digest(expected, row["password_hash"])
+
+
+def _record_password_vault_audit(
+    db: sqlite3.Connection,
+    admin_user_id: str,
+    target_user_id: str,
+    action: str,
+    source_ip: str = "",
+) -> None:
+    db.execute(
+        """INSERT INTO password_vault_audit
+           (id, admin_user_id, target_user_id, action, source_ip, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (
+            uuid.uuid4().hex,
+            admin_user_id,
+            target_user_id,
+            str(action)[:40],
+            str(source_ip or "")[:80],
+            time.time(),
+        ),
+    )
+
+
+def reveal_user_password(admin_user_id: str, target_user_id: str, source_ip: str = "") -> str:
+    cipher = _password_vault_cipher()
+    with _connect() as db:
+        target = db.execute("SELECT id, role FROM users WHERE id = ? AND active = 1", (target_user_id,)).fetchone()
+        if not target:
+            raise KeyError("user_not_found")
+        if target["role"] == "admin":
+            raise PermissionError("admin_password_not_revealable")
+        row = db.execute("SELECT ciphertext FROM password_vault WHERE user_id = ?", (target_user_id,)).fetchone()
+        if not row:
+            raise KeyError("password_not_recoverable")
+        try:
+            password = cipher.decrypt(row["ciphertext"].encode("ascii")).decode("utf-8")
+        except (InvalidToken, UnicodeError, ValueError) as exc:
+            raise RuntimeError("password_vault_decrypt_failed") from exc
+        _record_password_vault_audit(db, admin_user_id, target_user_id, "reveal", source_ip)
+        db.commit()
+    return password
+
+
+def reset_user_password_for_admin(
+    admin_user_id: str,
+    target_user_id: str,
+    new_password: str = "",
+    source_ip: str = "",
+) -> str:
+    # Refuse to rotate a password unless the recoverable copy can be stored.
+    # This prevents an apparently successful reset from creating another
+    # password that the administrator cannot retrieve later.
+    _password_vault_cipher()
+    password = str(new_password or "")
+    if not password:
+        alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%"
+        password = "".join(secrets.choice(alphabet) for _ in range(14))
+    if len(password) < 8 or len(password) > 128:
+        raise ValueError("new_password_length")
+    salt = secrets.token_bytes(16)
+    with _connect() as db:
+        target = db.execute("SELECT id, role FROM users WHERE id = ? AND active = 1", (target_user_id,)).fetchone()
+        if not target:
+            raise KeyError("user_not_found")
+        if target["role"] == "admin":
+            raise PermissionError("admin_password_not_resettable_here")
+        db.execute(
+            """UPDATE users SET password_hash = ?, password_salt = ?, must_change_password = 0
+               WHERE id = ?""",
+            (_hash_password(password, salt), salt.hex(), target_user_id),
+        )
+        _store_password_vault(db, target_user_id, password)
+        db.execute("DELETE FROM sessions WHERE user_id = ?", (target_user_id,))
+        _record_password_vault_audit(db, admin_user_id, target_user_id, "reset", source_ip)
+        db.commit()
+    return password
 
 
 def _public_user(row) -> dict:
@@ -735,6 +869,7 @@ def register_user(username: str, password: str) -> dict:
                     time.time(),
                 ),
             )
+            _store_password_vault(db, user_id, password)
             db.commit()
     except sqlite3.IntegrityError as exc:
         raise ValueError("用户名已存在") from exc
@@ -873,6 +1008,7 @@ def prepare_registration_approval(application_id: str, reviewer_id: str) -> tupl
                    must_change_password = 0 WHERE id = ?""",
                 (_hash_password(temporary_password, salt), salt.hex(), existing_user["id"]),
             )
+            _store_password_vault(db, existing_user["id"], temporary_password)
         else:
             user_id = uuid.uuid4().hex
             db.execute(
@@ -890,6 +1026,7 @@ def prepare_registration_approval(application_id: str, reviewer_id: str) -> tupl
                     now,
                 ),
             )
+            _store_password_vault(db, user_id, temporary_password)
         db.execute(
             """UPDATE registration_applications SET status = 'delivering', delivery_status = 'sending',
                delivery_error = NULL, reviewed_by = ?, reviewed_at = ?, updated_at = ? WHERE id = ?""",
@@ -1102,6 +1239,8 @@ def change_user_password(user_id: str, current_password: str, new_password: str)
                WHERE id = ?""",
             (_hash_password(new_password, salt), salt.hex(), user_id),
         )
+        if row["role"] != "admin":
+            _store_password_vault(db, user_id, new_password)
         db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
         db.commit()
         updated = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()

@@ -1,8 +1,8 @@
-import { Cloud, Coins, Copy, Gift, HardDrive, History, LoaderCircle, Save, ShieldCheck } from "lucide-react";
+import { Cloud, Coins, Copy, Eye, Gift, HardDrive, History, KeyRound, LoaderCircle, Save, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { adjustAdminUserQuota, fetchAccountQuota, fetchAdminUserQuotas, fetchAdminWorkflowPricing, updateAdminWorkflowPricing } from "../api";
+import { adjustAdminUserQuota, fetchAccountQuota, fetchAdminUserQuotas, fetchAdminWorkflowPricing, resetAdminUserPassword, revealAdminUserPassword, updateAdminWorkflowPricing } from "../api";
 import { useAuth } from "../auth";
 import { Layout } from "../components/Layout";
 import { usePreferences } from "../preferences";
@@ -112,6 +112,8 @@ export function AdminUserQuotaPage() {
   const [storageValues, setStorageValues] = useState<Record<string, string>>({});
   const [pricingItems, setPricingItems] = useState<AdminWorkflowPricing[]>([]);
   const [pricingValues, setPricingValues] = useState<Record<string, { coze: string; mihe: string }>>({});
+  const [adminPassword, setAdminPassword] = useState("");
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -163,11 +165,51 @@ export function AdminUserQuotaPage() {
     finally { setBusyId(""); }
   }
 
+  async function managePassword(item: UserQuota, action: "reveal" | "reset") {
+    if (!adminPassword) {
+      setError("请先输入当前管理员密码进行二次验证");
+      return;
+    }
+    const busyKey = `password-${action}-${item.user.id}`;
+    setBusyId(busyKey); setError(""); setMessage("");
+    try {
+      const result = action === "reveal"
+        ? await revealAdminUserPassword(item.user.id, adminPassword)
+        : await resetAdminUserPassword(item.user.id, adminPassword);
+      setRevealedPasswords((current) => ({ ...current, [item.user.id]: result.password }));
+      setMessage(action === "reveal"
+        ? `${item.user.email || item.user.username} 的密码已读取并记录审计日志`
+        : `${item.user.email || item.user.username} 的密码已重置，旧登录会话已退出`);
+    } catch (nextError) { setError((nextError as Error).message); }
+    finally { setBusyId(""); }
+  }
+
+  async function copyPassword(userId: string) {
+    const password = revealedPasswords[userId] || "";
+    if (!password) return;
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(password);
+    else {
+      const input = document.createElement("textarea");
+      input.value = password;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      input.remove();
+    }
+    setMessage("密码已复制到剪贴板");
+  }
+
   return (
     <Layout>
       <main className="content-page page-width admin-quota-page">
         <div className="page-heading"><span className="page-icon"><Coins /></span><div><h1>积分与成本管理</h1><p>调整用户积分、云存储上限，以及每个工作流的供应商成本。</p></div></div>
         {error && <div className="notice error">{error}</div>}{message && <div className="notice success">{message}</div>}
+        <section className="admin-password-auth">
+          <div><strong>用户密码保险库</strong><small>查看或重置普通用户密码前，需要输入当前管理员密码。每次操作都会记录管理员、用户、时间和来源 IP。</small></div>
+          <label><span>当前管理员密码</span><input type="password" autoComplete="current-password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} placeholder="仅用于本次二次验证" /></label>
+        </section>
         <div className="admin-quota-list">
           {items.map((item) => (
             <article key={item.user.id}>
@@ -176,6 +218,11 @@ export function AdminUserQuotaPage() {
                 <label><span>积分增减</span><input type="number" min="-10000" max="10000" placeholder="例如 100 或 -20" value={generationValues[item.user.id] || ""} onChange={(event) => setGenerationValues((current) => ({ ...current, [item.user.id]: event.target.value }))} /></label>
                 <label><span>存储上限 GB</span><input type="number" min="0" max="10240" value={storageValues[item.user.id] || ""} onChange={(event) => setStorageValues((current) => ({ ...current, [item.user.id]: event.target.value }))} /></label>
                 <button type="button" disabled={busyId === item.user.id} onClick={() => void save(item)}>{busyId === item.user.id ? <LoaderCircle className="spin" /> : <Save />}保存</button>
+                <div className="admin-password-actions">
+                  <button type="button" disabled={busyId.startsWith("password-")} onClick={() => void managePassword(item, "reveal")}>{busyId === `password-reveal-${item.user.id}` ? <LoaderCircle className="spin" /> : <Eye />}查看密码</button>
+                  <button type="button" disabled={busyId.startsWith("password-")} onClick={() => void managePassword(item, "reset")}>{busyId === `password-reset-${item.user.id}` ? <LoaderCircle className="spin" /> : <KeyRound />}重置并生成密码</button>
+                  {revealedPasswords[item.user.id] && <div className="revealed-password"><span>当前密码</span><code>{revealedPasswords[item.user.id]}</code><button type="button" onClick={() => void copyPassword(item.user.id)}><Copy />复制</button></div>}
+                </div>
               </>}
             </article>
           ))}
