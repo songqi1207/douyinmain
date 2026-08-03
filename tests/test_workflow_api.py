@@ -917,6 +917,34 @@ class WorkflowApiTests(unittest.TestCase):
             "未成年人禁止吸烟",
         )
 
+    def test_published_god_draft_bounds_image_entrance_animation_duration(self):
+        key = {
+            "calls": [
+                {
+                    "call_id": "main_images",
+                    "tool": "add_images",
+                    "params": {
+                        "image_infos": [
+                            {
+                                "image_url": "https://example.test/scene.png",
+                                "start": 22_500_000,
+                                "end": 29_724_000,
+                                "in_animation": "light_zoom",
+                                "in_animation_duration": 7_224_000,
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+
+        workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
+
+        self.assertEqual(
+            key["calls"][0]["params"]["image_infos"][0]["in_animation_duration"],
+            800_000,
+        )
+
     def test_draft_with_unrepaired_encoding_damaged_caption_is_rejected(self):
         key = {
             "meta": {"unresolved_segment_ids": []},

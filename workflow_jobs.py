@@ -1766,6 +1766,16 @@ def _repair_own01_missing_body_images(job: dict, draft_key: dict) -> None:
         )
 
 
+def _draft_time_to_us(value: Any) -> int:
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    if abs(number) < 10_000:
+        return max(0, int(round(number * 1_000_000)))
+    return max(0, int(round(number)))
+
+
 def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
     workflow_code = str(job.get("workflow_code") or "").upper()
     if workflow_code == "OWN02":
@@ -1795,6 +1805,34 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                 text = str(caption.get("text") or "").strip()
                 if not text or _visible_text_has_encoding_damage(text):
                     caption["text"] = replacement
+        return
+    if workflow_code == "OWN03":
+        # Provider drafts sometimes use the full image segment duration as
+        # the entrance-animation duration. Jianying can then leave that image
+        # transparent after the animation, while captions keep rendering.
+        # Keep the requested style but bound image entrances to a short,
+        # reliable transition window.
+        for call in draft_key.get("calls") or []:
+            if not isinstance(call, dict) or call.get("tool") != "add_images":
+                continue
+            params = call.get("params") if isinstance(call.get("params"), dict) else {}
+            image_infos = params.get("image_infos")
+            if not isinstance(image_infos, list):
+                continue
+            for info in image_infos:
+                if not isinstance(info, dict) or not info.get("in_animation"):
+                    continue
+                start = _draft_time_to_us(info.get("start"))
+                end = _draft_time_to_us(info.get("end"))
+                if end <= 0:
+                    end = start + _draft_time_to_us(info.get("duration"))
+                segment_duration = max(0, end - start)
+                if segment_duration <= 0:
+                    continue
+                requested = _draft_time_to_us(info.get("in_animation_duration"))
+                safe_duration = min(segment_duration, 800_000)
+                if requested <= 0 or requested > safe_duration:
+                    info["in_animation_duration"] = safe_duration
         return
     if workflow_code != "OWN01":
         return
