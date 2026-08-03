@@ -101,6 +101,11 @@ export function ProfilePage() {
           <span className={`profile-state ${user?.must_change_password ? "warning" : ""}`}>
             <CheckCircle2 />{user?.must_change_password ? tr("需要修改临时密码", "Temporary password must be changed") : tr("账户状态正常", "Account is secure")}
           </span>
+          <Link className="profile-credit-pill" to="/account/usage">
+            <Coins />
+            <span><small>{tr("我的积分", "My credits")}</small><strong>{loading || !quota ? "…" : quota.unlimited ? "∞" : quota.points_balance.toLocaleString(locale)}</strong></span>
+            <ArrowRight />
+          </Link>
         </section>
 
         {error && <div className="notice error">{error}</div>}
