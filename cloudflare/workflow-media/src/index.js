@@ -204,7 +204,7 @@ async function deleteExport(request, env, key) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
@@ -240,6 +240,22 @@ export default {
       return errorResponse(405, "Method not allowed");
     }
 
+    // Exports are immutable. Cache the exact full/range response at the
+    // nearest edge so repeat playback does not re-read R2 on every request.
+    // Only Range participates in the key; conditional headers are per-client.
+    const cacheHeaders = new Headers();
+    if (request.headers.has("range")) {
+      cacheHeaders.set("range", request.headers.get("range"));
+    }
+    const cacheKey = new Request(request.url, {
+      method: "GET",
+      headers: cacheHeaders,
+    });
+    if (request.method === "GET") {
+      const cached = await caches.default.match(cacheKey);
+      if (cached) return cached;
+    }
+
     if (request.method === "HEAD") {
       const object = await env.PUBLIC_BUCKET.head(key);
       if (!object) return errorResponse(404, "Not found");
@@ -273,6 +289,10 @@ export default {
       headers.set("content-length", String(object.size));
     }
 
-    return new Response(object.body, { status, headers });
+    const response = new Response(object.body, { status, headers });
+    if (request.method === "GET" && response.ok) {
+      ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
+    }
+    return response;
   },
 };
