@@ -151,6 +151,11 @@ export function RecordsPage() {
                   <strong>{job.progress}%</strong>
                 </div>
                 <div className="record-progress"><i style={{ width: `${job.progress}%` }} /></div>
+                {job.billing && <div className={`record-billing ${job.billing.status}`}>
+                  <span>{job.billing.status === "charged" ? "已扣除" : job.billing.status === "refunded" ? "已退回" : "已冻结"}</span>
+                  <strong>{job.billing.status === "charged" ? job.billing.charged_points : job.billing.status === "refunded" ? job.billing.refunded_points : job.billing.reserved_points} 积分</strong>
+                  <small>{job.billing.status === "charged" ? "任务成功后正式扣除" : job.billing.status === "refunded" ? "任务失败，积分已退回" : "任务处理中，完成后结算"}</small>
+                </div>}
                 {job.error && <div className="record-error">{job.error.message}</div>}
                 <div className="record-actions">
                   <span>{job.stage}</span>

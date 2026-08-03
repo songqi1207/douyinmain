@@ -36,6 +36,7 @@ const completedJob: Job = {
   status: "succeeded",
   stage: "completed",
   progress: 100,
+  billing: { status: "charged", price_points: 100, charged_points: 100, reserved_points: 0, refunded_points: 0 },
   results: [{
     type: "video",
     url: "/api/v1/job-results/job-video-device.mp4",

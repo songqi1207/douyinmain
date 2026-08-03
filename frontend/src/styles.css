@@ -249,6 +249,13 @@ button { color: inherit; }
 @keyframes pulse { 50% { opacity: .35; } }
 .progress-track { height: 6px; overflow: hidden; margin-top: 14px; border-radius: 999px; background: #2b2a27; }
 .progress-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #b47c35, #f0cd82); transition: width .35s ease; }
+.job-billing-summary { display: flex; align-items: baseline; gap: 8px; margin-top: 12px; padding: 9px 11px; border: 1px solid #3d372d; border-radius: 9px; color: #b8aa91; background: rgba(42, 36, 25, .7); font-size: 11px; }
+.job-billing-summary strong { color: #f0cd82; font-variant-numeric: tabular-nums; }
+.job-billing-summary small { margin-left: auto; color: #80786b; }
+.job-billing-summary.charged { border-color: #31533e; background: rgba(27, 53, 37, .35); }
+.job-billing-summary.charged strong { color: #83d4a4; }
+.job-billing-summary.refunded { border-color: #5a3834; background: rgba(60, 28, 26, .35); }
+.job-billing-summary.refunded strong { color: #ef9b91; }
 .job-background-status { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 11px; align-items: center; margin-top: 14px; padding: 12px; border: 1px solid #51452f; border-radius: 10px; background: linear-gradient(135deg, rgba(111, 80, 35, .2), rgba(26, 25, 22, .82)); }
 .job-background-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: #e8bd72; background: rgba(232, 189, 114, .1); }
 .job-background-icon svg { width: 18px; }
@@ -302,6 +309,13 @@ button { color: inherit; }
 .record-status.running, .record-status.rendering { animation: pulse 1.2s ease infinite; }
 .record-progress { height: 4px; overflow: hidden; margin: 14px 0 10px; border-radius: 999px; background: #2a2926; }
 .record-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #b47c35, #f0cd82); }
+.record-billing { display: flex; align-items: baseline; gap: 7px; margin: 9px 0 11px; padding: 7px 10px; border: 1px solid #3d372d; border-radius: 8px; color: #b8aa91; background: rgba(42, 36, 25, .55); font-size: 11px; }
+.record-billing strong { color: #f0cd82; font-variant-numeric: tabular-nums; }
+.record-billing small { margin-left: auto; color: #80786b; }
+.record-billing.charged { border-color: #31533e; background: rgba(27, 53, 37, .28); }
+.record-billing.charged strong { color: #83d4a4; }
+.record-billing.refunded { border-color: #5a3834; background: rgba(60, 28, 26, .28); }
+.record-billing.refunded strong { color: #ef9b91; }
 .record-actions { display: flex; justify-content: flex-end; align-items: center; gap: 14px; color: #77756f; font-size: 12px; }
 .record-actions a { color: #d5ac66; }
 .record-actions span { margin-right: auto; }
@@ -1581,6 +1595,13 @@ html[data-theme="pastel"] .preference-trigger, html[data-theme="pastel"] .mobile
 html[data-theme="pastel"] .auth-nav > a, html[data-theme="pastel"] .auth-nav button { color: #60738d; }
 html[data-theme="pastel"] .auth-nav > a:hover, html[data-theme="pastel"] .auth-nav button:hover { border-color: #d4e1ef; color: #24446f; background: #f3f7fc; }
 html[data-theme="pastel"] .auth-nav .points-link { border-color: #cbdff5; color: #2867ac; background: #edf6ff; }
+html[data-theme="pastel"] .job-billing-summary, html[data-theme="pastel"] .record-billing { border-color: #d5e2ef; color: #6d8097; background: #f7faff; }
+html[data-theme="pastel"] .job-billing-summary strong, html[data-theme="pastel"] .record-billing strong { color: #2867ac; }
+html[data-theme="pastel"] .job-billing-summary small, html[data-theme="pastel"] .record-billing small { color: #8799ad; }
+html[data-theme="pastel"] .job-billing-summary.charged, html[data-theme="pastel"] .record-billing.charged { border-color: #bfe4d1; background: #f0fbf5; }
+html[data-theme="pastel"] .job-billing-summary.charged strong, html[data-theme="pastel"] .record-billing.charged strong { color: #2f9466; }
+html[data-theme="pastel"] .job-billing-summary.refunded, html[data-theme="pastel"] .record-billing.refunded { border-color: #f0c9c9; background: #fff5f5; }
+html[data-theme="pastel"] .job-billing-summary.refunded strong, html[data-theme="pastel"] .record-billing.refunded strong { color: #c56868; }
 html[data-theme="pastel"] .profile-credit-pill { border-color: #c8def3; color: #2867ac; background: linear-gradient(120deg, #edf7ff, #fff0f8); }
 html[data-theme="pastel"] .profile-credit-pill > svg:first-child { color: #5aaeff; }
 html[data-theme="pastel"] .profile-credit-pill small { color: #7187a0; }

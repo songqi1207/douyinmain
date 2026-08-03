@@ -1921,6 +1921,13 @@ def _public_job(job: dict) -> dict:
         "failed_stage": job.get("failed_stage"),
         "progress": job["progress"],
         "price_points": int(job.get("price_cents") or 0),
+        "billing": {
+            "status": "charged" if job["status"] == "succeeded" else "refunded" if job["status"] == "failed" else "reserved",
+            "price_points": int(job.get("price_cents") or 0),
+            "charged_points": int(job.get("price_cents") or 0) if job["status"] == "succeeded" else 0,
+            "reserved_points": int(job.get("price_cents") or 0) if job["status"] in {"queued", "running", "rendering"} else 0,
+            "refunded_points": int(job.get("price_cents") or 0) if job["status"] == "failed" else 0,
+        },
         "results": public_results,
         "error": (
             {"code": job["error_code"], "message": job["error_message"]}

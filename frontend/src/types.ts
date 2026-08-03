@@ -63,6 +63,13 @@ export type Job = {
   failed_stage?: string | null;
   progress: number;
   price_points?: number;
+  billing?: {
+    status: "reserved" | "charged" | "refunded";
+    price_points: number;
+    charged_points: number;
+    reserved_points: number;
+    refunded_points: number;
+  };
   results: JobResult[];
   error?: { code: string; message: string } | null;
   created_at: number;

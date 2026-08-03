@@ -89,6 +89,11 @@ export function JobProgress({
         <strong>{job.progress}%</strong>
       </div>
       <div className="progress-track" aria-hidden="true"><i style={{ width: `${job.progress}%` }} /></div>
+      {job.billing && <div className={`job-billing-summary ${job.billing.status}`}>
+        <span>{job.billing.status === "charged" ? "本次已扣积分" : job.billing.status === "refunded" ? "本次已退积分" : "本次冻结积分"}</span>
+        <strong>{job.billing.status === "charged" ? job.billing.charged_points : job.billing.status === "refunded" ? job.billing.refunded_points : job.billing.reserved_points} 积分</strong>
+        <small>{job.billing.status === "charged" ? "成功任务正式扣除" : job.billing.status === "refunded" ? "失败任务自动退回" : "任务完成后结算"}</small>
+      </div>}
       <ol className="job-phases">
         {PHASES.map((phase, index) => {
           const done = job.status === "succeeded" || index < activePhase;
