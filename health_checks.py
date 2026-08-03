@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3
 import shutil
 import threading
 import time
@@ -59,12 +60,38 @@ def run_health_check(trigger: str = "manual") -> dict[str, Any]:
     checks.append(_check("ffmpeg", "ok" if ffmpeg else "error", "ffmpeg_ready" if ffmpeg else "ffmpeg_missing", "FFmpeg 可用" if ffmpeg else "找不到 FFmpeg", path=ffmpeg or ""))
 
     try:
+        from site_accounts import DB_PATH
+        with sqlite3.connect(DB_PATH) as db:
+            device_rows = db.execute("SELECT last_seen FROM render_devices WHERE revoked_at IS NULL").fetchall()
+            online_devices = sum(1 for row in device_rows if row[0] and float(row[0]) >= time.time() - 120)
+        device_status = "ok" if online_devices else "warning"
+        checks.append(_check("jianying", device_status, "jianying_online" if online_devices else "jianying_offline", f"剪映助手在线 {online_devices} 台" if online_devices else "没有在线的剪映导出助手", online_devices=online_devices, total_devices=len(device_rows)))
+    except (OSError, sqlite3.Error) as exc:
+        checks.append(_check("jianying", "warning", "jianying_probe_failed", f"剪映助手状态暂时无法读取：{exc.__class__.__name__}"))
+
+    try:
         disk = shutil.disk_usage(DATA_DIR)
         free_gb = disk.free / 1024 ** 3
         disk_status = "error" if free_gb < 2 else "warning" if free_gb < 10 else "ok"
         checks.append(_check("disk", disk_status, "disk_low" if disk_status != "ok" else "disk_ready", f"服务器可用磁盘 {free_gb:.1f} GB", free_bytes=disk.free, free_gb=round(free_gb, 2)))
     except OSError as exc:
         checks.append(_check("disk", "error", "disk_probe_failed", f"磁盘检查失败：{exc}"))
+
+    try:
+        from site_accounts import provider_usage_snapshot
+        recent_errors = provider_usage_snapshot(1).get("recent_errors") or []
+        checks.append(_check("provider_history", "warning" if recent_errors else "ok", "provider_recent_errors" if recent_errors else "provider_history_clean", f"最近 24 小时有 {len(recent_errors)} 条供应商失败记录" if recent_errors else "最近 24 小时没有供应商失败记录", recent_errors=recent_errors[:5]))
+    except (OSError, sqlite3.Error, KeyError, TypeError) as exc:
+        checks.append(_check("provider_history", "warning", "provider_history_unavailable", f"供应商失败记录读取失败：{exc.__class__.__name__}"))
+
+    try:
+        from workflow_jobs import DB_PATH as WORKFLOW_DB_PATH
+        with sqlite3.connect(WORKFLOW_DB_PATH) as db:
+            failed_rows = db.execute("SELECT id, workflow_code, stage, error_code, error_message, updated_at FROM jobs WHERE status = 'failed' AND updated_at >= ? ORDER BY updated_at DESC LIMIT 5", (time.time() - 86400,)).fetchall()
+        failed_jobs = [{"job_id": row[0], "workflow_code": row[1], "stage": row[2], "error_code": row[3], "error_message": row[4], "updated_at": row[5]} for row in failed_rows]
+        checks.append(_check("job_history", "warning" if failed_jobs else "ok", "job_recent_failures" if failed_jobs else "job_history_clean", f"最近 24 小时有 {len(failed_jobs)} 个任务失败" if failed_jobs else "最近 24 小时没有任务失败", failures=failed_jobs))
+    except (OSError, sqlite3.Error) as exc:
+        checks.append(_check("job_history", "warning", "job_history_unavailable", f"任务失败记录读取失败：{exc.__class__.__name__}"))
 
     coze_base = (os.getenv("COZE_API_BASE_URL") or "https://api.coze.cn").rstrip("/")
     try:
@@ -117,4 +144,3 @@ def start_health_scheduler() -> None:
             return
         _scheduler_started = True
         threading.Thread(target=_scheduler_loop, name="daily-health-check", daemon=True).start()
-
