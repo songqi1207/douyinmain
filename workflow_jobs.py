@@ -1195,11 +1195,13 @@ def _post_coze_workflow(
                         f"内容生成服务连接超时（每次 {connect_timeout} 秒，已尝试 {connect_attempts} 次）",
                         level="error",
                     )
+                record_usage("timeout", error_code="provider_timeout", error_message="connect timeout")
                 raise ProviderError(
                     "provider_timeout",
                     f"内容生成服务连接超时，已自动尝试 {connect_attempts} 次，请稍后重试",
                 ) from exc
     except requests.exceptions.Timeout as exc:
+        record_usage("timeout", error_code="provider_timeout", error_message="request timeout")
         logger.warning(
             "coze_request_timeout job_id=%s workflow=%s elapsed_seconds=%.3f",
             job_id,
@@ -1214,6 +1216,7 @@ def _post_coze_workflow(
             )
         raise ProviderError("provider_timeout", "内容生成超时，请稍后重试") from exc
     except requests.exceptions.RequestException as exc:
+        record_usage("error", error_code="provider_unavailable", error_message=type(exc).__name__)
         logger.warning(
             "coze_request_failed job_id=%s workflow=%s exception=%s elapsed_seconds=%.3f",
             job_id,
