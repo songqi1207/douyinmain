@@ -3,6 +3,7 @@ import { Route, Routes, useLocation } from "react-router-dom";
 
 import { AdminRoute } from "./components/AdminRoute";
 import { AccountSecurityPage } from "./pages/AccountSecurityPage";
+import { AdminCreationsPage } from "./pages/AdminCreationsPage";
 import { HelpPage, NotFoundPage, RegistrationAdminPage } from "./pages/AdminHelpPages";
 import { RuntimeSettingsPage } from "./pages/AdminRuntimeSettingsPage";
 import { AuthPage } from "./pages/AuthPages";
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
         <Route path="/admin/registrations" element={<AdminRoute><RegistrationAdminPage /></AdminRoute>} />
+        <Route path="/admin/creations" element={<AdminRoute><AdminCreationsPage /></AdminRoute>} />
         <Route path="/admin/runtime-settings" element={<AdminRoute><RuntimeSettingsPage /></AdminRoute>} />
         <Route path="/admin/user-quotas" element={<AdminRoute><AdminUserQuotaPage /></AdminRoute>} />
         <Route path="/help" element={<HelpPage />} />

@@ -91,6 +91,7 @@ from workflow_jobs import (
     get_result_path,
     job_summary,
     list_jobs,
+    list_admin_jobs,
     promote_device_render_result,
     report_device_render_progress,
     user_can_access_result,
@@ -930,7 +931,7 @@ def api_generated_media(kind: str, filename: str):
 @app.get("/api/v1/job-results/{filename}")
 def api_job_result(filename: str, request: Request):
     user = _require_user(request)
-    if not user_can_access_result(user["id"], filename):
+    if not user_can_access_result(user["id"], filename, allow_all=user.get("role") == "admin"):
         raise HTTPException(status_code=404, detail={"code": "result_not_found", "message": "结果文件不存在"})
     path = get_result_path(filename)
     if not path:
@@ -1413,6 +1414,54 @@ def api_admin_user_quotas(request: Request):
     _require_admin(request)
     items = list_user_quotas()
     return {"items": items, "total": len(items)}
+
+
+@app.get("/api/v1/admin/jobs")
+def api_admin_jobs(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    status: str = Query(default=""),
+    workflow_code: str = Query(default=""),
+    user_id: str = Query(default=""),
+    q: str = Query(default="", max_length=100),
+):
+    _require_admin(request)
+    quota_items = list_user_quotas()
+    users = {item["user"]["id"]: item["user"] for item in quota_items}
+    normalized_query = str(q or "").strip().lower()
+    query_user_ids = [
+        user["id"]
+        for user in users.values()
+        if normalized_query and normalized_query in f"{user.get('email') or ''} {user.get('username') or ''}".lower()
+    ]
+    try:
+        jobs, total, summary = list_admin_jobs(
+            page,
+            page_size,
+            status=status,
+            workflow_code=workflow_code,
+            user_id=user_id,
+            query=normalized_query,
+            query_user_ids=query_user_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": str(exc), "message": "不支持的任务筛选条件"},
+        ) from exc
+    fallback = {"username": "已删除用户", "email": None, "role": "user", "active": False}
+    return {
+        "items": [
+            {**_public_job(job), "user": {"id": job.get("user_id") or "", **users.get(job.get("user_id"), fallback)}}
+            for job in jobs
+        ],
+        "users": list(users.values()),
+        "summary": summary,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
 
 
 def _admin_password_reauthentication(admin: dict, password: str) -> None:

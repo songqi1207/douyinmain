@@ -313,6 +313,31 @@ class WorkflowApiTests(unittest.TestCase):
             )]
         self.assertEqual(actions, ["reveal", "reset"])
 
+    def test_admin_can_list_all_user_creations_while_user_cannot(self):
+        user = self.client.get("/api/v1/auth/me").json()["user"]
+        job = workflow_jobs.create_job(
+            "G45",
+            "起号",
+            {"theme": "管理员全站记录测试主题"},
+            user_id=user["id"],
+            price_points=100,
+        )
+
+        self.assertEqual(self.client.get("/api/v1/admin/jobs").status_code, 403)
+        response = self.admin_client.get(
+            "/api/v1/admin/jobs",
+            params={"q": "管理员全站记录测试主题", "user_id": user["id"]},
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["summary"]["users"], 1)
+        self.assertEqual(payload["items"][0]["id"], job["id"])
+        self.assertEqual(payload["items"][0]["display_title"], "管理员全站记录测试主题")
+        self.assertEqual(payload["items"][0]["user"]["email"], "workflow-user@example.test")
+        self.assertNotIn("inputs", payload["items"][0])
+
     def test_admin_configures_double_cost_pricing_without_exposing_provider_breakdown(self):
         self.assertEqual(self.client.get("/api/v1/admin/workflow-pricing").status_code, 403)
         listing = self.admin_client.get("/api/v1/admin/workflow-pricing")

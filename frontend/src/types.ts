@@ -161,6 +161,32 @@ export type JobPage = {
   page_size: number;
 };
 
+export type AdminJob = Job & {
+  user: {
+    id: string;
+    username: string;
+    email?: string | null;
+    role: "user" | "admin";
+    active: boolean;
+  };
+};
+
+export type AdminJobPage = {
+  items: AdminJob[];
+  users: AdminJob["user"][];
+  summary: {
+    total: number;
+    users: number;
+    succeeded: number;
+    failed: number;
+    active: number;
+    points: number;
+  };
+  total: number;
+  page: number;
+  page_size: number;
+};
+
 export type QuotaLedgerEntry = {
   id: string;
   job_id?: string | null;

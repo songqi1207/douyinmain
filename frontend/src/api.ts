@@ -1,5 +1,6 @@
 import type {
   AuthUser,
+  AdminJobPage,
   AdminWorkflowPricing,
   Job,
   JobLogEntry,
@@ -123,6 +124,25 @@ export async function fetchAccountQuota() {
 
 export async function fetchAdminUserQuotas() {
   return request<{ items: UserQuota[]; total: number }>("/api/v1/admin/user-quotas", { cache: "no-store" });
+}
+
+export async function fetchAdminJobs(params: {
+  page: number;
+  pageSize: number;
+  status?: string;
+  workflowCode?: string;
+  userId?: string;
+  q?: string;
+}) {
+  const query = new URLSearchParams({
+    page: String(params.page),
+    page_size: String(params.pageSize),
+    status: params.status || "",
+    workflow_code: params.workflowCode || "",
+    user_id: params.userId || "",
+    q: params.q || "",
+  });
+  return request<AdminJobPage>(`/api/v1/admin/jobs?${query}`, { cache: "no-store" });
 }
 
 export async function adjustAdminUserQuota(

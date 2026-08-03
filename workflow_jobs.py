@@ -341,7 +341,7 @@ def get_result_path(filename: str) -> Path | None:
     return path
 
 
-def user_can_access_result(user_id: str, filename: str) -> bool:
+def user_can_access_result(user_id: str, filename: str, *, allow_all: bool = False) -> bool:
     """Allow access only to a completed result explicitly owned by the user."""
     if (
         not user_id
@@ -352,12 +352,19 @@ def user_can_access_result(user_id: str, filename: str) -> bool:
         return False
     expected_url = f"/api/v1/job-results/{filename}"
     with _connect() as db:
-        rows = db.execute(
-            """SELECT results_json FROM jobs
-               WHERE user_id = ? AND status = 'succeeded'
-                 AND instr(results_json, ?) > 0""",
-            (user_id, filename),
-        ).fetchall()
+        if allow_all:
+            rows = db.execute(
+                """SELECT results_json FROM jobs
+                   WHERE status = 'succeeded' AND instr(results_json, ?) > 0""",
+                (filename,),
+            ).fetchall()
+        else:
+            rows = db.execute(
+                """SELECT results_json FROM jobs
+                   WHERE user_id = ? AND status = 'succeeded'
+                     AND instr(results_json, ?) > 0""",
+                (user_id, filename),
+            ).fetchall()
     for row in rows:
         try:
             results = json.loads(row["results_json"])
@@ -408,6 +415,72 @@ def list_jobs(
             (*parameters, page_size, offset),
         ).fetchall()
     return [job for row in rows if (job := get_job(row["id"]))], total
+
+
+def list_admin_jobs(
+    page: int = 1,
+    page_size: int = 20,
+    *,
+    status: str = "",
+    workflow_code: str = "",
+    user_id: str = "",
+    query: str = "",
+    query_user_ids: list[str] | None = None,
+) -> tuple[list[dict], int, dict[str, int]]:
+    """Return cross-account jobs for the administrator console."""
+    offset = (page - 1) * page_size
+    clauses = ["1 = 1"]
+    parameters: list[Any] = []
+    normalized_status = str(status or "").strip().lower()
+    if normalized_status and normalized_status != "all":
+        if normalized_status not in {"queued", "running", "rendering", "succeeded", "failed"}:
+            raise ValueError("invalid_job_status")
+        clauses.append("status = ?")
+        parameters.append(normalized_status)
+    normalized_code = str(workflow_code or "").strip().upper()
+    if normalized_code:
+        clauses.append("workflow_code = ?")
+        parameters.append(normalized_code)
+    normalized_user_id = str(user_id or "").strip()
+    if normalized_user_id:
+        clauses.append("user_id = ?")
+        parameters.append(normalized_user_id)
+    normalized_query = str(query or "").strip().lower()
+    if normalized_query:
+        pattern = f"%{normalized_query}%"
+        search_clauses = [
+            "LOWER(id) LIKE ?",
+            "LOWER(workflow_code) LIKE ?",
+            "LOWER(COALESCE(category, '')) LIKE ?",
+            "LOWER(inputs_json) LIKE ?",
+        ]
+        search_parameters: list[Any] = [pattern, pattern, pattern, pattern]
+        matched_users = list(dict.fromkeys(str(value) for value in (query_user_ids or []) if str(value).strip()))
+        if matched_users:
+            placeholders = ",".join("?" for _ in matched_users)
+            search_clauses.append(f"user_id IN ({placeholders})")
+            search_parameters.extend(matched_users)
+        clauses.append("(" + " OR ".join(search_clauses) + ")")
+        parameters.extend(search_parameters)
+    where = " AND ".join(clauses)
+    with _connect() as db:
+        summary_row = db.execute(
+            f"""SELECT COUNT(*) AS total,
+                       COUNT(DISTINCT user_id) AS users,
+                       SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) AS succeeded,
+                       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+                       SUM(CASE WHEN status IN ('queued', 'running', 'rendering') THEN 1 ELSE 0 END) AS active,
+                       SUM(CASE WHEN status = 'succeeded' THEN price_cents ELSE 0 END) AS points
+                FROM jobs WHERE {where}""",
+            parameters,
+        ).fetchone()
+        rows = db.execute(
+            f"""SELECT id FROM jobs WHERE {where}
+                ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+            (*parameters, page_size, offset),
+        ).fetchall()
+    summary = {key: int(summary_row[key] or 0) for key in ("total", "users", "succeeded", "failed", "active", "points")}
+    return [job for row in rows if (job := get_job(row["id"]))], summary["total"], summary
 
 
 def job_summary() -> dict[str, int]:
