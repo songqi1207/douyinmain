@@ -821,6 +821,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .quota-overview-grid article > span { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 13px; color: #d5ab66; background: #2a2115; }
 .quota-overview-grid article.ready > span { color: #80c898; background: #193021; }
 .quota-overview-grid article.blocked > span { color: #d58a80; background: #321d1a; }
+.quota-overview-grid article.quota-consumed-card > span { color: #f0bd75; background: #2a2115; }
 .quota-overview-grid article div { min-width: 0; display: grid; gap: 4px; }
 .quota-overview-grid small { color: #77736c; font-size: 11px; }
 .quota-overview-grid strong { color: #e7e0d5; font-size: 19px; }
@@ -1379,6 +1380,9 @@ body { color: var(--vl-text); background-image: radial-gradient(circle at 82% -8
 .profile-balance-card { background: linear-gradient(145deg, rgba(140, 240, 206, .13), rgba(140, 240, 206, .02)), #111820 !important; }
 .profile-card-label { display: flex; align-items: center; gap: 8px; color: #7f8d9c; font-size: 10px; }
 .profile-card-label svg { width: 16px; height: 16px; color: var(--vl-mint); }
+.profile-deducted-label { margin-top: 4px; color: var(--vl-mint); font-size: 11px; font-weight: 720; }
+.profile-activity-card .profile-card-label { display: none; }
+.profile-activity-card > strong { margin-top: 18px; }
 .profile-dashboard article > strong { display: block; margin: 26px 0 4px; color: #eff5f7; font-size: 40px; line-height: 1; letter-spacing: -.05em; }
 .profile-dashboard article > p { min-height: 34px; margin: 8px 0 19px; color: #71808f; font-size: 10px; line-height: 1.6; }
 .profile-dashboard article > a, .profile-account-card > a { display: inline-flex; align-items: center; gap: 6px; color: var(--vl-mint); font-size: 10px; }
