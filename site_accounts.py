@@ -130,6 +130,21 @@ def init_site_database():
             );
             CREATE INDEX IF NOT EXISTS idx_quota_ledger_user
                 ON quota_ledger(user_id, created_at DESC);
+            CREATE TABLE IF NOT EXISTS provider_usage_events (
+                id TEXT PRIMARY KEY,
+                job_id TEXT,
+                workflow_code TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                status TEXT NOT NULL,
+                estimated_points INTEGER NOT NULL DEFAULT 0,
+                http_status INTEGER,
+                elapsed_ms INTEGER NOT NULL DEFAULT 0,
+                error_code TEXT,
+                error_message TEXT,
+                created_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_provider_usage_created
+                ON provider_usage_events(created_at DESC, provider, workflow_code);
             CREATE TABLE IF NOT EXISTS video_storage (
                 job_id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -654,6 +669,127 @@ def list_user_quotas() -> list[dict]:
         result = [_quota_snapshot(db, user_id, include_ledger=False) for user_id in user_ids]
         db.commit()
     return result
+
+
+def record_provider_usage_event(
+    *,
+    job_id: str = "",
+    workflow_code: str = "",
+    provider: str,
+    status: str,
+    estimated_points: int = 0,
+    http_status: int | None = None,
+    elapsed_ms: int = 0,
+    error_code: str = "",
+    error_message: str = "",
+) -> str:
+    """Persist one provider call for admin reporting.
+
+    The points value is explicitly an estimate from the admin pricing table;
+    no supplier response is treated as a real balance deduction.
+    """
+    provider = str(provider or "").strip().lower()
+    status = str(status or "").strip().lower()
+    if provider not in {"coze", "mihe"}:
+        raise ValueError("invalid_provider")
+    if status not in {"success", "error", "timeout", "rate_limited"}:
+        raise ValueError("invalid_provider_status")
+    event_id = uuid.uuid4().hex
+    with _connect() as db:
+        db.execute(
+            """INSERT INTO provider_usage_events
+               (id, job_id, workflow_code, provider, status, estimated_points,
+                http_status, elapsed_ms, error_code, error_message, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                event_id,
+                str(job_id or "")[:80] or None,
+                str(workflow_code or "").strip().upper()[:80] or "UNKNOWN",
+                provider,
+                status,
+                max(0, int(estimated_points)),
+                int(http_status) if http_status is not None else None,
+                max(0, int(elapsed_ms)),
+                str(error_code or "")[:80] or None,
+                str(error_message or "")[:500] or None,
+                time.time(),
+            ),
+        )
+        db.commit()
+    return event_id
+
+
+def provider_usage_snapshot(days: int = 30) -> dict:
+    days = min(365, max(1, int(days)))
+    since = time.time() - days * 86400
+    with _connect() as db:
+        rows = db.execute(
+            """SELECT provider, status, COUNT(*) AS calls,
+                      COALESCE(SUM(estimated_points), 0) AS estimated_points,
+                      COALESCE(AVG(elapsed_ms), 0) AS avg_elapsed_ms
+               FROM provider_usage_events WHERE created_at >= ?
+               GROUP BY provider, status ORDER BY provider, status""",
+            (since,),
+        ).fetchall()
+        workflow_rows = db.execute(
+            """SELECT workflow_code, provider, COUNT(*) AS calls,
+                      SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successes,
+                      SUM(CASE WHEN status <> 'success' THEN 1 ELSE 0 END) AS failures,
+                      COALESCE(SUM(estimated_points), 0) AS estimated_points,
+                      COALESCE(AVG(elapsed_ms), 0) AS avg_elapsed_ms
+               FROM provider_usage_events WHERE created_at >= ?
+               GROUP BY workflow_code, provider
+               ORDER BY estimated_points DESC, workflow_code, provider""",
+            (since,),
+        ).fetchall()
+        error_rows = db.execute(
+            """SELECT id, job_id, workflow_code, provider, status, estimated_points,
+                      http_status, elapsed_ms, error_code, error_message, created_at
+               FROM provider_usage_events
+               WHERE created_at >= ? AND status <> 'success'
+               ORDER BY created_at DESC LIMIT 50""",
+            (since,),
+        ).fetchall()
+        db.commit()
+    totals = {"calls": 0, "successes": 0, "failures": 0, "estimated_points": 0}
+    by_provider: dict[str, dict] = {}
+    for row in rows:
+        item = by_provider.setdefault(
+            row["provider"],
+            {"calls": 0, "successes": 0, "failures": 0, "estimated_points": 0, "avg_elapsed_ms": 0},
+        )
+        calls = int(row["calls"])
+        item["calls"] += calls
+        item["successes"] += calls if row["status"] == "success" else 0
+        item["failures"] += calls if row["status"] != "success" else 0
+        item["estimated_points"] += int(row["estimated_points"])
+        item["avg_elapsed_ms"] = round(float(row["avg_elapsed_ms"] or 0), 1)
+    for item in by_provider.values():
+        totals["calls"] += item["calls"]
+        totals["successes"] += item["successes"]
+        totals["failures"] += item["failures"]
+        totals["estimated_points"] += item["estimated_points"]
+    return {
+        "days": days,
+        "since": since,
+        "balance_source": "estimated_pricing",
+        "balance_available": False,
+        "totals": totals,
+        "by_provider": by_provider,
+        "by_workflow": [
+            {
+                "workflow_code": row["workflow_code"],
+                "provider": row["provider"],
+                "calls": int(row["calls"]),
+                "successes": int(row["successes"] or 0),
+                "failures": int(row["failures"] or 0),
+                "estimated_points": int(row["estimated_points"] or 0),
+                "avg_elapsed_ms": round(float(row["avg_elapsed_ms"] or 0), 1),
+            }
+            for row in workflow_rows
+        ],
+        "recent_errors": [dict(row) for row in error_rows],
+    }
 
 
 def _default_workflow_costs(workflow_code: str) -> tuple[int, int]:

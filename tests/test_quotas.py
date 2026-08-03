@@ -100,6 +100,34 @@ class QuotaTests(unittest.TestCase):
         self.assertEqual(restored["storage_points_reserved"], 0)
         self.assertEqual(restored["ledger"][0]["event_type"], "storage_release")
 
+    def test_provider_usage_snapshot_is_explicitly_estimated(self):
+        site_accounts.record_provider_usage_event(
+            job_id="usage-job",
+            workflow_code="OWN01",
+            provider="coze",
+            status="success",
+            estimated_points=25,
+            http_status=200,
+            elapsed_ms=1200,
+        )
+        site_accounts.record_provider_usage_event(
+            job_id="usage-job",
+            workflow_code="OWN01",
+            provider="mihe",
+            status="error",
+            estimated_points=25,
+            http_status=429,
+            elapsed_ms=300,
+            error_code="provider_rate_limited",
+            error_message="rate limited",
+        )
+        usage = site_accounts.provider_usage_snapshot(7)
+        self.assertFalse(usage["balance_available"])
+        self.assertEqual(usage["balance_source"], "estimated_pricing")
+        self.assertEqual(usage["totals"]["calls"], 2)
+        self.assertEqual(usage["totals"]["estimated_points"], 50)
+        self.assertEqual(len(usage["recent_errors"]), 1)
+
     def test_admin_can_adjust_generation_and_storage_allowance(self):
         adjusted = site_accounts.adjust_user_quota(
             self.user["id"],

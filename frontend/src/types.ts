@@ -233,3 +233,14 @@ export type AdminWorkflowPricing = {
   workflow: Pick<Workflow, "code" | "name" | "status" | "categories">;
   pricing: WorkflowPricing;
 };
+
+export type ProviderUsageSnapshot = {
+  days: number;
+  since: number;
+  balance_source: "estimated_pricing";
+  balance_available: boolean;
+  totals: { calls: number; successes: number; failures: number; estimated_points: number };
+  by_provider: Record<string, { calls: number; successes: number; failures: number; estimated_points: number; avg_elapsed_ms: number }>;
+  by_workflow: Array<{ workflow_code: string; provider: string; calls: number; successes: number; failures: number; estimated_points: number; avg_elapsed_ms: number }>;
+  recent_errors: Array<{ id: string; job_id?: string | null; workflow_code: string; provider: string; status: string; estimated_points: number; http_status?: number | null; elapsed_ms: number; error_code?: string | null; error_message?: string | null; created_at: number }>;
+};

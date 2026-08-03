@@ -14,6 +14,7 @@ import type {
   VoiceCatalog,
   Workflow,
   WorkflowPricing,
+  ProviderUsageSnapshot,
 } from "./types";
 
 type ApiErrorShape = {
@@ -124,6 +125,10 @@ export async function fetchAccountQuota() {
 
 export async function fetchAdminUserQuotas() {
   return request<{ items: UserQuota[]; total: number }>("/api/v1/admin/user-quotas", { cache: "no-store" });
+}
+
+export async function fetchAdminProviderUsage(days = 30) {
+  return request<{ usage: ProviderUsageSnapshot }>(`/api/v1/admin/provider-usage?days=${days}`, { cache: "no-store" });
 }
 
 export async function fetchAdminJobs(params: {

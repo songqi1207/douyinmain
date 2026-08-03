@@ -1072,6 +1072,41 @@ def _post_coze_workflow(
         "on",
     }
     started_at = time.monotonic()
+
+    def record_usage(status: str, *, response_status: int | None = None, error_code: str = "", error_message: str = "") -> None:
+        if job_id == "-":
+            return
+        try:
+            from site_accounts import record_provider_usage_event, workflow_pricing_snapshot
+
+            pricing = workflow_pricing_snapshot(workflow_code)
+            elapsed_ms = round((time.monotonic() - started_at) * 1000)
+            record_provider_usage_event(
+                job_id=job_id,
+                workflow_code=workflow_code,
+                provider="coze",
+                status=status,
+                estimated_points=pricing["coze_cost_points"],
+                http_status=response_status,
+                elapsed_ms=elapsed_ms,
+                error_code=error_code,
+                error_message=error_message,
+            )
+            if pricing["mihe_cost_points"] > 0:
+                record_provider_usage_event(
+                    job_id=job_id,
+                    workflow_code=workflow_code,
+                    provider="mihe",
+                    status=status,
+                    estimated_points=pricing["mihe_cost_points"],
+                    http_status=response_status,
+                    elapsed_ms=elapsed_ms,
+                    error_code=error_code,
+                    error_message=error_message,
+                )
+        except Exception:
+            logger.exception("provider_usage_record_failed job_id=%s workflow=%s", job_id, workflow_code)
+
     logger.info(
         "coze_request_started job_id=%s workflow=%s transport=%s connect_timeout=%s read_timeout=%s connect_attempts=%s",
         job_id,
@@ -1089,6 +1124,12 @@ def _post_coze_workflow(
     if use_env_proxy:
         try:
             response = requests.post(url, **request_kwargs)
+            record_usage(
+                "success" if response.status_code < 400 else "error",
+                response_status=response.status_code,
+                error_code="http_error" if response.status_code >= 400 else "",
+                error_message=f"HTTP {response.status_code}" if response.status_code >= 400 else "",
+            )
             logger.info(
                 "coze_request_finished job_id=%s workflow=%s transport=system_proxy status=%s elapsed_seconds=%.3f",
                 job_id,
@@ -1110,6 +1151,12 @@ def _post_coze_workflow(
         for attempt in range(1, connect_attempts + 1):
             try:
                 response = direct_session.post(url, **request_kwargs)
+                record_usage(
+                    "success" if response.status_code < 400 else "error",
+                    response_status=response.status_code,
+                    error_code="http_error" if response.status_code >= 400 else "",
+                    error_message=f"HTTP {response.status_code}" if response.status_code >= 400 else "",
+                )
                 logger.info(
                     "coze_request_finished job_id=%s workflow=%s transport=direct status=%s attempt=%s elapsed_seconds=%.3f",
                     job_id,

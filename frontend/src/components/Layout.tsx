@@ -92,6 +92,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="rail-section-label">{tr("系统管理", "ADMIN")}</div>
           <NavLink to="/admin/runtime-settings" onClick={() => setMenuOpen(false)}><Settings />{tr("运行配置", "Runtime")}</NavLink>
           <NavLink to="/admin/creations" onClick={() => setMenuOpen(false)}><ListVideo />{tr("全站创作", "All Creations")}</NavLink>
+          <NavLink to="/admin/provider-usage" onClick={() => setMenuOpen(false)}><Gauge />{tr("供应商用量", "Provider Usage")}</NavLink>
           <NavLink to="/admin/user-quotas" onClick={() => setMenuOpen(false)}><Gauge />{tr("积分计价", "Credits")}</NavLink>
           <NavLink to="/admin/registrations" onClick={() => setMenuOpen(false)}><ShieldCheck />{tr("注册审核", "Registrations")}</NavLink>
         </div>}

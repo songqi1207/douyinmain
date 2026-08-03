@@ -55,6 +55,7 @@ from site_accounts import (
     list_user_quotas,
     mark_video_storage_deleted,
     prepare_registration_approval,
+    provider_usage_snapshot,
     reveal_user_password,
     record_resource_event,
     record_video_storage,
@@ -1414,6 +1415,12 @@ def api_admin_user_quotas(request: Request):
     _require_admin(request)
     items = list_user_quotas()
     return {"items": items, "total": len(items)}
+
+
+@app.get("/api/v1/admin/provider-usage")
+def api_admin_provider_usage(request: Request, days: int = Query(default=30, ge=1, le=365)):
+    _require_admin(request)
+    return {"usage": provider_usage_snapshot(days)}
 
 
 @app.get("/api/v1/admin/jobs")
