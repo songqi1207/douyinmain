@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ApiError, deleteJobVideo, fetchJobs, fetchWorkflows, retryJob } from "../api";
 import { useAuth } from "../auth";
 import { Layout } from "../components/Layout";
+import { VideoPreview } from "../components/VideoPreview";
 import { usePreferences } from "../preferences";
 import type { Job, Workflow } from "../types";
 
@@ -164,12 +165,12 @@ export function RecordsPage() {
                         <button
                           type="button"
                           onClick={() => setPreview(
-                            preview?.jobId === job.id && preview.url === (result.download_url || result.url)
+                            preview?.jobId === job.id
                               ? null
                               : { jobId: job.id, url: result.download_url || result.url, poster: result.poster_url },
                           )}
                         >
-                          {preview?.jobId === job.id && preview.url === (result.download_url || result.url) ? <X /> : <Play />}
+                          {preview?.jobId === job.id ? <X /> : <Play />}
                           {preview?.jobId === job.id && preview.url === (result.download_url || result.url) ? "收起视频" : result.download_url ? "播放高清原片" : "播放视频"}
                         </button>
                       )}
@@ -189,15 +190,10 @@ export function RecordsPage() {
                 </div>
                 {preview?.jobId === job.id && (
                   <div className="record-video-preview">
-                    <video
-                      key={preview.url}
-                      src={preview.url}
-                      poster={preview.poster || undefined}
-                      controls
-                      autoPlay
-                      playsInline
-                      preload="metadata"
-                    />
+                    {(() => {
+                      const videoResult = job.results.find((item) => item.type === "video");
+                      return videoResult ? <VideoPreview jobId={job.id} result={videoResult} /> : null;
+                    })()}
                   </div>
                 )}
               </article>

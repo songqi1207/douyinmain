@@ -41,6 +41,7 @@ from device_rendering import (
 )
 from site_accounts import (
     QuotaError,
+    PREVIEW_1080_UNLOCK_POINTS,
     SESSION_TTL_SECONDS,
     active_admin_user,
     adjust_user_quota,
@@ -68,6 +69,7 @@ from site_accounts import (
     submit_registration_application,
     settle_generation_reservation,
     toggle_favorite,
+    unlock_video_preview,
     update_workflow_pricing,
     user_from_session,
     verify_user_password,
@@ -1788,6 +1790,37 @@ def api_admin_retry_job(job_id: str, request: Request, background_tasks: Backgro
     if not target:
         raise HTTPException(status_code=404, detail={"code": "user_not_found", "message": "任务所属用户不存在"})
     return _admin_retry_job_for_user(job_id, target, background_tasks)
+
+
+@app.post("/api/v1/jobs/{job_id}/preview-quality")
+def api_unlock_job_preview(job_id: str, request: Request, payload: dict = Body(default_factory=dict)):
+    """Unlock the fast-start 1080p preview for a completed video."""
+    user = _require_user(request)
+    job = get_job(job_id)
+    if not job or job.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "Job not found"})
+    if job.get("status") != "succeeded":
+        raise HTTPException(status_code=409, detail={"code": "video_not_ready", "message": "瑙嗛灏氭湭瀹屾垚"})
+    quality = str(payload.get("quality") or "1080").strip()
+    if quality != "1080":
+        raise HTTPException(status_code=422, detail={"code": "unsupported_preview_quality", "message": "鏆傛椂鍙敮鎸?1080P"})
+    result = next((item for item in job.get("results") or [] if item.get("type") == "video"), None)
+    high_url = str((result or {}).get("download_url") or "").strip()
+    if not high_url:
+        raise HTTPException(status_code=409, detail={"code": "preview_not_available", "message": "1080P preview is not available"})
+    try:
+        quota, charged = unlock_video_preview(user["id"], job_id, quality)
+    except QuotaError as exc:
+        code = str(exc)
+        message = "积分不足，无法解锁 1080P 预览" if code == "generation_quota_exhausted" else "无法解锁预览"
+        raise HTTPException(status_code=409, detail={"code": code, "message": message}) from exc
+    return {
+        "quality": quality,
+        "url": high_url,
+        "charged_points": PREVIEW_1080_UNLOCK_POINTS if charged else 0,
+        "quota": quota,
+        "message": "1080P preview unlocked" if charged else "1080P preview already unlocked",
+    }
 
 
 @app.delete("/api/v1/jobs/{job_id}/video")

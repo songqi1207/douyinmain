@@ -32,6 +32,7 @@ POINT_DENOMINATION_SCALE = max(1, int(os.getenv("POINT_DENOMINATION_SCALE") or 2
 DEFAULT_INVITER_REWARD_POINTS = int(os.getenv("DEFAULT_INVITER_REWARD_POINTS") or 250)
 DEFAULT_INVITEE_REWARD_POINTS = int(os.getenv("DEFAULT_INVITEE_REWARD_POINTS") or 250)
 BILLING_MARKUP_MULTIPLIER = max(2, int(os.getenv("BILLING_MARKUP_MULTIPLIER") or 2))
+PREVIEW_1080_UNLOCK_POINTS = max(1, int(os.getenv("PREVIEW_1080_UNLOCK_POINTS") or 10))
 DEFAULT_COZE_COST_POINTS = max(0, int(os.getenv("DEFAULT_COZE_COST_POINTS") or 25))
 DEFAULT_MIHE_COST_POINTS = max(0, int(os.getenv("DEFAULT_MIHE_COST_POINTS") or 0))
 DEFAULT_LOCAL_MIHE_COST_POINTS = max(0, int(os.getenv("DEFAULT_LOCAL_MIHE_COST_POINTS") or 25))
@@ -157,6 +158,17 @@ def init_site_database():
                 updated_at REAL NOT NULL,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS video_preview_unlocks (
+                job_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                quality TEXT NOT NULL,
+                points INTEGER NOT NULL DEFAULT 0,
+                created_at REAL NOT NULL,
+                PRIMARY KEY(job_id, user_id, quality),
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_video_preview_unlocks_user
+                ON video_preview_unlocks(user_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_video_storage_user
                 ON video_storage(user_id, state, updated_at DESC);
             CREATE TABLE IF NOT EXISTS invite_rewards (
@@ -907,6 +919,48 @@ def reserve_generation(user_id: str, job_id: str, units: int = 1) -> dict:
         )
         db.commit()
         return _quota_snapshot(db, user_id, include_ledger=False)
+
+
+def unlock_video_preview(user_id: str, job_id: str, quality: str = "1080") -> tuple[dict, bool]:
+    """Charge once for a higher-quality preview and return the quota snapshot."""
+    requested_quality = str(quality or "").strip().lower()
+    if requested_quality != "1080":
+        raise ValueError("unsupported_preview_quality")
+    units = PREVIEW_1080_UNLOCK_POINTS
+    now = time.time()
+    with _connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        user, quota = _ensure_quota_row(db, user_id)
+        existing = db.execute(
+            "SELECT 1 FROM video_preview_unlocks WHERE job_id = ? AND user_id = ? AND quality = ?",
+            (job_id, user_id, requested_quality),
+        ).fetchone()
+        if existing or user["role"] == "admin":
+            db.commit()
+            return _quota_snapshot(db, user_id, include_ledger=False), False
+        balance = int(quota["generation_balance"])
+        if balance < units:
+            db.rollback()
+            raise QuotaError("generation_quota_exhausted")
+        balance_after = balance - units
+        db.execute(
+            "UPDATE user_quotas SET generation_balance = ?, updated_at = ? WHERE user_id = ?",
+            (balance_after, now, user_id),
+        )
+        db.execute(
+            """INSERT INTO video_preview_unlocks
+               (job_id, user_id, quality, points, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (job_id, user_id, requested_quality, units, now),
+        )
+        db.execute(
+            """INSERT INTO quota_ledger
+               (id, user_id, job_id, event_type, units, balance_after, detail, created_at)
+               VALUES (?, ?, ?, 'preview_unlock', ?, ?, ?, ?)""",
+            (uuid.uuid4().hex, user_id, job_id, -units, balance_after, "解锁 1080P 高清预览", now),
+        )
+        db.commit()
+        return _quota_snapshot(db, user_id, include_ledger=False), True
 
 
 def settle_generation_reservation(job_id: str, succeeded: bool) -> bool:

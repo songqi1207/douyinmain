@@ -27,6 +27,7 @@ import { useAuth } from "../auth";
 import { FieldControl, type UploadedFile } from "../components/FieldControl";
 import { JobProgress, Results } from "../components/JobViews";
 import { Layout } from "../components/Layout";
+import { VideoPreview } from "../components/VideoPreview";
 import { useJobPolling } from "../hooks";
 import { usePreferences } from "../preferences";
 import type { Job, Workflow } from "../types";
@@ -178,7 +179,7 @@ export function CatalogPage() {
                   return (
                     <article className="catalog-video-card" key={job.id}>
                       <div className="catalog-video-media">
-                        <video src={result.url} poster={result.poster_url || undefined} controls playsInline preload="none" />
+                        <VideoPreview jobId={job.id} result={result} />
                       </div>
                       <div className="catalog-video-body">
                         <div>

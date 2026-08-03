@@ -123,6 +123,17 @@ export async function deleteJobVideo(jobId: string) {
   );
 }
 
+export async function unlockJobPreview(jobId: string, quality: "1080" = "1080") {
+  return request<{ quality: string; url: string; charged_points: number; quota: UserQuota; message: string }>(
+    `/api/v1/jobs/${encodeURIComponent(jobId)}/preview-quality`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quality }),
+    },
+  );
+}
+
 export async function fetchAccountQuota() {
   return request<{ quota: UserQuota }>("/api/v1/account/quota", { cache: "no-store" });
 }

@@ -86,7 +86,7 @@ describe("RecordsPage", () => {
     expect(container.querySelector("video")).not.toBeInTheDocument();
   });
 
-  it("plays the original R2 video when a high-quality download URL is available", async () => {
+  it("starts with the fast preview when a high-quality URL is available", async () => {
     api.fetchJobs.mockResolvedValue({
       items: [{
         ...completedJob,
@@ -104,7 +104,7 @@ describe("RecordsPage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "播放高清原片" }));
 
-    await waitFor(() => expect(container.querySelector("video")).toHaveAttribute("src", "https://media.example/original.mp4"));
+    await waitFor(() => expect(container.querySelector("video")).toHaveAttribute("src", "https://media.example/preview.mp4"));
   });
 
   it("does not expose intermediate draft files while rendering", async () => {
