@@ -128,6 +128,7 @@ export function ProfilePage() {
 
             <article className="profile-activity-card">
               <div className="profile-card-label"><History />{tr("累计创作消费", "Lifetime usage")}</div>
+              <div className="profile-deducted-label">{tr("\u5df2\u6263\u9664\u79ef\u5206", "Credits charged")}</div>
               <strong>{quota.points_consumed.toLocaleString(locale)}</strong>
               <p>{tr("成功生成后才正式扣除，失败任务自动退回", "Credits are charged only after success; failed tasks are refunded")}</p>
               <Link to="/records">{tr("打开我的作品", "Open my creations")} <ArrowRight /></Link>
