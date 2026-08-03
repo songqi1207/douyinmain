@@ -108,6 +108,7 @@ def init_database():
                 results_json TEXT NOT NULL,
                 error_code TEXT,
                 error_message TEXT,
+                failed_stage TEXT,
                 user_id TEXT,
                 render_device_id TEXT,
                 render_claimed_at REAL,
@@ -123,6 +124,8 @@ def init_database():
             db.execute("ALTER TABLE jobs ADD COLUMN render_device_id TEXT")
         if "render_claimed_at" not in columns:
             db.execute("ALTER TABLE jobs ADD COLUMN render_claimed_at REAL")
+        if "failed_stage" not in columns:
+            db.execute("ALTER TABLE jobs ADD COLUMN failed_stage TEXT")
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS job_logs (
@@ -523,9 +526,13 @@ def _update_job(job_id: str, **changes):
         "price_cents",
     }
     values = {key: value for key, value in changes.items() if key in allowed}
-    values["updated_at"] = time.time()
-    assignments = ", ".join(f"{key} = ?" for key in values)
     with _connect() as db:
+        if values.get("status") == "failed" and values.get("stage") == "failed":
+            previous = db.execute("SELECT stage, failed_stage FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if previous:
+                values["failed_stage"] = previous["failed_stage"] or previous["stage"] or "failed"
+        values["updated_at"] = time.time()
+        assignments = ", ".join(f"{key} = ?" for key in values)
         db.execute(f"UPDATE jobs SET {assignments} WHERE id = ?", (*values.values(), job_id))
         db.commit()
     terminal_status = values.get("status")

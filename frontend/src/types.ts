@@ -60,6 +60,7 @@ export type Job = {
   display_title: string;
   status: "queued" | "running" | "rendering" | "succeeded" | "failed";
   stage: string;
+  failed_stage?: string | null;
   progress: number;
   price_points?: number;
   results: JobResult[];

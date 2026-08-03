@@ -112,6 +112,10 @@ export async function retryJob(jobId: string) {
   return request<{ job: Job }>(`/api/v1/jobs/${jobId}/retry`, { method: "POST" });
 }
 
+export async function retryAdminJob(jobId: string) {
+  return request<{ job: Job }>(`/api/v1/admin/jobs/${jobId}/retry`, { method: "POST" });
+}
+
 export async function deleteJobVideo(jobId: string) {
   return request<{ job: Job; quota: UserQuota; released_bytes: number; message: string }>(
     `/api/v1/jobs/${encodeURIComponent(jobId)}/video`,

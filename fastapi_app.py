@@ -1734,6 +1734,62 @@ def api_retry_job(job_id: str, request: Request, background_tasks: BackgroundTas
     return {"job": _public_job(job)}
 
 
+def _admin_retry_job_for_user(job_id: str, user: dict, background_tasks: BackgroundTasks) -> dict:
+    """Retry a failed job on behalf of its owner; quota is charged to that owner."""
+    old_job = get_job(job_id)
+    if not old_job or old_job.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "任务不存在"})
+    if old_job["status"] != "failed":
+        raise HTTPException(status_code=409, detail={"code": "job_not_failed", "message": "只有失败任务可以重试"})
+    render_device, _ = _preferred_render_device(user)
+    next_job_id = uuid.uuid4().hex
+    pricing = _reserve_job_quota(user, next_job_id, old_job["workflow_code"])
+    if old_job["workflow_code"] == DRAFT_KEY_RENDER_CODE:
+        try:
+            job = create_draft_key_render_job(
+                old_job["inputs"], old_job.get("user_id"),
+                render_device["id"] if render_device else None, next_job_id,
+                pricing["provider_cost_points"], pricing["price_points"],
+            )
+        except PermissionError as exc:
+            settle_generation_reservation(next_job_id, False)
+            raise HTTPException(status_code=409, detail={"code": "render_device_required", "message": "请先启动剪映导出助手再重试"}) from exc
+        except Exception:
+            settle_generation_reservation(next_job_id, False)
+            raise
+    else:
+        workflow = get_workflow(old_job["workflow_code"], old_job["category"])
+        if workflow and workflow.get("generation_mode") == "draft" and not render_device and not (os.getenv("WORKFLOW_RENDER_API_URL") or "").strip():
+            settle_generation_reservation(next_job_id, False)
+            raise HTTPException(status_code=409, detail={"code": "render_device_required", "message": "请先启动剪映导出助手再重试"})
+        try:
+            job = create_job(
+                old_job["workflow_code"], old_job["category"], old_job["inputs"], old_job.get("user_id"),
+                render_device["id"] if render_device and workflow and workflow.get("generation_mode") == "draft" else None,
+                next_job_id, pricing["provider_cost_points"], pricing["price_points"],
+            )
+        except Exception:
+            settle_generation_reservation(next_job_id, False)
+            raise
+    enqueue_job(job["id"], background_tasks)
+    return {"job": _public_job(job)}
+
+
+@app.post("/api/v1/admin/jobs/{job_id}/retry", status_code=202)
+def api_admin_retry_job(job_id: str, request: Request, background_tasks: BackgroundTasks):
+    _require_admin(request)
+    old_job = get_job(job_id)
+    if not old_job or not old_job.get("user_id"):
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "任务不存在"})
+    target = next(
+        (item["user"] for item in list_user_quotas() if item["user"]["id"] == old_job["user_id"]),
+        None,
+    )
+    if not target:
+        raise HTTPException(status_code=404, detail={"code": "user_not_found", "message": "任务所属用户不存在"})
+    return _admin_retry_job_for_user(job_id, target, background_tasks)
+
+
 @app.delete("/api/v1/jobs/{job_id}/video")
 def api_delete_job_video(job_id: str, request: Request):
     user = _require_user(request)
@@ -1829,6 +1885,7 @@ def _public_job(job: dict) -> dict:
         "display_title": display_title,
         "status": job["status"],
         "stage": job["stage"],
+        "failed_stage": job.get("failed_stage"),
         "progress": job["progress"],
         "price_points": int(job.get("price_cents") or 0),
         "results": public_results,

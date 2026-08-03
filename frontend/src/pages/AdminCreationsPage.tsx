@@ -1,7 +1,7 @@
-import { ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Download, FileText, LoaderCircle, Play, Search, UsersRound, Video, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Download, FileText, LoaderCircle, Play, RefreshCw, Search, UsersRound, Video, X } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
-import { ApiError, fetchAdminJobs, fetchWorkflows } from "../api";
+import { ApiError, fetchAdminJobs, fetchWorkflows, retryAdminJob } from "../api";
 import { Layout } from "../components/Layout";
 import { usePreferences } from "../preferences";
 import type { AdminJob, AdminJobPage, Workflow } from "../types";
@@ -49,6 +49,7 @@ export function AdminCreationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<{ jobId: string; url: string; poster?: string | null } | null>(null);
+  const [retryingId, setRetryingId] = useState("");
 
   async function load() {
     setLoading(true);
@@ -84,6 +85,18 @@ export function AdminCreationsPage() {
     event.preventDefault();
     setPage(1);
     setQuery(queryInput.trim());
+  }
+
+  async function retry(job: AdminJob) {
+    setRetryingId(job.id);
+    try {
+      await retryAdminJob(job.id);
+      await load();
+    } catch (nextError) {
+      setError((nextError as ApiError).message);
+    } finally {
+      setRetryingId("");
+    }
   }
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -136,6 +149,8 @@ export function AdminCreationsPage() {
                 </div>
                 <div className="record-progress"><i style={{ width: `${job.progress}%` }} /></div>
                 {job.error && <div className="record-error">{job.error.message}</div>}
+                {job.status === "failed" && <div className="record-error">{tr("失败阶段", "Failed stage")}: {job.failed_stage || job.stage}</div>}
+                {job.status === "failed" && <div className="record-actions admin-creation-actions"><button type="button" disabled={retryingId === job.id} onClick={() => void retry(job)}>{retryingId === job.id ? <LoaderCircle className="spin" /> : <RefreshCw />}{retryingId === job.id ? tr("重新调用中", "Retrying") : tr("代用户重新调用（扣用户积分）", "Retry for user (charges user credits)")}</button></div>}
                 {job.status === "succeeded" && job.results.length > 0 && <div className="record-actions admin-creation-actions">
                   {job.results.map((result, index) => <span className="record-result-actions" key={`${result.url}-${index}`}>
                     {result.type === "video" && <button type="button" onClick={() => setPreview(preview?.jobId === job.id && preview.url === (result.download_url || result.url) ? null : { jobId: job.id, url: result.download_url || result.url, poster: result.poster_url })}>{preview?.jobId === job.id && preview.url === (result.download_url || result.url) ? <X /> : <Play />}{preview?.jobId === job.id && preview.url === (result.download_url || result.url) ? tr("收起视频", "Close video") : result.download_url ? tr("播放高清原片", "Play original") : tr("播放视频", "Play video")}</button>}
