@@ -10,6 +10,8 @@ from desktop_bridge.jianying_uia_export import (
     _draft_card_candidate_points,
     _export_field_points,
     _first_draft_card_point,
+    _is_cross_process_jianying_popup,
+    _popup_close_points,
     _resolve_export_path,
 )
 
@@ -98,6 +100,18 @@ class JianyingUIAExportTests(unittest.TestCase):
             (770, 1046),
             _draft_card_candidate_points(100, 200, 2100, 1400),
         )
+
+    def test_jianying_splash_dialog_can_be_closed_across_processes(self):
+        self.assertTrue(_is_cross_process_jianying_popup("SplashDialog_QMLTYPE_481"))
+        self.assertTrue(_is_cross_process_jianying_popup("LVInfoDialog_QMLTYPE_12"))
+        self.assertFalse(_is_cross_process_jianying_popup("Popup_QMLTYPE_9"))
+        self.assertFalse(_is_cross_process_jianying_popup("ExportWindow_QMLTYPE_3"))
+
+    def test_popup_close_tries_title_bar_before_bottom_action(self):
+        points = _popup_close_points(400, 200, 1200, 800)
+
+        self.assertEqual(points[0], (1180, 224))
+        self.assertEqual(points[1], (970, 745))
 
     def test_draft_card_uses_native_double_click(self):
         control = _FakeClickableControl()

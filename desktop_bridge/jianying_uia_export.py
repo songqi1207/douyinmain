@@ -260,6 +260,24 @@ def _window_process_id(handle: int) -> int:
     return int(process_id.value)
 
 
+def _is_cross_process_jianying_popup(class_name: str) -> bool:
+    """Match only JianYing-specific dialogs that may use a helper process."""
+
+    normalized = str(class_name or "").casefold()
+    return any(token in normalized for token in ("splashdialog_qmltype", "lvinfodialog"))
+
+
+def _popup_close_points(left: int, top: int, right: int, bottom: int) -> list[tuple[int, int]]:
+    """Try the title-bar close button before a dialog's bottom-right action."""
+
+    width = max(1, int(right) - int(left))
+    height = max(1, int(bottom) - int(top))
+    return [
+        (int(right - min(24, max(12, width * 0.025))), int(top + min(24, max(12, height * 0.04)))),
+        (int(right - min(230, max(80, width * 0.33))), int(bottom - min(55, max(35, height * 0.12)))),
+    ]
+
+
 def _dismiss_process_popups(reference_window: object, stage: StageCallback | None) -> int:
     import ctypes
 
@@ -287,26 +305,41 @@ def _dismiss_process_popups(reference_window: object, stage: StageCallback | Non
         nonlocal closed
         if not user32.IsWindowVisible(hwnd):
             return True
-        if _window_process_id(hwnd) != process_id:
-            return True
+        window_process_id = _window_process_id(hwnd)
         class_buffer = ctypes.create_unicode_buffer(256)
         user32.GetClassNameW(hwnd, class_buffer, len(class_buffer))
         class_name = class_buffer.value or ""
+        same_process_popup = window_process_id == process_id and any(
+            token in class_name for token in ("LVInfoDialog", "SplashDialog", "Popup")
+        )
+        cross_process_popup = _is_cross_process_jianying_popup(class_name)
         if (
             hwnd != reference_handle
-            and any(token in class_name for token in ("LVInfoDialog", "SplashDialog", "Popup"))
+            and (same_process_popup or cross_process_popup)
             and "ExportWindow" not in class_name
         ):
             rect = RECT()
             user32.GetWindowRect(hwnd, ctypes.byref(rect))
             user32.PostMessageW(hwnd, 0x0010, 0, 0)
-            _emit(stage, "uia2_popup_dismissed", f"mode=window_close class={class_name}")
-            width = max(1, int(rect.right) - int(rect.left))
-            height = max(1, int(rect.bottom) - int(rect.top))
-            x = int(rect.right - min(230, max(80, width * 0.33)))
-            y = int(rect.bottom - min(55, max(35, height * 0.12)))
-            _click_point(x, y)
-            _emit(stage, "uia2_popup_dismissed", f"mode=coordinate class={class_name} x={x} y={y}")
+            _emit(
+                stage,
+                "uia2_popup_dismissed",
+                f"mode=window_close class={class_name} cross_process={cross_process_popup}",
+            )
+            time.sleep(0.15)
+            for point_index, (x, y) in enumerate(
+                _popup_close_points(rect.left, rect.top, rect.right, rect.bottom),
+                start=1,
+            ):
+                if not user32.IsWindow(hwnd) or not user32.IsWindowVisible(hwnd):
+                    break
+                _click_point(x, y)
+                _emit(
+                    stage,
+                    "uia2_popup_dismissed",
+                    f"mode=coordinate_{point_index} class={class_name} x={x} y={y}",
+                )
+                time.sleep(0.2)
             closed += 1
         return True
 
@@ -314,6 +347,26 @@ def _dismiss_process_popups(reference_window: object, stage: StageCallback | Non
     if closed:
         time.sleep(0.8)
     return closed
+
+
+def _wait_for_editor_with_popup_dismissal(
+    auto,
+    reference_window: object,
+    stage: StageCallback | None,
+    timeout: float,
+):
+    deadline = time.monotonic() + max(1.0, float(timeout))
+    while time.monotonic() < deadline:
+        _dismiss_process_popups(reference_window, stage)
+        try:
+            current_window, current_state = _get_window(auto)
+            if current_state == "edit":
+                return current_window
+            reference_window = current_window
+        except JianyingUIAError:
+            pass
+        time.sleep(0.5)
+    raise JianyingUIAError("UIA2 等待草稿编辑页超时")
 
 
 def _window_rect(window: object) -> tuple[int, int, int, int]:
@@ -392,7 +445,7 @@ def _open_home_draft_by_coordinate(
         time.sleep(0.15)
         _click_point(x, y)
         try:
-            return _wait_for_window(auto, "edit", 8)
+            return _wait_for_editor_with_popup_dismissal(auto, window, stage, 8)
         except JianyingUIAError:
             try:
                 current_window, current_state = _get_window(auto)
@@ -581,7 +634,7 @@ def export_draft_uia(
             mode = _double_click_control(draft_button)
             _emit(stage, "uia2_draft_open_attempted", f"mode={mode}")
             try:
-                editor = _wait_for_window(auto, "edit", 25)
+                editor = _wait_for_editor_with_popup_dismissal(auto, window, stage, 25)
             except JianyingUIAError:
                 _emit(stage, "uia2_draft_open_retry", f"draft_name={draft_name}")
                 _dismiss_process_popups(window, stage)
