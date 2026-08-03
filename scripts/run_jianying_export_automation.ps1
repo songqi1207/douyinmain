@@ -142,6 +142,34 @@ function Get-ProcessRoots([int]$ProcessId) {
     )
 }
 
+function Get-JianyingPopupRoots([int]$ReferenceProcessId) {
+    $items = New-Object System.Collections.Generic.List[object]
+    foreach ($root in (Get-ProcessRoots $ReferenceProcessId)) {
+        $items.Add($root)
+    }
+
+    # Jianying 11 can host marketing/SVIP dialogs in a separate helper
+    # process. A ProcessId-only UIA lookup therefore misses the dialog even
+    # though it visibly blocks the home page.
+    try {
+        $desktopRoots = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+            [System.Windows.Automation.TreeScope]::Children,
+            [System.Windows.Automation.Condition]::TrueCondition
+        )
+        foreach ($root in $desktopRoots) {
+            $className = [string]$root.Current.ClassName
+            if ($className -match '^(SplashDialog|LVInfoDialog)_QMLTYPE_' -or $className -match '^Jianying.*Popup') {
+                $items.Add($root)
+            }
+        }
+    }
+    catch {
+        # The regular same-process roots above remain usable when the desktop
+        # tree changes while Jianying is opening or closing a dialog.
+    }
+    return $items
+}
+
 function Get-VisibleElements([int]$ProcessId) {
     $items = New-Object System.Collections.Generic.List[object]
     foreach ($root in (Get-ProcessRoots $ProcessId)) {
@@ -1024,7 +1052,7 @@ function Dismiss-JianyingPopups([int]$ProcessId) {
     $dismissPattern = '(放弃福利|暂不|以后再说|取消|跳过|我知道了|知道了|Not now|Later|Skip|Cancel)'
     $dismissed = 0
     for ($attempt = 0; $attempt -lt 4; $attempt += 1) {
-        $blockingDialog = Get-ProcessRoots $ProcessId | Where-Object {
+        $blockingDialog = Get-JianyingPopupRoots $ProcessId | Where-Object {
             $_.Current.ClassName -match 'LVInfoDialog|SplashDialog|Popup' -and
             $_.Current.ClassName -notmatch 'ExportWindow'
         } | Where-Object {
@@ -1033,13 +1061,26 @@ function Dismiss-JianyingPopups([int]$ProcessId) {
         } | Select-Object -First 1
         if ($blockingDialog) {
             $rect = $blockingDialog.Current.BoundingRectangle
+            $safeDismiss = @(Get-VisibleElementsUnder $blockingDialog) | Where-Object {
+                $text = ($_.Current.Name + " " + (Get-FullDescription $_)).Trim()
+                $text -match $dismissPattern -and
+                $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)'
+            } | Select-Object -First 1
+            if ($safeDismiss) {
+                $safeName = ([string]$safeDismiss.Current.Name).Replace("`r", " ").Replace("`n", " ").Trim()
+                Write-Stage "popup_dismissed" "mode=safe_text name=$safeName class=$($blockingDialog.Current.ClassName)"
+                Invoke-Element $safeDismiss
+                $dismissed += 1
+                Start-Sleep -Milliseconds 900
+                continue
+            }
             $handle = [IntPtr]$blockingDialog.Current.NativeWindowHandle
             if ($handle -ne [IntPtr]::Zero) {
                 Write-Stage "popup_dismissed" "mode=window_close class=$($blockingDialog.Current.ClassName)"
                 [JianyingNative]::PostMessage($handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
                 $dismissed += 1
                 Start-Sleep -Milliseconds 600
-                $stillBlocking = Get-ProcessRoots $ProcessId | Where-Object {
+                $stillBlocking = Get-JianyingPopupRoots $ProcessId | Where-Object {
                     $_.Current.ClassName -eq $blockingDialog.Current.ClassName
                 } | Select-Object -First 1
                 if (-not $stillBlocking) {
@@ -1070,7 +1111,7 @@ function Dismiss-JianyingPopups([int]$ProcessId) {
                 continue
             }
         }
-        $splash = Get-ProcessRoots $ProcessId | Where-Object {
+        $splash = Get-JianyingPopupRoots $ProcessId | Where-Object {
             $_.Current.ClassName -match 'SplashDialog|Dialog|Popup' -or
             $_.Current.Name -match 'JianyingPro'
         } | Where-Object {
