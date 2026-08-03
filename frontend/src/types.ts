@@ -252,3 +252,17 @@ export type ProviderUsageSnapshot = {
   by_workflow: Array<{ workflow_code: string; provider: string; calls: number; successes: number; failures: number; estimated_points: number; avg_elapsed_ms: number }>;
   recent_errors: Array<{ id: string; job_id?: string | null; workflow_code: string; provider: string; status: string; estimated_points: number; http_status?: number | null; elapsed_ms: number; error_code?: string | null; error_message?: string | null; created_at: number }>;
 };
+
+export type SystemHealthCheck = {
+  id: string;
+  trigger: string;
+  checked_at: number;
+  overall: "ok" | "warning" | "error";
+  checks: Array<{
+    name: string;
+    status: "ok" | "warning" | "error";
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  }>;
+};

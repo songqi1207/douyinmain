@@ -1954,6 +1954,26 @@ html[data-theme="pastel"] .voices-page .voice-card { box-shadow: 0 5px 16px rgba
 .admin-provider-usage-page .notice.warning { display: flex; align-items: center; gap: 9px; margin-bottom: 16px; }
 .admin-provider-usage-page .notice.warning svg { width: 16px; flex: 0 0 auto; }
 .provider-usage-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 16px; }
+.health-check-panel { margin-top: 16px; padding: 16px; border: 1px solid #3b3934; border-radius: 14px; background: #191816; }
+.health-check-panel.warning { border-color: #69542f; background: #211d15; }
+.health-check-panel.error { border-color: #713a35; background: #241716; }
+.health-check-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.health-check-heading > div { display: flex; align-items: center; gap: 10px; }
+.health-check-heading strong { display: block; color: #e8e1d5; font-size: 13px; }
+.health-check-heading small { display: block; margin-top: 3px; color: #827b70; font-size: 10px; }
+.health-check-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; color: #7fd2a0; background: #17281e; }
+.health-check-panel.warning .health-check-icon, .health-check-panel.error .health-check-icon { color: #efb669; background: #322515; }
+.health-check-icon svg { width: 18px; }
+.health-check-heading button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid #6f5733; border-radius: 8px; color: #e0b86f; background: #211b13; cursor: pointer; }
+.health-check-heading button svg { width: 14px; }
+.health-check-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.health-check-list article { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; padding: 10px; border: 1px solid #36332e; border-radius: 9px; background: #211f1c; }
+.health-check-list article > span { grid-row: span 2; align-self: start; color: #7fd2a0; font-size: 9px; font-weight: 800; }
+.health-check-list article.warning > span { color: #efb669; }
+.health-check-list article.error > span { color: #ef9b91; }
+.health-check-list article strong { color: #d6d0c5; font-size: 11px; }
+.health-check-list article p { grid-column: 1 / -1; margin: 4px 0 0; color: #a39b8e; font-size: 10px; }
+.health-check-list article small { grid-column: 1 / -1; color: #716b61; font-size: 9px; }
 .provider-usage-summary article { min-height: 126px; padding: 17px; }
 .provider-usage-summary article > span { width: 42px; height: 42px; }
 .provider-usage-summary strong { font-size: 24px; }
@@ -1975,6 +1995,12 @@ html[data-theme="pastel"] .page-heading-actions button, html[data-theme="pastel"
 html[data-theme="pastel"] .provider-usage-toolbar button.selected { border-color: #9fcaf2; color: #fff; background: linear-gradient(105deg, #5aaeff, #f48aba); }
 html[data-theme="pastel"] .admin-provider-usage-page .notice.warning { border-color: #f0d8b0; color: #946b2c; background: #fff9ed; }
 html[data-theme="pastel"] .provider-usage-summary article { border-color: #d8e4f0; background: linear-gradient(145deg, #fff, #f7fbff); }
+html[data-theme="pastel"] .health-check-panel { border-color: #d8e4f0; background: rgba(255, 255, 255, .94); }
+html[data-theme="pastel"] .health-check-panel.warning { border-color: #efd9b2; background: #fffaf0; }
+html[data-theme="pastel"] .health-check-panel.error { border-color: #f0caca; background: #fff7f7; }
+html[data-theme="pastel"] .health-check-heading strong, html[data-theme="pastel"] .health-check-list article strong { color: #263850; }
+html[data-theme="pastel"] .health-check-heading small, html[data-theme="pastel"] .health-check-list article p, html[data-theme="pastel"] .health-check-list article small { color: #71839a; }
+html[data-theme="pastel"] .health-check-list article { border-color: #e1eaf3; background: #f8fbff; }
 html[data-theme="pastel"] .provider-usage-summary article > span { color: #6878c5; background: linear-gradient(145deg, #eef1ff, #ffeaf5); }
 html[data-theme="pastel"] .provider-usage-summary strong { color: #253751; }
 html[data-theme="pastel"] .admin-provider-table { border-color: #d8e4f0; background: rgba(255, 255, 255, .94); box-shadow: 0 14px 40px rgba(73, 102, 145, .06); }

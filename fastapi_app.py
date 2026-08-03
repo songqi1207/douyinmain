@@ -110,6 +110,7 @@ from workflow_registry import (
     published_workflow_id,
     runtime_input_schema,
 )
+from health_checks import latest_health_check, run_health_check, start_health_scheduler
 from utils.draft_key_importer import KeyValidationError
 from utils.email_delivery import (
     EmailConfigurationError,
@@ -157,6 +158,11 @@ app.add_middleware(
 # served as files instead of receiving index.html.
 if (FRONTEND_DIST / "assets").is_dir():
     app.mount("/business/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="business-assets")
+
+
+@app.on_event("startup")
+def _start_daily_health_checks() -> None:
+    start_health_scheduler()
 
 
 def _spa_index() -> FileResponse | HTMLResponse:
@@ -1423,6 +1429,18 @@ def api_admin_user_quotas(request: Request):
 def api_admin_provider_usage(request: Request, days: int = Query(default=30, ge=1, le=365)):
     _require_admin(request)
     return {"usage": provider_usage_snapshot(days)}
+
+
+@app.get("/api/v1/admin/health-check")
+def api_admin_health_check(request: Request):
+    _require_admin(request)
+    return {"health": latest_health_check()}
+
+
+@app.post("/api/v1/admin/health-check")
+def api_run_admin_health_check(request: Request):
+    _require_admin(request)
+    return {"health": run_health_check("admin_manual")}
 
 
 @app.get("/api/v1/admin/jobs")

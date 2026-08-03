@@ -1,10 +1,10 @@
-import { Activity, AlertTriangle, Gauge, LoaderCircle, RefreshCw } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, Gauge, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { fetchAdminProviderUsage } from "../api";
+import { fetchAdminHealthCheck, fetchAdminProviderUsage, runAdminHealthCheck } from "../api";
 import { Layout } from "../components/Layout";
 import { usePreferences } from "../preferences";
-import type { ProviderUsageSnapshot } from "../types";
+import type { ProviderUsageSnapshot, SystemHealthCheck } from "../types";
 
 function providerName(provider: string) {
   return provider === "coze" ? "扣子 / Coze" : provider === "mihe" ? "米核 / Mihe" : provider;
@@ -14,14 +14,16 @@ export function AdminProviderUsagePage() {
   const { tr } = usePreferences();
   const [days, setDays] = useState(30);
   const [usage, setUsage] = useState<ProviderUsageSnapshot | null>(null);
+  const [health, setHealth] = useState<SystemHealthCheck | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   async function load() {
     setLoading(true);
     try {
-      const result = await fetchAdminProviderUsage(days);
-      setUsage(result.usage);
+      const [usageResult, healthResult] = await Promise.all([fetchAdminProviderUsage(days), fetchAdminHealthCheck()]);
+      setUsage(usageResult.usage);
+      setHealth(healthResult.health);
       setError("");
     } catch (nextError) {
       setError((nextError as Error).message);
@@ -32,11 +34,28 @@ export function AdminProviderUsagePage() {
 
   useEffect(() => { void load(); }, [days]);
 
+  async function runHealth() {
+    setLoading(true);
+    try {
+      const result = await runAdminHealthCheck();
+      setHealth(result.health);
+      setError("");
+    } catch (nextError) {
+      setError((nextError as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <Layout>
       <main className="content-page page-width admin-provider-usage-page">
         <div className="page-heading"><span className="page-icon"><Activity /></span><div><h1>{tr("供应商用量监控", "Provider usage")}</h1><p>{tr("查看扣子、米核的调用次数、失败情况和估算积分消耗。", "Track Coze and Mihe calls, failures and estimated credit usage.")}</p></div><div className="page-heading-actions"><button type="button" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? "spin" : ""} />{tr("刷新", "Refresh")}</button></div></div>
         {error && <div className="notice error">{error}</div>}
+        {health && <section className={`health-check-panel ${health.overall}`}>
+          <div className="health-check-heading"><div><span className="health-check-icon">{health.overall === "ok" ? <CheckCircle2 /> : <AlertTriangle />}</span><div><strong>{tr("\u7cfb\u7edf\u5065\u5eb7\u68c0\u67e5", "System health check")}</strong><small>{tr("\u6700\u540e\u68c0\u67e5", "Last checked")} {new Date(health.checked_at * 1000).toLocaleString()}</small></div></div><button type="button" onClick={() => void runHealth()} disabled={loading}><RefreshCw className={loading ? "spin" : ""} />{tr("\u7acb\u5373\u68c0\u67e5", "Run now")}</button></div>
+          <div className="health-check-list">{health.checks.map((check) => <article className={check.status} key={`${check.name}-${check.code}`}><span>{check.status === "ok" ? "OK" : check.status === "warning" ? "WARN" : "ERROR"}</span><strong>{check.name}</strong><p>{check.message}</p><small>{check.code}</small></article>)}</div>
+        </section>}
         <section className="provider-usage-toolbar"><span>{tr("统计窗口", "Window")}</span>{[7, 30, 90].map((value) => <button className={days === value ? "selected" : ""} type="button" key={value} onClick={() => setDays(value)}>{value} {tr("天", "days")}</button>)}</section>
         {loading && !usage ? <div className="loading-state"><LoaderCircle className="spin" />{tr("正在读取供应商用量", "Loading provider usage")}</div> : usage && <>
           <div className="notice warning"><AlertTriangle />{tr("当前为按管理员计价表计算的估算值，不代表供应商后台实时余额。", "These are estimates from the admin pricing table, not live supplier balances.")}</div>

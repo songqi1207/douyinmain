@@ -15,6 +15,7 @@ import type {
   Workflow,
   WorkflowPricing,
   ProviderUsageSnapshot,
+  SystemHealthCheck,
 } from "./types";
 
 type ApiErrorShape = {
@@ -144,6 +145,14 @@ export async function fetchAdminUserQuotas() {
 
 export async function fetchAdminProviderUsage(days = 30) {
   return request<{ usage: ProviderUsageSnapshot }>(`/api/v1/admin/provider-usage?days=${days}`, { cache: "no-store" });
+}
+
+export async function fetchAdminHealthCheck() {
+  return request<{ health: SystemHealthCheck | null }>("/api/v1/admin/health-check", { cache: "no-store" });
+}
+
+export async function runAdminHealthCheck() {
+  return request<{ health: SystemHealthCheck }>("/api/v1/admin/health-check", { method: "POST" });
 }
 
 export async function fetchAdminJobs(params: {
