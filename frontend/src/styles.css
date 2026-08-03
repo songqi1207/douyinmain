@@ -1805,6 +1805,64 @@ html[data-theme="pastel"] .catalog-video-empty > svg { color: #9a70c7; backgroun
   .catalog-video-empty > a { margin: 3px 0 0 49px; }
 }
 
+/* Voice studio refresh: clearer catalog cards and a calmer narration composer. */
+.voices-page .voice-heading { position: relative; overflow: hidden; margin-bottom: 18px; padding: 22px 24px 24px; border: 1px solid #293743; border-radius: 22px; background: linear-gradient(120deg, rgba(140,240,206,.10), rgba(145,136,255,.10) 55%, rgba(255,145,203,.06)), #111820; }
+.voices-page .voice-heading::after { content: ""; position: absolute; right: -48px; top: -68px; width: 180px; height: 180px; border: 1px solid rgba(145,136,255,.18); border-radius: 50%; box-shadow: 0 0 0 22px rgba(145,136,255,.04), 0 0 0 44px rgba(145,136,255,.025); }
+.voices-page .voice-heading .page-icon { position: relative; z-index: 1; }
+.service-status { border-radius: 14px; box-shadow: 0 9px 26px rgba(0,0,0,.08); }
+.service-status.ready { border-color: rgba(140,240,206,.28); background: linear-gradient(110deg, rgba(140,240,206,.10), rgba(140,240,206,.025)); }
+.service-status.ready strong::before { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 7px 1px 0; border-radius: 50%; background: #76dfba; box-shadow: 0 0 0 4px rgba(118,223,186,.12); }
+.voice-toolbar { flex-wrap: wrap; padding: 10px; border-radius: 16px; }
+.voice-toolbar .search-box { min-width: min(300px, 100%); flex: 1 1 220px; border-radius: 12px; }
+.voice-filter-row { flex: 1 1 auto; justify-content: flex-end; }
+.voice-filter-row button { min-height: 34px; border: 1px solid transparent; transition: .18s ease; }
+.voice-filter-row button:hover { border-color: rgb(var(--vl-accent-rgb) / .24); }
+.voice-grid { gap: 14px; }
+.voice-card { min-height: 144px; padding: 20px 18px; border-radius: 18px; background: linear-gradient(145deg, #151f29, #101820); box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+.voice-card:hover { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(0,0,0,.16); }
+.voice-card.selected { border-color: rgba(140,240,206,.52); background: linear-gradient(145deg, rgba(140,240,206,.11), rgba(145,136,255,.08)), #121d25; }
+.voice-avatar { width: 50px; height: 50px; border-radius: 16px; color: #a9e8d4; background: linear-gradient(145deg, #203a3b, #292650); }
+.voice-info { padding-right: 62px; }
+.voice-info h3 { margin-top: 4px; font-size: 16px; letter-spacing: -.02em; }
+.voice-info p { min-height: 36px; margin-bottom: 10px; }
+.voice-info span { display: inline-flex; max-width: 100%; overflow: hidden; padding: 5px 8px; border-radius: 7px; color: #8f9eac; background: rgba(255,255,255,.045); white-space: nowrap; text-overflow: ellipsis; }
+.voice-card-actions { right: 15px; top: 15px; }
+.voice-card-actions button { width: 32px; height: 32px; border-radius: 10px; }
+.voice-card-actions button:first-child { color: #07130f; border: 0; background: var(--vl-mint); }
+.voice-card-actions button.selected { color: #f39bbe; border-color: rgba(243,155,190,.25); background: rgba(243,155,190,.1); }
+.tts-panel { padding: 23px; border-radius: 20px; box-shadow: 0 18px 45px rgba(0,0,0,.12); }
+.tts-panel .section-title { margin-bottom: 20px; }
+.tts-panel textarea { min-height: 210px; border-radius: 13px; line-height: 1.7; }
+.tts-panel .primary-button { width: 100%; min-height: 46px; border-radius: 12px; }
+.audio-result { border-radius: 14px; }
+
+html[data-theme="pastel"] .voices-page .voice-heading { border-color: #d5e3f1; background: linear-gradient(120deg, rgba(104,183,255,.14), rgba(255,158,207,.13) 65%, rgba(255,255,255,.78)), #fff; box-shadow: 0 16px 45px rgba(65,92,132,.07); }
+html[data-theme="pastel"] .service-status { border-color: #d9e5f0; background: linear-gradient(105deg, #f8fcff, #fff7fb); box-shadow: 0 8px 25px rgba(65,92,132,.05); }
+html[data-theme="pastel"] .service-status.ready { border-color: #bfe4d8; background: linear-gradient(105deg, #f0fcf8, #f7fbff); }
+html[data-theme="pastel"] .service-status strong { color: #287b61; }
+html[data-theme="pastel"] .service-status span { color: #6b7e96; }
+html[data-theme="pastel"] .voice-toolbar { border-color: #d8e4f0; background: rgba(255,255,255,.88); box-shadow: 0 10px 30px rgba(65,92,132,.05); }
+html[data-theme="pastel"] .voice-filter-row button { color: #63758d; background: #f5f8fc; }
+html[data-theme="pastel"] .voice-filter-row button.active { color: #fff; background: linear-gradient(105deg, #5aaeff, #f48aba); }
+html[data-theme="pastel"] .voice-card { border-color: #d9e5f0; background: linear-gradient(145deg, #fff, #f7fbff); box-shadow: 0 8px 24px rgba(65,92,132,.06); }
+html[data-theme="pastel"] .voice-card:hover, html[data-theme="pastel"] .voice-card.selected { border-color: #a8cef0; background: linear-gradient(145deg, rgba(104,183,255,.12), rgba(255,158,207,.08)), #fff; }
+html[data-theme="pastel"] .voice-avatar { color: #6377c0; background: linear-gradient(145deg, #edf4ff, #ffeaf5); }
+html[data-theme="pastel"] .voice-info h3 { color: #24334b; }
+html[data-theme="pastel"] .voice-info p { color: #71839a; }
+html[data-theme="pastel"] .voice-info span { color: #68809b; background: #f1f6fb; }
+html[data-theme="pastel"] .voice-card-actions button { border-color: #d7e3ef; color: #637892; background: #fff; }
+html[data-theme="pastel"] .voice-card-actions button:first-child { color: #fff; background: linear-gradient(135deg, #5aaeff, #8f9dff); }
+html[data-theme="pastel"] .voice-card-actions button.selected { color: #d26396; border-color: #f0c6da; background: #fff1f7; }
+html[data-theme="pastel"] .tts-panel { border-color: #d5e2ef; background: rgba(255,255,255,.95); box-shadow: 0 18px 45px rgba(65,92,132,.08); }
+html[data-theme="pastel"] .tts-panel textarea { border-color: #d5e1ee; color: #26364e; background: #f8faff; }
+html[data-theme="pastel"] .tts-panel label { color: #4f6480; }
+html[data-theme="pastel"] .audio-result { border-color: #bfe4d8; background: #f1fcf8; }
+
+@media (max-width: 760px) {
+  .voice-filter-row { justify-content: flex-start; width: 100%; overflow-x: auto; }
+  .voice-grid { grid-template-columns: 1fr; }
+}
+
 /* Provider usage console: a compact dashboard instead of unstyled rows. */
 .admin-provider-usage-page .page-heading { align-items: flex-start; }
 .admin-provider-usage-page .page-heading > div:nth-child(2) { min-width: 0; }
