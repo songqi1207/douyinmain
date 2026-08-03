@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import threading
+import time
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 from uuid import uuid4
@@ -17,6 +18,7 @@ class VideoDeliveryError(RuntimeError):
 
 
 _DELIVERY_LOCK = threading.Lock()
+_MIB = 1024 * 1024
 
 
 def r2_export_configured() -> bool:
@@ -41,6 +43,22 @@ def _positive_int(name: str, default: int) -> int:
         return max(1, int(os.getenv(name) or default))
     except ValueError:
         return default
+
+
+def _multipart_threshold_bytes() -> int:
+    return _positive_int("R2_EXPORT_SINGLE_UPLOAD_MAX_BYTES", 90 * _MIB)
+
+
+def _multipart_part_bytes() -> int:
+    configured = _positive_int("R2_EXPORT_MULTIPART_PART_BYTES", 32 * _MIB)
+    return min(64 * _MIB, max(5 * _MIB, configured))
+
+
+def _response_detail(response: requests.Response) -> str:
+    detail = " ".join((response.text or "").strip().split())[:240]
+    if "<html" in detail.lower():
+        return "Cloudflare 拒绝了上传请求"
+    return detail
 
 
 def _crf() -> int:
@@ -217,6 +235,111 @@ def remux_video_for_web(source: Path, destination: Path) -> Path:
     return destination
 
 
+def _upload_video_multipart(source: Path, target_url: str, token: str) -> None:
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    session = requests.Session()
+    upload_id = ""
+    try:
+        created = session.post(
+            target_url,
+            params={"action": "mpu-create"},
+            headers={**auth_headers, "Content-Type": "application/json"},
+            timeout=(
+                _positive_int("R2_EXPORT_CONNECT_TIMEOUT_SECONDS", 20),
+                _positive_int("R2_EXPORT_UPLOAD_TIMEOUT_SECONDS", 900),
+            ),
+        )
+        if created.status_code not in {200, 201}:
+            detail = _response_detail(created)
+            raise VideoDeliveryError(
+                f"R2 分片上传初始化失败（HTTP {created.status_code}）"
+                + (f"：{detail}" if detail else "")
+            )
+        try:
+            upload_id = str(created.json().get("uploadId") or "")
+        except (AttributeError, TypeError, ValueError, requests.JSONDecodeError) as exc:
+            raise VideoDeliveryError("R2 分片上传初始化响应无效") from exc
+        if not upload_id:
+            raise VideoDeliveryError("R2 分片上传未返回 uploadId")
+
+        parts: list[dict] = []
+        part_size = _multipart_part_bytes()
+        with source.open("rb") as stream:
+            part_number = 1
+            while True:
+                chunk = stream.read(part_size)
+                if not chunk:
+                    break
+                response = None
+                for attempt in range(1, 4):
+                    response = session.put(
+                        target_url,
+                        params={
+                            "action": "mpu-uploadpart",
+                            "uploadId": upload_id,
+                            "partNumber": str(part_number),
+                        },
+                        headers={**auth_headers, "Content-Type": "application/octet-stream"},
+                        data=chunk,
+                        timeout=(
+                            _positive_int("R2_EXPORT_CONNECT_TIMEOUT_SECONDS", 20),
+                            _positive_int("R2_EXPORT_UPLOAD_TIMEOUT_SECONDS", 900),
+                        ),
+                    )
+                    if response.status_code in {200, 201}:
+                        break
+                    if response.status_code not in {408, 429, 500, 502, 503, 504} or attempt == 3:
+                        detail = _response_detail(response)
+                        raise VideoDeliveryError(
+                            f"R2 分片 {part_number} 上传失败（HTTP {response.status_code}）"
+                            + (f"：{detail}" if detail else "")
+                        )
+                    time.sleep(attempt)
+                try:
+                    uploaded = response.json()
+                    etag = str(uploaded.get("etag") or "")
+                except (AttributeError, TypeError, ValueError, requests.JSONDecodeError) as exc:
+                    raise VideoDeliveryError(f"R2 分片 {part_number} 响应无效") from exc
+                if not etag:
+                    raise VideoDeliveryError(f"R2 分片 {part_number} 未返回 ETag")
+                parts.append({"partNumber": part_number, "etag": etag})
+                part_number += 1
+
+        if not parts:
+            raise VideoDeliveryError("R2 分片上传文件为空")
+        completed = session.post(
+            target_url,
+            params={"action": "mpu-complete", "uploadId": upload_id},
+            headers=auth_headers,
+            json={"parts": parts},
+            timeout=(
+                _positive_int("R2_EXPORT_CONNECT_TIMEOUT_SECONDS", 20),
+                _positive_int("R2_EXPORT_UPLOAD_TIMEOUT_SECONDS", 900),
+            ),
+        )
+        if completed.status_code not in {200, 201, 204}:
+            detail = _response_detail(completed)
+            raise VideoDeliveryError(
+                f"R2 分片上传合并失败（HTTP {completed.status_code}）"
+                + (f"：{detail}" if detail else "")
+            )
+        upload_id = ""
+    except requests.RequestException as exc:
+        raise VideoDeliveryError(f"R2 分片上传请求失败：{exc}") from exc
+    finally:
+        if upload_id:
+            try:
+                session.delete(
+                    target_url,
+                    params={"action": "mpu-abort", "uploadId": upload_id},
+                    headers=auth_headers,
+                    timeout=(_positive_int("R2_EXPORT_CONNECT_TIMEOUT_SECONDS", 20), 60),
+                )
+            except requests.RequestException:
+                pass
+        session.close()
+
+
 def upload_video_to_r2(source: Path, object_name: str) -> str:
     source = Path(source).resolve()
     safe_name = Path(object_name).name
@@ -234,6 +357,9 @@ def upload_video_to_r2(source: Path, object_name: str) -> str:
         "Content-Disposition": "inline",
         "Cache-Control": "public, max-age=31536000, immutable",
     }
+    if source.stat().st_size > _multipart_threshold_bytes():
+        _upload_video_multipart(source, target_url, token)
+        return f"{public_base}/{quote(safe_name)}"
     try:
         with source.open("rb") as body:
             response = requests.put(
@@ -247,8 +373,11 @@ def upload_video_to_r2(source: Path, object_name: str) -> str:
             )
     except requests.RequestException as exc:
         raise VideoDeliveryError(f"R2 视频上传失败：{exc}") from exc
+    if response.status_code == 413:
+        _upload_video_multipart(source, target_url, token)
+        return f"{public_base}/{quote(safe_name)}"
     if response.status_code not in {200, 201, 204}:
-        detail = (response.text or "").strip()[:300]
+        detail = _response_detail(response)
         raise VideoDeliveryError(
             f"R2 视频上传失败（HTTP {response.status_code}）" + (f"：{detail}" if detail else "")
         )

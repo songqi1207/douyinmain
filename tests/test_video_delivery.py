@@ -94,6 +94,96 @@ class VideoDeliveryTests(unittest.TestCase):
             self.assertEqual(put.call_args.kwargs["headers"]["Authorization"], "Bearer server-secret")
             self.assertEqual(put.call_args.kwargs["headers"]["Content-Type"], "video/mp4")
 
+    def test_large_r2_upload_uses_multipart_protocol(self):
+        with tempfile.TemporaryDirectory(prefix="video-multipart-upload-test-") as temporary:
+            source = Path(temporary) / "large.mp4"
+            source.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"x" * 64)
+            created = MagicMock(status_code=201, text="")
+            created.json.return_value = {"uploadId": "upload-123"}
+            uploaded = MagicMock(status_code=200, text="")
+            uploaded.json.return_value = {"partNumber": 1, "etag": "etag-1"}
+            completed = MagicMock(status_code=201, text="")
+            session = MagicMock()
+            session.post.side_effect = [created, completed]
+            session.put.return_value = uploaded
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "R2_EXPORT_UPLOAD_URL": "https://worker.test/exports",
+                        "R2_EXPORT_PUBLIC_BASE_URL": "https://cdn.test/exports",
+                        "R2_EXPORT_UPLOAD_TOKEN": "server-secret",
+                        "R2_EXPORT_SINGLE_UPLOAD_MAX_BYTES": "8",
+                    },
+                    clear=True,
+                ),
+                patch("video_delivery.requests.Session", return_value=session),
+            ):
+                url = video_delivery.upload_video_to_r2(source, "large.mp4")
+
+            self.assertEqual(url, "https://cdn.test/exports/large.mp4")
+            self.assertEqual(session.post.call_args_list[0].kwargs["params"], {"action": "mpu-create"})
+            self.assertEqual(session.put.call_args.kwargs["params"]["action"], "mpu-uploadpart")
+            self.assertEqual(session.put.call_args.kwargs["params"]["uploadId"], "upload-123")
+            self.assertEqual(session.post.call_args_list[1].kwargs["params"]["action"], "mpu-complete")
+            self.assertEqual(
+                session.post.call_args_list[1].kwargs["json"],
+                {"parts": [{"partNumber": 1, "etag": "etag-1"}]},
+            )
+            session.delete.assert_not_called()
+
+    def test_failed_multipart_upload_is_aborted(self):
+        with tempfile.TemporaryDirectory(prefix="video-multipart-abort-test-") as temporary:
+            source = Path(temporary) / "large.mp4"
+            source.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"x" * 64)
+            created = MagicMock(status_code=201, text="")
+            created.json.return_value = {"uploadId": "upload-456"}
+            rejected = MagicMock(status_code=400, text="part rejected")
+            session = MagicMock()
+            session.post.return_value = created
+            session.put.return_value = rejected
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "R2_EXPORT_UPLOAD_URL": "https://worker.test/exports",
+                        "R2_EXPORT_PUBLIC_BASE_URL": "https://cdn.test/exports",
+                        "R2_EXPORT_UPLOAD_TOKEN": "server-secret",
+                        "R2_EXPORT_SINGLE_UPLOAD_MAX_BYTES": "8",
+                    },
+                    clear=True,
+                ),
+                patch("video_delivery.requests.Session", return_value=session),
+            ):
+                with self.assertRaisesRegex(video_delivery.VideoDeliveryError, "分片 1 上传失败"):
+                    video_delivery.upload_video_to_r2(source, "large.mp4")
+
+            self.assertEqual(session.delete.call_args.kwargs["params"]["action"], "mpu-abort")
+            self.assertEqual(session.delete.call_args.kwargs["params"]["uploadId"], "upload-456")
+
+    def test_single_upload_413_falls_back_to_multipart(self):
+        with tempfile.TemporaryDirectory(prefix="video-upload-413-test-") as temporary:
+            source = Path(temporary) / "video.mp4"
+            source.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+            response = MagicMock(status_code=413, text="<html>too large</html>")
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "R2_EXPORT_UPLOAD_URL": "https://worker.test/exports",
+                        "R2_EXPORT_PUBLIC_BASE_URL": "https://cdn.test/exports",
+                        "R2_EXPORT_UPLOAD_TOKEN": "server-secret",
+                    },
+                    clear=True,
+                ),
+                patch("video_delivery.requests.put", return_value=response),
+                patch("video_delivery._upload_video_multipart") as multipart,
+            ):
+                url = video_delivery.upload_video_to_r2(source, "video.mp4")
+
+            self.assertEqual(url, "https://cdn.test/exports/video.mp4")
+            multipart.assert_called_once()
+
     def test_r2_delete_uses_bearer_auth_for_owned_export_url(self):
         response = MagicMock(status_code=204, text="")
         with (

@@ -1,10 +1,12 @@
 const PUBLIC_PREFIXES = ["covers/", "previews/", "workflows/", "exports/"];
 const MAX_EXPORT_BYTES = 512 * 1024 * 1024;
+const MAX_MULTIPART_PART_BYTES = 64 * 1024 * 1024;
 
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, HEAD, PUT, DELETE, OPTIONS",
-  "access-control-allow-headers": "Range, If-Match, If-None-Match, If-Modified-Since",
+  "access-control-allow-methods": "GET, HEAD, POST, PUT, DELETE, OPTIONS",
+  "access-control-allow-headers":
+    "Authorization, Content-Type, Content-Length, Range, If-Match, If-None-Match, If-Modified-Since",
   "access-control-expose-headers":
     "Accept-Ranges, Content-Length, Content-Range, Content-Type, ETag, Last-Modified",
 };
@@ -94,6 +96,102 @@ async function uploadExport(request, env, key) {
   );
 }
 
+function multipartUpload(env, key, uploadId) {
+  if (!uploadId) return null;
+  return env.PUBLIC_BUCKET.resumeMultipartUpload(key, uploadId);
+}
+
+async function createMultipartExport(request, env, key) {
+  if (!key.startsWith("exports/") || !key.toLowerCase().endsWith(".mp4")) {
+    return errorResponse(404, "Not found");
+  }
+  if (!authorizedUpload(request, env)) {
+    return errorResponse(401, "Unauthorized");
+  }
+  const upload = await env.PUBLIC_BUCKET.createMultipartUpload(key, {
+    httpMetadata: {
+      contentType: "video/mp4",
+      contentDisposition: "inline",
+      cacheControl: "public, max-age=31536000, immutable",
+    },
+  });
+  return Response.json(
+    { key: upload.key, uploadId: upload.uploadId },
+    { status: 201, headers: { "cache-control": "no-store" } },
+  );
+}
+
+async function uploadMultipartExportPart(request, env, key, url) {
+  if (!authorizedUpload(request, env)) {
+    return errorResponse(401, "Unauthorized");
+  }
+  const uploadId = url.searchParams.get("uploadId");
+  const partNumber = Number(url.searchParams.get("partNumber"));
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (
+    !request.body ||
+    !uploadId ||
+    !Number.isInteger(partNumber) ||
+    partNumber < 1 ||
+    partNumber > 10000 ||
+    contentLength <= 0 ||
+    contentLength > MAX_MULTIPART_PART_BYTES
+  ) {
+    return errorResponse(400, "Invalid multipart upload part");
+  }
+  try {
+    const part = await multipartUpload(env, key, uploadId).uploadPart(partNumber, request.body);
+    return Response.json(part, { status: 200, headers: { "cache-control": "no-store" } });
+  } catch (error) {
+    return errorResponse(400, `Multipart part failed: ${String(error)}`);
+  }
+}
+
+async function completeMultipartExport(request, env, key, url) {
+  if (!authorizedUpload(request, env)) {
+    return errorResponse(401, "Unauthorized");
+  }
+  const uploadId = url.searchParams.get("uploadId");
+  if (!uploadId) return errorResponse(400, "Missing uploadId");
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return errorResponse(400, "Invalid multipart completion payload");
+  }
+  const parts = Array.isArray(payload?.parts) ? payload.parts : [];
+  if (
+    parts.length < 1 ||
+    parts.length > 10000 ||
+    parts.some((part) => !Number.isInteger(part?.partNumber) || !String(part?.etag || ""))
+  ) {
+    return errorResponse(400, "Invalid multipart completion parts");
+  }
+  try {
+    const object = await multipartUpload(env, key, uploadId).complete(parts);
+    return Response.json(
+      { ok: true, key, etag: object.httpEtag },
+      { status: 201, headers: { "cache-control": "no-store" } },
+    );
+  } catch (error) {
+    return errorResponse(400, `Multipart completion failed: ${String(error)}`);
+  }
+}
+
+async function abortMultipartExport(request, env, key, url) {
+  if (!authorizedUpload(request, env)) {
+    return errorResponse(401, "Unauthorized");
+  }
+  const uploadId = url.searchParams.get("uploadId");
+  if (!uploadId) return errorResponse(400, "Missing uploadId");
+  try {
+    await multipartUpload(env, key, uploadId).abort();
+  } catch (error) {
+    return errorResponse(400, `Multipart abort failed: ${String(error)}`);
+  }
+  return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+}
+
 async function deleteExport(request, env, key) {
   if (!key.startsWith("exports/") || !key.toLowerCase().endsWith(".mp4")) {
     return errorResponse(404, "Not found");
@@ -114,11 +212,27 @@ export default {
     const key = publicKey(request);
     if (!key) return errorResponse(404, "Not found");
 
-    if (request.method === "PUT") {
+    const url = new URL(request.url);
+    const action = url.searchParams.get("action");
+
+    if (request.method === "POST" && action === "mpu-create") {
+      return createMultipartExport(request, env, key);
+    }
+    if (request.method === "PUT" && action === "mpu-uploadpart") {
+      return uploadMultipartExportPart(request, env, key, url);
+    }
+    if (request.method === "POST" && action === "mpu-complete") {
+      return completeMultipartExport(request, env, key, url);
+    }
+    if (request.method === "DELETE" && action === "mpu-abort") {
+      return abortMultipartExport(request, env, key, url);
+    }
+
+    if (request.method === "PUT" && !action) {
       return uploadExport(request, env, key);
     }
 
-    if (request.method === "DELETE") {
+    if (request.method === "DELETE" && !action) {
       return deleteExport(request, env, key);
     }
 
