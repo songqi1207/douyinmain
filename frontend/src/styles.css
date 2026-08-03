@@ -1863,6 +1863,37 @@ html[data-theme="pastel"] .audio-result { border-color: #bfe4d8; background: #f1
   .voice-grid { grid-template-columns: 1fr; }
 }
 
+/* Compact voice studio layout: reduce the visual scale and keep the working area focused. */
+.voices-page.page-width { width: min(1160px, calc(100% - 56px)); }
+.voices-page { padding-top: 28px; }
+.voices-page .voice-heading { margin-bottom: 12px; padding: 15px 18px 16px; border-radius: 16px; }
+.voices-page .voice-heading .page-icon { width: 42px; height: 42px; }
+.voices-page .voice-heading h1 { font-size: clamp(23px, 2.3vw, 30px); }
+.voices-page .voice-heading p { font-size: 13px; line-height: 1.5; }
+.voices-page .service-status { padding: 10px 13px; }
+.voices-page .voice-toolbar { gap: 9px; margin-bottom: 12px; padding: 7px; border-radius: 12px; }
+.voices-page .voice-filter-row { gap: 5px; }
+.voices-page .voice-filter-row button { min-height: 30px; padding: 0 9px; font-size: 12px; }
+.voices-page .voice-layout { gap: 12px; }
+.voices-page .voice-grid { gap: 9px; }
+.voices-page .voice-card { min-height: 116px; grid-template-columns: 42px minmax(0, 1fr); gap: 10px; padding: 14px 13px; border-radius: 14px; }
+.voices-page .voice-avatar { width: 42px; height: 42px; border-radius: 12px; }
+.voices-page .voice-avatar svg { width: 18px; }
+.voices-page .voice-info h3 { margin-top: 1px; font-size: 14px; }
+.voices-page .voice-info p { min-height: 31px; margin-bottom: 7px; font-size: 11px; line-height: 1.4; }
+.voices-page .voice-info span { padding: 4px 6px; font-size: 10px; }
+.voices-page .voice-card-actions { right: 10px; top: 10px; }
+.voices-page .voice-card-actions button { width: 27px; height: 27px; border-radius: 8px; }
+.voices-page .voice-card-actions svg { width: 13px; }
+.voices-page .tts-panel { top: 76px; padding: 17px; border-radius: 16px; }
+.voices-page .tts-panel .section-title { margin-bottom: 13px; }
+.voices-page .tts-panel form { gap: 12px; }
+.voices-page .tts-panel textarea { min-height: 145px; padding: 10px; font-size: 13px; }
+.voices-page .tts-panel .primary-button { min-height: 41px; font-size: 13px; }
+
+html[data-theme="pastel"] .voices-page .voice-heading { box-shadow: 0 10px 28px rgba(65,92,132,.055); }
+html[data-theme="pastel"] .voices-page .voice-card { box-shadow: 0 5px 16px rgba(65,92,132,.045); }
+
 /* Provider usage console: a compact dashboard instead of unstyled rows. */
 .admin-provider-usage-page .page-heading { align-items: flex-start; }
 .admin-provider-usage-page .page-heading > div:nth-child(2) { min-width: 0; }
