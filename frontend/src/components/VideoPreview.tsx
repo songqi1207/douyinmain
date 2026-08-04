@@ -9,9 +9,13 @@ export function VideoPreview({ jobId, result }: { jobId: string; result: JobResu
   const [highUrl, setHighUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  // The API proxy deliberately ignores browser Range requests for 720p. R2
-  // range reads are slow on some edges; a sequential stream starts faster.
-  const source = quality === "1080" ? highUrl : `/api/v1/jobs/${encodeURIComponent(jobId)}/preview-stream`;
+  // Keep the media URL itself so the browser can perform its normal MP4
+  // metadata/range handshake. The worker treats stream=full as a sequential
+  // preview when deployed, while older objects remain compatible.
+  const previewUrl = result.url.startsWith("http")
+    ? `${result.url}${result.url.includes("?") ? "&" : "?"}stream=full`
+    : result.url;
+  const source = quality === "1080" ? highUrl : previewUrl;
 
   async function choose1080() {
     if (highUrl) {
