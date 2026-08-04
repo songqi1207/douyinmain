@@ -1891,6 +1891,7 @@ def api_unlock_job_preview(job_id: str, request: Request, payload: dict = Body(d
     # fast-start 1080p copy after export.
     high_url = str(
         (result or {}).get("preview_1080_url")
+        or (result or {}).get("url")
         or (result or {}).get("download_url")
         or ""
     ).strip()
