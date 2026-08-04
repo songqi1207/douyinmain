@@ -231,6 +231,37 @@ class VideoDeliveryTests(unittest.TestCase):
             self.assertEqual(result[4], "original_fallback")
             remux.assert_called_once()
 
+    def test_publish_builds_a_separate_1080_preview_after_720_preview(self):
+        with tempfile.TemporaryDirectory(prefix="video-dual-preview-") as temporary:
+            source = Path(temporary) / "source.mp4"
+            source.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"x" * 4096)
+            outputs = []
+
+            def encode(_source, destination, **kwargs):
+                outputs.append((Path(destination), kwargs))
+                Path(destination).write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"p" * (700 if kwargs["width"] == 1280 else 1400))
+                return Path(destination).resolve()
+
+            with (
+                patch.object(video_delivery, "compress_video_for_web", side_effect=encode),
+                patch.object(video_delivery, "remux_video_for_web", return_value=source),
+                patch.object(
+                    video_delivery,
+                    "upload_video_to_r2",
+                    side_effect=[
+                        "https://cdn.test/original.mp4",
+                        "https://cdn.test/preview-720.mp4",
+                        "https://cdn.test/preview-1080.mp4",
+                    ],
+                ),
+            ):
+                result = video_delivery.publish_device_video("job-id", source)
+
+            self.assertEqual(result[0], "https://cdn.test/preview-720.mp4")
+            self.assertEqual(result[1], "https://cdn.test/original.mp4")
+            self.assertEqual(result[5], "https://cdn.test/preview-1080.mp4")
+            self.assertEqual([item[1]["width"] for item in outputs], [1280, 1920])
+
     def test_completed_device_job_can_reference_r2_url(self):
         job = {
             "id": "job-id",
@@ -275,12 +306,14 @@ class VideoDeliveryTests(unittest.TestCase):
                 "job-id-device.mp4",
                 "https://cdn.test/exports/job-id-device-web.mp4",
                 "https://cdn.test/exports/job-id-device-original.mp4",
+                "https://cdn.test/exports/job-id-device-preview-1080.mp4",
             )
 
         self.assertTrue(promoted)
         results = json.loads(update.call_args.kwargs["results_json"])
         self.assertEqual(results[0]["url"], "https://cdn.test/exports/job-id-device-web.mp4")
         self.assertEqual(results[0]["download_url"], "https://cdn.test/exports/job-id-device-original.mp4")
+        self.assertEqual(results[0]["preview_1080_url"], "https://cdn.test/exports/job-id-device-preview-1080.mp4")
 
 
 if __name__ == "__main__":

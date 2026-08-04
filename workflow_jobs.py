@@ -2423,6 +2423,7 @@ def promote_device_render_result(
     result_name: str,
     result_url: str,
     download_url: str = "",
+    preview_1080_url: str = "",
 ) -> bool:
     """Replace a completed job's local video URL after background delivery."""
 
@@ -2443,6 +2444,8 @@ def promote_device_render_result(
             result["url"] = hosted_url
             if str(download_url or "").strip():
                 result["download_url"] = str(download_url).strip()
+            if str(preview_1080_url or "").strip():
+                result["preview_1080_url"] = str(preview_1080_url).strip()
             changed = True
     if not changed:
         return False

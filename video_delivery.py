@@ -75,8 +75,22 @@ def _preview_crf() -> int:
         return 20
 
 
-def compress_video_for_web(source: Path, destination: Path) -> Path:
-    """Create a low-bandwidth H.264 preview for smooth browser playback."""
+def compress_video_for_web(
+    source: Path,
+    destination: Path,
+    *,
+    width: int | None = None,
+    height: int | None = None,
+    maxrate: str | None = None,
+    bufsize: str | None = None,
+) -> Path:
+    """Create a fast-start H.264 preview for smooth browser playback.
+
+    ``width``/``height`` and bitrate are optional so existing callers keep the
+    configured defaults, while the delivery pipeline can pre-build separate
+    720p and 1080p browser copies instead of using the original export as a
+    preview.
+    """
 
     source = Path(source).resolve()
     destination = Path(destination).resolve()
@@ -88,10 +102,10 @@ def compress_video_for_web(source: Path, destination: Path) -> Path:
     )
     preset = (os.getenv("R2_EXPORT_VIDEO_PRESET") or "medium").strip() or "medium"
     audio_bitrate = (os.getenv("R2_EXPORT_PREVIEW_AUDIO_BITRATE") or "128k").strip() or "128k"
-    video_bitrate = (os.getenv("R2_EXPORT_PREVIEW_MAXRATE") or "5000k").strip() or "5000k"
-    video_buffer = (os.getenv("R2_EXPORT_PREVIEW_BUFSIZE") or "10000k").strip() or "10000k"
-    preview_width = min(3840, max(640, _positive_int("R2_EXPORT_PREVIEW_WIDTH", 1920)))
-    preview_height = min(2160, max(360, _positive_int("R2_EXPORT_PREVIEW_HEIGHT", 1080)))
+    video_bitrate = (maxrate or os.getenv("R2_EXPORT_PREVIEW_MAXRATE") or "5000k").strip() or "5000k"
+    video_buffer = (bufsize or os.getenv("R2_EXPORT_PREVIEW_BUFSIZE") or "10000k").strip() or "10000k"
+    preview_width = min(3840, max(640, int(width or _positive_int("R2_EXPORT_PREVIEW_WIDTH", 1920))))
+    preview_height = min(2160, max(360, int(height or _positive_int("R2_EXPORT_PREVIEW_HEIGHT", 1080))))
     preview_fps = min(60, max(24, _positive_int("R2_EXPORT_PREVIEW_FPS", 30)))
     command = [
         os.getenv("FFMPEG_BINARY") or "ffmpeg",
@@ -415,16 +429,24 @@ def delete_video_from_r2(public_url: str) -> bool:
     return True
 
 
-def publish_device_video(job_id: str, source: Path) -> tuple[str, str, int, int, str]:
-    """Upload a full-quality download plus a low-bandwidth browser preview."""
+def publish_device_video(job_id: str, source: Path) -> tuple[str, str, int, int, str, str, int]:
+    """Upload original, 720p, and a dedicated 1080p browser preview.
+
+    The original is kept for downloading. Both preview copies are encoded with
+    fast-start MP4 indexes and bounded bitrates so the browser never has to
+    stream/decode the large master file just to preview it.
+    """
 
     source = Path(source).resolve()
     delivery_id = uuid4().hex[:12]
     preview_output = source.with_name(f".{job_id}-device-preview.{delivery_id}.mp4")
+    preview_1080_output = source.with_name(f".{job_id}-device-preview-1080.{delivery_id}.mp4")
     download_output = source.with_name(f".{job_id}-device-original.{delivery_id}.mp4")
     preview_source = source
     download_source = source
     delivery_mode = "preview"
+    preview_1080_url = ""
+    preview_1080_bytes = 0
     with _DELIVERY_LOCK:
         try:
             try:
@@ -436,17 +458,52 @@ def publish_device_video(job_id: str, source: Path) -> tuple[str, str, int, int,
                 f"{job_id}-device-original-{delivery_id}.mp4",
             )
             try:
-                preview_source = compress_video_for_web(source, preview_output)
+                preview_source = compress_video_for_web(
+                    source,
+                    preview_output,
+                    width=1280,
+                    height=720,
+                    maxrate=(os.getenv("R2_EXPORT_PREVIEW_720_MAXRATE") or "1800k"),
+                    bufsize=(os.getenv("R2_EXPORT_PREVIEW_720_BUFSIZE") or "3600k"),
+                )
                 preview_url = upload_video_to_r2(
                     preview_source,
                     f"{job_id}-device-preview-{delivery_id}.mp4",
                     stream_full=True,
                 )
+                try:
+                    preview_1080_source = compress_video_for_web(
+                        source,
+                        preview_1080_output,
+                        width=1920,
+                        height=1080,
+                        maxrate=(os.getenv("R2_EXPORT_PREVIEW_1080_MAXRATE") or "3500k"),
+                        bufsize=(os.getenv("R2_EXPORT_PREVIEW_1080_BUFSIZE") or "7000k"),
+                    )
+                    preview_1080_url = upload_video_to_r2(
+                        preview_1080_source,
+                        f"{job_id}-device-preview-1080-{delivery_id}.mp4",
+                        stream_full=True,
+                    )
+                    preview_1080_bytes = preview_1080_source.stat().st_size
+                except VideoDeliveryError:
+                    # 720p remains a valid preview if the optional 1080p encode
+                    # fails; the original is still available for download.
+                    preview_1080_url = ""
             except VideoDeliveryError:
                 delivery_mode = "original_fallback"
                 preview_source = download_source
                 preview_url = download_url
-            return preview_url, download_url, download_source.stat().st_size, preview_source.stat().st_size, delivery_mode
+            return (
+                preview_url,
+                download_url,
+                download_source.stat().st_size,
+                preview_source.stat().st_size + preview_1080_bytes,
+                delivery_mode,
+                preview_1080_url,
+                preview_1080_bytes,
+            )
         finally:
             preview_output.unlink(missing_ok=True)
+            preview_1080_output.unlink(missing_ok=True)
             download_output.unlink(missing_ok=True)

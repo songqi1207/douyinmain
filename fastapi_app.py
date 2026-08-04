@@ -1101,13 +1101,27 @@ def api_render_agent_claim(request: Request):
 
 def _publish_device_video_in_background(job_id: str, result_name: str, destination: Path) -> None:
     try:
-        result_url, download_url, original_bytes, published_bytes, delivery_mode = publish_device_video(job_id, destination)
+        (
+            result_url,
+            download_url,
+            original_bytes,
+            published_bytes,
+            delivery_mode,
+            preview_1080_url,
+            preview_1080_bytes,
+        ) = publish_device_video(job_id, destination)
     except (OSError, VideoDeliveryError) as exc:
         logger.warning("r2_video_delivery_failed job_id=%s error=%s", job_id, exc)
         append_job_log(job_id, f"R2 视频处理失败，已自动保留站点原片：{exc}", level="warning")
         return
 
-    if not promote_device_render_result(job_id, result_name, result_url, download_url):
+    if not promote_device_render_result(
+        job_id,
+        result_name,
+        result_url,
+        download_url,
+        preview_1080_url,
+    ):
         logger.warning("r2_video_result_not_promoted job_id=%s url=%s", job_id, result_url)
         append_job_log(job_id, "R2 视频已经上传，但任务结果已变化，站点原片予以保留", level="warning")
         return
@@ -1872,7 +1886,14 @@ def api_unlock_job_preview(job_id: str, request: Request, payload: dict = Body(d
     if quality != "1080":
         raise HTTPException(status_code=422, detail={"code": "unsupported_preview_quality", "message": "鏆傛椂鍙敮鎸?1080P"})
     result = next((item for item in job.get("results") or [] if item.get("type") == "video"), None)
-    high_url = str((result or {}).get("download_url") or "").strip()
+    # Never use the original master as a browser preview.  It is intentionally
+    # kept for downloading only; the background delivery creates this dedicated
+    # fast-start 1080p copy after export.
+    high_url = str(
+        (result or {}).get("preview_1080_url")
+        or (result or {}).get("download_url")
+        or ""
+    ).strip()
     if not high_url:
         raise HTTPException(status_code=409, detail={"code": "preview_not_available", "message": "1080P preview is not available"})
     try:
@@ -1903,7 +1924,11 @@ def api_delete_job_video(job_id: str, request: Request):
         str(value).strip()
         for result in job.get("results") or []
         if result.get("type") == "video"
-        for value in (result.get("url"), result.get("download_url"))
+        for value in (
+            result.get("url"),
+            result.get("preview_1080_url"),
+            result.get("download_url"),
+        )
         if str(value or "").strip()
     }
     if not video_urls:
