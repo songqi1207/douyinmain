@@ -1818,12 +1818,15 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
         # Keep the requested style but bound image entrances to a short,
         # reliable transition window.
         calls = draft_key.get("calls") or []
-        # The recorded camera keyframes move the final image layer outside
-        # the canvas in Jianying 11.x. Remove only that camera operation; the
-        # opening animation and the image-layer fades remain intact.
+        # The recorded camera keyframes and long opening sparkle effect can
+        # blank the final scene in Jianying 11.x. Remove those two operations;
+        # the opening animation and the image-layer fades remain intact.
         draft_key["calls"] = [
             call for call in calls
-            if not (isinstance(call, dict) and str(call.get("call_id") or "") == "camera_kf")
+            if not (
+                isinstance(call, dict)
+                and str(call.get("call_id") or "") in {"camera_kf", "opening_fx"}
+            )
         ]
         for call in draft_key.get("calls") or []:
             if not isinstance(call, dict) or call.get("tool") != "add_images":

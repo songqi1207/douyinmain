@@ -977,6 +977,7 @@ class WorkflowApiTests(unittest.TestCase):
             "meta": {"workflow": "神工作流_米核插件+draft_key记录"},
             "calls": [
                 {"call_id": "camera_kf", "tool": "add_keyframes", "params": {"keyframes": []}},
+                {"call_id": "opening_fx", "tool": "add_effects", "params": {"effect_infos": []}},
                 {"call_id": "main_images", "tool": "add_images", "params": {"image_infos": [{"in_animation": "轻微放大", "in_animation_duration": 7_000_000}]}},
             ],
         }
