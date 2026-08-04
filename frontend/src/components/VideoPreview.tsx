@@ -9,7 +9,9 @@ export function VideoPreview({ jobId, result }: { jobId: string; result: JobResu
   const [highUrl, setHighUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const source = quality === "1080" ? highUrl : result.url;
+  // The API proxy deliberately ignores browser Range requests for 720p. R2
+  // range reads are slow on some edges; a sequential stream starts faster.
+  const source = quality === "1080" ? highUrl : `/api/v1/jobs/${encodeURIComponent(jobId)}/preview-stream`;
 
   async function choose1080() {
     if (highUrl) {
@@ -31,7 +33,7 @@ export function VideoPreview({ jobId, result }: { jobId: string; result: JobResu
 
   return (
     <div className="video-preview-shell">
-      <video key={source} src={source} poster={result.poster_url || undefined} controls playsInline preload="metadata" />
+      <video key={source} src={source} poster={result.poster_url || undefined} controls playsInline preload="none" />
       <div className="video-quality-bar" role="group" aria-label="视频清晰度">
         <button type="button" className={quality === "720" ? "active" : ""} onClick={() => setQuality("720")}>
           720P <small>流畅预览</small>

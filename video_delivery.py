@@ -343,7 +343,7 @@ def _upload_video_multipart(source: Path, target_url: str, token: str) -> None:
         session.close()
 
 
-def upload_video_to_r2(source: Path, object_name: str) -> str:
+def upload_video_to_r2(source: Path, object_name: str, *, stream_full: bool = False) -> str:
     source = Path(source).resolve()
     safe_name = Path(object_name).name
     if not source.is_file() or not safe_name.lower().endswith(".mp4"):
@@ -362,7 +362,8 @@ def upload_video_to_r2(source: Path, object_name: str) -> str:
     }
     if source.stat().st_size > _multipart_threshold_bytes():
         _upload_video_multipart(source, target_url, token)
-        return f"{public_base}/{quote(safe_name)}"
+        suffix = "?stream=full" if stream_full else ""
+        return f"{public_base}/{quote(safe_name)}{suffix}"
     try:
         with source.open("rb") as body:
             response = requests.put(
@@ -378,13 +379,15 @@ def upload_video_to_r2(source: Path, object_name: str) -> str:
         raise VideoDeliveryError(f"R2 视频上传失败：{exc}") from exc
     if response.status_code == 413:
         _upload_video_multipart(source, target_url, token)
-        return f"{public_base}/{quote(safe_name)}"
+        suffix = "?stream=full" if stream_full else ""
+        return f"{public_base}/{quote(safe_name)}{suffix}"
     if response.status_code not in {200, 201, 204}:
         detail = _response_detail(response)
         raise VideoDeliveryError(
             f"R2 视频上传失败（HTTP {response.status_code}）" + (f"：{detail}" if detail else "")
         )
-    return f"{public_base}/{quote(safe_name)}"
+    suffix = "?stream=full" if stream_full else ""
+    return f"{public_base}/{quote(safe_name)}{suffix}"
 
 
 def delete_video_from_r2(public_url: str) -> bool:
@@ -437,6 +440,7 @@ def publish_device_video(job_id: str, source: Path) -> tuple[str, str, int, int,
                 preview_url = upload_video_to_r2(
                     preview_source,
                     f"{job_id}-device-preview-{delivery_id}.mp4",
+                    stream_full=True,
                 )
             except VideoDeliveryError:
                 delivery_mode = "original_fallback"

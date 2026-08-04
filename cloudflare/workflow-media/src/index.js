@@ -243,8 +243,9 @@ export default {
     // Exports are immutable. Cache the exact full/range response at the
     // nearest edge so repeat playback does not re-read R2 on every request.
     // Only Range participates in the key; conditional headers are per-client.
+    const streamFull = url.searchParams.get("stream") === "full";
     const cacheHeaders = new Headers();
-    if (request.headers.has("range")) {
+    if (!streamFull && request.headers.has("range")) {
       cacheHeaders.set("range", request.headers.get("range"));
     }
     const cacheKey = new Request(request.url, {
@@ -265,10 +266,12 @@ export default {
       return new Response(null, { status: 200, headers });
     }
 
-    const object = await env.PUBLIC_BUCKET.get(key, {
-      onlyIf: request.headers,
-      range: request.headers,
-    });
+    const object = await env.PUBLIC_BUCKET.get(
+      key,
+      streamFull
+        ? { onlyIf: request.headers }
+        : { onlyIf: request.headers, range: request.headers },
+    );
 
     if (!object) return errorResponse(404, "Not found");
 
@@ -279,7 +282,7 @@ export default {
     }
 
     let status = 200;
-    if (request.headers.has("range") && object.range) {
+    if (!streamFull && request.headers.has("range") && object.range) {
       const offset = object.range.offset ?? 0;
       const length = object.range.length ?? object.size;
       headers.set("content-range", `bytes ${offset}-${offset + length - 1}/${object.size}`);
@@ -289,6 +292,10 @@ export default {
       headers.set("content-length", String(object.size));
     }
 
+    // Preview URLs use stream=full: R2 range reads are slow on some edges,
+    // while one immutable 200 response is cached and plays continuously.
+    // Download URLs keep normal Range behavior for seeking/resume.
+    headers.set("x-media-stream", streamFull ? "full" : "range");
     const response = new Response(object.body, { status, headers });
     if (request.method === "GET" && response.ok) {
       ctx.waitUntil(caches.default.put(cacheKey, response.clone()));

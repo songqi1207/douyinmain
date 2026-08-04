@@ -18,7 +18,7 @@ import requests
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Body, FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
@@ -948,6 +948,45 @@ def api_job_result(filename: str, request: Request):
     if path.suffix.lower() == ".mp4":
         return FileResponse(path, media_type="video/mp4")
     return FileResponse(path, media_type="application/json", filename=path.name)
+
+
+@app.get("/api/v1/jobs/{job_id}/preview-stream")
+def api_job_preview_stream(job_id: str, request: Request):
+    """Serve the 720p preview as one sequential stream instead of slow R2 ranges."""
+    user = _require_user(request)
+    job = get_job(job_id)
+    if not job or (job.get("user_id") != user["id"] and user.get("role") != "admin"):
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "视频任务不存在"})
+    result = next((item for item in job.get("results") or [] if item.get("type") == "video"), None)
+    source = str((result or {}).get("url") or "").strip()
+    if not source:
+        raise HTTPException(status_code=404, detail={"code": "preview_not_available", "message": "预览视频不存在"})
+    if source.startswith("/api/v1/job-results/"):
+        path = get_result_path(Path(source.rsplit("/", 1)[-1]).name)
+        if not path:
+            raise HTTPException(status_code=404, detail={"code": "preview_not_available", "message": "预览视频不存在"})
+        return FileResponse(path, media_type="video/mp4", headers={"Cache-Control": "private, max-age=300"})
+    try:
+        upstream = requests.get(source, stream=True, timeout=(20, 300), headers={"Accept": "video/mp4"})
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail={"code": "preview_upstream_unavailable", "message": "预览视频暂时无法连接"}) from exc
+    if upstream.status_code != 200:
+        status = upstream.status_code
+        upstream.close()
+        raise HTTPException(status_code=502, detail={"code": "preview_upstream_error", "message": f"预览视频返回 HTTP {status}"})
+
+    def body():
+        try:
+            for chunk in upstream.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    yield chunk
+        finally:
+            upstream.close()
+
+    headers = {"Cache-Control": "private, max-age=300", "Accept-Ranges": "none"}
+    if upstream.headers.get("content-length"):
+        headers["Content-Length"] = upstream.headers["content-length"]
+    return StreamingResponse(body(), media_type="video/mp4", headers=headers)
 
 
 @app.get("/api/v1/downloads/draft-bridge")
