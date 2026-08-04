@@ -1860,6 +1860,57 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                 safe_duration = min(segment_duration, 800_000)
                 if requested <= 0 or requested > safe_duration:
                     info["in_animation_duration"] = safe_duration
+        # Jianying 11.x may stop rendering the last item of a multi-image
+        # batch while the border/background and captions continue.  Keep a
+        # separate tail image lane for the final scene.  It starts shortly
+        # after the final batch item begins, so it covers the affected tail
+        # without changing the opening or story timing.
+        calls = draft_key.get("calls") or []
+        if not any(
+            isinstance(call, dict)
+            and str(call.get("call_id") or "") == "main_tail_images"
+            for call in calls
+        ):
+            main_call = next(
+                (
+                    call
+                    for call in calls
+                    if isinstance(call, dict)
+                    and str(call.get("call_id") or "") == "main_images"
+                    and isinstance((call.get("params") or {}).get("image_infos"), list)
+                ),
+                None,
+            )
+            infos = ((main_call or {}).get("params") or {}).get("image_infos") or []
+            valid_infos = [info for info in infos if isinstance(info, dict)]
+            if valid_infos:
+                last_info = valid_infos[-1]
+                start = _draft_time_to_us(last_info.get("start"))
+                end = _draft_time_to_us(last_info.get("end"))
+                if end > start + 1_500_000:
+                    tail_info = dict(last_info)
+                    tail_info["start"] = start + 1_500_000
+                    tail_info["end"] = end
+                    for key in (
+                        "in_animation",
+                        "in_animation_duration",
+                        "out_animation",
+                        "out_animation_duration",
+                        "group_animation",
+                        "group_animation_duration",
+                    ):
+                        tail_info.pop(key, None)
+                    tail_call = {
+                        "call_id": "main_tail_images",
+                        "tool": "add_images",
+                        "params": {"image_infos": [tail_info]},
+                    }
+                    # Insert beside the main image lane.  Appending it after
+                    # the background lane would put the full-frame tail above
+                    # the border/template layer.
+                    normalized_calls = list(calls)
+                    normalized_calls.insert(normalized_calls.index(main_call) + 1, tail_call)
+                    draft_key["calls"] = normalized_calls
         return
     if workflow_code != "OWN01":
         return
