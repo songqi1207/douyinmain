@@ -1778,6 +1778,11 @@ def _draft_time_to_us(value: Any) -> int:
 
 def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
     workflow_code = str(job.get("workflow_code") or "").upper()
+    if workflow_code == DRAFT_KEY_RENDER_CODE:
+        meta = draft_key.get("meta") if isinstance(draft_key.get("meta"), dict) else {}
+        marker = " ".join(str(meta.get(key) or "") for key in ("workflow", "title", "run_id")).lower()
+        if "own03" in marker or "god" in marker or "神" in marker:
+            workflow_code = "OWN03"
     if workflow_code == "OWN02":
         replacements = {
             "call_273408": _configured_visible_text(

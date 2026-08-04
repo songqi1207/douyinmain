@@ -973,6 +973,17 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(opening["calls"][1]["params"]["image_infos"][0]["in_animation"], "渐显")
         self.assertEqual([call["call_id"] for call in opening["calls"]], ["intro_images", "main_images"])
 
+        exported = {
+            "meta": {"workflow": "神工作流_米核插件+draft_key记录"},
+            "calls": [
+                {"call_id": "camera_kf", "tool": "add_keyframes", "params": {"keyframes": []}},
+                {"call_id": "main_images", "tool": "add_images", "params": {"image_infos": [{"in_animation": "轻微放大", "in_animation_duration": 7_000_000}]}},
+            ],
+        }
+        workflow_jobs._normalize_published_draft_key({"workflow_code": "DRAFT_KEY_EXPORT"}, exported)
+        self.assertEqual([call["call_id"] for call in exported["calls"]], ["main_images"])
+        self.assertEqual(exported["calls"][0]["params"]["image_infos"][0]["in_animation"], "渐显")
+
     def test_draft_with_unrepaired_encoding_damaged_caption_is_rejected(self):
         key = {
             "meta": {"unresolved_segment_ids": []},
