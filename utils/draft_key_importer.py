@@ -32,6 +32,7 @@ from utils.jianying_drafts import (
     append_keyframes,
     append_videos,
     create_draft,
+    extend_visual_tail_to_audio,
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -699,6 +700,19 @@ def _import_draft_key_unlocked(
                 "track_id": result.get("track_id", ""),
                 "applied": result.get("applied"),
             }
+        )
+
+    tail_fix = extend_visual_tail_to_audio(draft_id)
+    if tail_fix.get("extended_us", 0) > 0:
+        warnings.append(
+            "已将最后一张画面延长至配音结束（延长 %.2fs）" % (tail_fix["extended_us"] / 1_000_000)
+        )
+        logger.warning(
+            "visual_tail_extended draft_id=%s audio_end_us=%s visual_end_us=%s extended_us=%s",
+            draft_id,
+            tail_fix["audio_end_us"],
+            tail_fix["visual_end_us"],
+            tail_fix["extended_us"],
         )
 
     render_key_path = _save_render_key(draft_id, key)

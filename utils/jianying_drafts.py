@@ -1538,6 +1538,54 @@ def append_images(
     }
 
 
+def extend_visual_tail_to_audio(draft_id: str, minimum_gap_us: int = 200_000) -> dict[str, int]:
+    """Hold the last photo until the final audio ends, avoiding a black tail."""
+    bundle = _load_bundle(draft_id)
+    draft = bundle["content"]
+    materials = {
+        str(item.get("id")): item
+        for item in (draft.get("materials", {}).get("videos") or [])
+        if isinstance(item, dict)
+    }
+    audio_end = 0
+    photo_segments: list[tuple[int, int, dict[str, Any], dict[str, Any]]] = []
+    for track in draft.get("tracks") or []:
+        if not isinstance(track, dict):
+            continue
+        track_type = str(track.get("type") or "")
+        for segment in track.get("segments") or []:
+            if not isinstance(segment, dict):
+                continue
+            timerange = segment.get("target_timerange") or {}
+            start = int(timerange.get("start") or 0)
+            duration = int(timerange.get("duration") or 0)
+            end = start + max(0, duration)
+            if track_type == "audio":
+                audio_end = max(audio_end, end)
+            if track_type != "video":
+                continue
+            material = materials.get(str(segment.get("material_id") or "")) or {}
+            if str(material.get("type") or "") == "photo":
+                photo_segments.append((end, int(segment.get("render_index") or 0), segment, material))
+    if audio_end <= 0 or not photo_segments:
+        return {"audio_end_us": audio_end, "visual_end_us": 0, "extended_us": 0}
+    visual_end = max(item[0] for item in photo_segments)
+    gap = audio_end - visual_end
+    if gap <= minimum_gap_us:
+        return {"audio_end_us": audio_end, "visual_end_us": visual_end, "extended_us": 0}
+
+    _, _, segment, material = max(photo_segments, key=lambda item: (item[0], item[1]))
+    timerange = segment.setdefault("target_timerange", {})
+    timerange["duration"] = int(timerange.get("duration") or 0) + gap
+    source_timerange = segment.get("source_timerange")
+    if isinstance(source_timerange, dict):
+        source_timerange["duration"] = int(source_timerange.get("duration") or 0) + gap
+    material["duration"] = max(int(material.get("duration") or 0), int(timerange["duration"]))
+    _update_draft_duration(bundle)
+    _write_bundle(bundle)
+    return {"audio_end_us": audio_end, "visual_end_us": visual_end, "extended_us": gap}
+
+
 def append_videos(
     draft_id: str,
     video_infos: list[dict[str, Any]],
