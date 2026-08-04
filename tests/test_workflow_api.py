@@ -940,10 +940,32 @@ class WorkflowApiTests(unittest.TestCase):
 
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
 
-        self.assertEqual(
-            key["calls"][0]["params"]["image_infos"][0]["in_animation_duration"],
-            800_000,
+        self.assertNotIn(
+            "in_animation",
+            key["calls"][0]["params"]["image_infos"][0],
         )
+
+        opening = {
+            "calls": [
+                {
+                    "call_id": "intro_images",
+                    "tool": "add_images",
+                    "params": {
+                        "image_infos": [{"in_animation": "Kira游动", "in_animation_duration": 800_000}]
+                    },
+                },
+                {
+                    "call_id": "main_images",
+                    "tool": "add_images",
+                    "params": {
+                        "image_infos": [{"in_animation": "轻微放大", "in_animation_duration": 800_000}]
+                    },
+                },
+            ]
+        }
+        workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, opening)
+        self.assertEqual(opening["calls"][0]["params"]["image_infos"][0]["in_animation"], "Kira游动")
+        self.assertNotIn("in_animation", opening["calls"][1]["params"]["image_infos"][0])
 
     def test_draft_with_unrepaired_encoding_damaged_caption_is_rejected(self):
         key = {

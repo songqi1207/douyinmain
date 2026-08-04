@@ -1819,6 +1819,15 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
             image_infos = params.get("image_infos")
             if not isinstance(image_infos, list):
                 continue
+            # Jianying's image entrance effects can turn a main-scene image
+            # transparent when the effect finishes. Keep the opening image's
+            # animation, but render main-scene images as persistent layers.
+            if str(call.get("call_id") or "") == "main_images":
+                for info in image_infos:
+                    if isinstance(info, dict):
+                        info.pop("in_animation", None)
+                        info.pop("in_animation_duration", None)
+                continue
             for info in image_infos:
                 if not isinstance(info, dict) or not info.get("in_animation"):
                     continue
