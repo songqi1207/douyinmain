@@ -9,13 +9,9 @@ export function VideoPreview({ jobId, result }: { jobId: string; result: JobResu
   const [highUrl, setHighUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  // Keep the media URL itself so the browser can perform its normal MP4
-  // metadata/range handshake. The worker treats stream=full as a sequential
-  // preview when deployed, while older objects remain compatible.
-  const previewUrl = result.url.startsWith("http")
-    ? `${result.url}${result.url.includes("?") ? "&" : "?"}stream=full`
-    : result.url;
-  const source = quality === "1080" ? highUrl : previewUrl;
+  // Preview is cached on the application server once, then FileResponse
+  // serves fast local Range responses. R2 remains the high-quality download.
+  const source = quality === "1080" ? highUrl : `/api/v1/jobs/${encodeURIComponent(jobId)}/preview-stream`;
 
   async function choose1080() {
     if (highUrl) {

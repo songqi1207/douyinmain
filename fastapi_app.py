@@ -18,7 +18,7 @@ import requests
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Body, FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
@@ -966,27 +966,37 @@ def api_job_preview_stream(job_id: str, request: Request):
         if not path:
             raise HTTPException(status_code=404, detail={"code": "preview_not_available", "message": "预览视频不存在"})
         return FileResponse(path, media_type="video/mp4", headers={"Cache-Control": "private, max-age=300"})
-    try:
-        upstream = requests.get(source, stream=True, timeout=(20, 300), headers={"Accept": "video/mp4"})
-    except requests.RequestException as exc:
-        raise HTTPException(status_code=502, detail={"code": "preview_upstream_unavailable", "message": "预览视频暂时无法连接"}) from exc
-    if upstream.status_code != 200:
-        status = upstream.status_code
-        upstream.close()
-        raise HTTPException(status_code=502, detail={"code": "preview_upstream_error", "message": f"预览视频返回 HTTP {status}"})
-
-    def body():
+    cache_dir = RESULT_DIR / "preview-cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = (cache_dir / f"{job_id}.mp4").resolve()
+    if not cache_path.is_file():
+        temporary = cache_path.with_name(f".{cache_path.name}.{time.time_ns()}.part")
         try:
-            for chunk in upstream.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    yield chunk
-        finally:
+            upstream = requests.get(source, stream=True, timeout=(20, 300), headers={"Accept": "video/mp4"})
+            if upstream.status_code not in {200, 206}:
+                status = upstream.status_code
+                upstream.close()
+                raise HTTPException(status_code=502, detail={"code": "preview_upstream_error", "message": f"预览视频返回 HTTP {status}"})
+            total = 0
+            with temporary.open("wb") as stream:
+                for chunk in upstream.iter_content(chunk_size=1024 * 1024):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > int(os.getenv("DEVICE_RENDER_MAX_UPLOAD_BYTES") or 2 * 1024 * 1024 * 1024):
+                        raise HTTPException(status_code=413, detail={"code": "preview_too_large", "message": "预览视频超过缓存限制"})
+                    stream.write(chunk)
             upstream.close()
-
-    headers = {"Cache-Control": "private, max-age=300", "Accept-Ranges": "none"}
-    if upstream.headers.get("content-length"):
-        headers["Content-Length"] = upstream.headers["content-length"]
-    return StreamingResponse(body(), media_type="video/mp4", headers=headers)
+            if total < 12:
+                raise HTTPException(status_code=502, detail={"code": "preview_empty", "message": "预览视频为空"})
+            os.replace(temporary, cache_path)
+        except requests.RequestException as exc:
+            raise HTTPException(status_code=502, detail={"code": "preview_upstream_unavailable", "message": "预览视频暂时无法连接"}) from exc
+        finally:
+            temporary.unlink(missing_ok=True)
+    # FileResponse supports HTTP Range itself, so the browser's initial
+    # metadata request remains compatible after the one-time local cache fill.
+    return FileResponse(cache_path, media_type="video/mp4", headers={"Cache-Control": "private, max-age=300"})
 
 
 @app.get("/api/v1/downloads/draft-bridge")
