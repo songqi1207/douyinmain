@@ -1812,6 +1812,14 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
         # transparent after the animation, while captions keep rendering.
         # Keep the requested style but bound image entrances to a short,
         # reliable transition window.
+        calls = draft_key.get("calls") or []
+        # The recorded camera keyframes move the final image layer outside
+        # the canvas in Jianying 11.x. Remove only that camera operation; the
+        # opening animation and the image-layer fades remain intact.
+        draft_key["calls"] = [
+            call for call in calls
+            if not (isinstance(call, dict) and str(call.get("call_id") or "") == "camera_kf")
+        ]
         for call in draft_key.get("calls") or []:
             if not isinstance(call, dict) or call.get("tool") != "add_images":
                 continue

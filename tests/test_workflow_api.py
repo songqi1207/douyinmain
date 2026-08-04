@@ -965,11 +965,13 @@ class WorkflowApiTests(unittest.TestCase):
                         "image_infos": [{"in_animation": "轻微放大", "in_animation_duration": 800_000}]
                     },
                 },
+                {"call_id": "camera_kf", "tool": "add_keyframes", "params": {"keyframes": []}},
             ]
         }
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, opening)
         self.assertEqual(opening["calls"][0]["params"]["image_infos"][0]["in_animation"], "Kira游动")
         self.assertEqual(opening["calls"][1]["params"]["image_infos"][0]["in_animation"], "渐显")
+        self.assertEqual([call["call_id"] for call in opening["calls"]], ["intro_images", "main_images"])
 
     def test_draft_with_unrepaired_encoding_damaged_caption_is_rejected(self):
         key = {
