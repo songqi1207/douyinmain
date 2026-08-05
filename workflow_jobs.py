@@ -1864,7 +1864,10 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
         ):
             motion_keyframes = []
             motion_calls = []
-            for lane in ("intro_images", "main_images"):
+            # Jianying 11.2.5 can stall when keyframes target the special
+            # intro lane. The first story image is in main_images, so keep
+            # motion there and leave the intro resource untouched.
+            for lane in ("main_images",):
                 lane_call = next(
                     (
                         call
@@ -1888,16 +1891,13 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                         continue
                     # Make the movement clearly visible while keeping it
                     # inside the already-cropped 16:9 image canvas.
-                    start_scale = 1.00 if index % 2 == 0 else 1.24
-                    end_scale = 1.24 if index % 2 == 0 else 1.00
-                    direction = -0.10 if index % 2 == 0 else 0.10
+                    start_scale = 1.00 if index % 2 == 0 else 1.28
+                    end_scale = 1.28 if index % 2 == 0 else 1.00
                     ref = {"call_id": lane, "index": index}
                     motion_keyframes.extend(
                         [
                             {"segment_ref": ref, "offset": 0, "property": "UNIFORM_SCALE", "value": start_scale},
                             {"segment_ref": ref, "offset": duration, "property": "UNIFORM_SCALE", "value": end_scale},
-                            {"segment_ref": ref, "offset": 0, "property": "KFTypePositionX", "value": direction},
-                            {"segment_ref": ref, "offset": duration, "property": "KFTypePositionX", "value": -direction},
                         ]
                     )
                 motion_calls.append(lane_call)
