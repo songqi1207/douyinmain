@@ -1935,15 +1935,19 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                     last_info["end"] = split
                     tail_info["start"] = split
                     tail_info["end"] = end
-                    for key in (
-                        "in_animation",
+                    # The tail is a safety split, not a static freeze frame.
+                    # Keep the final image's animation metadata on the second
+                    # adjacent segment and bound durations to the short tail.
+                    tail_duration = max(1, end - split)
+                    for duration_key in (
                         "in_animation_duration",
-                        "out_animation",
                         "out_animation_duration",
-                        "group_animation",
                         "group_animation_duration",
                     ):
-                        tail_info.pop(key, None)
+                        if duration_key not in tail_info:
+                            continue
+                        duration = _draft_time_to_us(tail_info.get(duration_key))
+                        tail_info[duration_key] = min(duration, tail_duration) if duration > 0 else tail_duration
                     tail_call = {
                         "call_id": "main_tail_images",
                         "tool": "add_images",

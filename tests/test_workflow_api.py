@@ -1008,6 +1008,41 @@ class WorkflowApiTests(unittest.TestCase):
         infos = key["calls"][0]["params"]["image_infos"]
         self.assertEqual([item["in_animation"] for item in infos], ["动感缩小", "轻微放大"])
 
+    def test_published_god_tail_keeps_animation_metadata(self):
+        key = {
+            "calls": [
+                {
+                    "call_id": "main_images",
+                    "tool": "add_images",
+                    "params": {
+                        "image_infos": [
+                            {
+                                "image_url": "https://example.test/scene.png",
+                                "start": 0,
+                                "end": 4_000_000,
+                                "in_animation": "light_zoom",
+                                "in_animation_duration": 4_000_000,
+                                "out_animation": "fade",
+                                "out_animation_duration": 800_000,
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+        workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
+
+        main = next(call for call in key["calls"] if call["call_id"] == "main_images")
+        tail = next(call for call in key["calls"] if call["call_id"] == "main_tail_images")
+        tail_info = tail["params"]["image_infos"][0]
+        self.assertEqual(main["params"]["image_infos"][0]["end"], 1_500_000)
+        self.assertEqual(tail_info["start"], 1_500_000)
+        self.assertEqual(tail_info["end"], 4_000_000)
+        self.assertEqual(tail_info["in_animation"], "light_zoom")
+        self.assertEqual(tail_info["out_animation"], "fade")
+        self.assertEqual(tail_info["in_animation_duration"], 2_500_000)
+        self.assertEqual(tail_info["out_animation_duration"], 800_000)
+
     def test_draft_with_unrepaired_encoding_damaged_caption_is_rejected(self):
         key = {
             "meta": {"unresolved_segment_ids": []},
