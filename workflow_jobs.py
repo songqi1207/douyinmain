@@ -1910,19 +1910,56 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
             if isinstance(call, dict)
             and str(call.get("call_id") or "") == "main_tail_images"
         ]
+        main_call = next(
+            (
+                call
+                for call in calls
+                if isinstance(call, dict)
+                and str(call.get("call_id") or "") == "main_images"
+                and isinstance((call.get("params") or {}).get("image_infos"), list)
+            ),
+            None,
+        )
+        main_infos = ((main_call or {}).get("params") or {}).get("image_infos") or []
+        valid_main_infos = [info for info in main_infos if isinstance(info, dict)]
+        source_tail_info = valid_main_infos[-1] if valid_main_infos else None
         for tail_call in existing_tail_calls:
             tail_call.setdefault("track_name", "video_tail")
+            tail_infos = ((tail_call.get("params") or {}).get("image_infos") or [])
+            for tail_info in tail_infos:
+                if not isinstance(tail_info, dict) or not source_tail_info:
+                    continue
+                # Drafts created before the tail fix already contain a tail
+                # segment, but it was a freeze frame with no animation fields.
+                # Repair that shape in place so re-renders of old jobs animate
+                # as well instead of requiring a new source workflow export.
+                for animation_key in (
+                    "in_animation",
+                    "in_animation_resource_id",
+                    "in_animation_effect_id",
+                    "out_animation",
+                    "out_animation_resource_id",
+                    "out_animation_effect_id",
+                    "group_animation",
+                    "group_animation_resource_id",
+                    "group_animation_effect_id",
+                ):
+                    if not tail_info.get(animation_key) and source_tail_info.get(animation_key):
+                        tail_info[animation_key] = source_tail_info[animation_key]
+                tail_start = _draft_time_to_us(tail_info.get("start"))
+                tail_end = _draft_time_to_us(tail_info.get("end"))
+                tail_duration = max(1, tail_end - tail_start)
+                for duration_key in (
+                    "in_animation_duration",
+                    "out_animation_duration",
+                    "group_animation_duration",
+                ):
+                    if duration_key not in tail_info and duration_key in source_tail_info:
+                        tail_info[duration_key] = source_tail_info[duration_key]
+                    if duration_key in tail_info:
+                        duration = _draft_time_to_us(tail_info.get(duration_key))
+                        tail_info[duration_key] = min(duration, tail_duration) if duration > 0 else tail_duration
         if not existing_tail_calls:
-            main_call = next(
-                (
-                    call
-                    for call in calls
-                    if isinstance(call, dict)
-                    and str(call.get("call_id") or "") == "main_images"
-                    and isinstance((call.get("params") or {}).get("image_infos"), list)
-                ),
-                None,
-            )
             infos = ((main_call or {}).get("params") or {}).get("image_infos") or []
             valid_infos = [info for info in infos if isinstance(info, dict)]
             if valid_infos:
