@@ -1223,7 +1223,7 @@ def _normalize_keyframe_property(value: str) -> str:
     return mapping.get(raw, raw or "KFTypePositionX")
 
 
-def _build_effect_material(effect_name: str) -> tuple[dict[str, Any], bool]:
+def _build_effect_material(effect_name: str, resource_id: str = "", effect_id: str = "") -> tuple[dict[str, Any], bool]:
     """按名字从元数据表解析特效，返回 (素材, 是否命中元数据)。
 
     未命中时只能把入参当 effect_id 使用，剪映端大概率无法加载对应资源。
@@ -1232,14 +1232,14 @@ def _build_effect_material(effect_name: str) -> tuple[dict[str, Any], bool]:
     meta = _lookup_meta("video_scene_effects", name) or _lookup_meta("video_character_effects", name)
     effect_type = "video_effect"
     if meta is None:
-        resource_id = ""
-        effect_id = name
+        resource_id = str(resource_id or "")
+        effect_id = str(effect_id or name)
         adjust_params: list[dict[str, Any]] = []
     else:
         if _lookup_meta("video_scene_effects", name) is None:
             effect_type = "face_effect"
-        resource_id = str(meta.get("resource_id", ""))
-        effect_id = str(meta.get("effect_id", ""))
+        resource_id = str(resource_id or meta.get("resource_id", ""))
+        effect_id = str(effect_id or meta.get("effect_id", ""))
         adjust_params = [
             {
                 "default_value": param.get("default_value", 0.0),
@@ -1929,7 +1929,11 @@ def append_effects(
             end_us = start_us + duration_us
         duration_us = max(0, end_us - start_us)
 
-        material, resolved = _build_effect_material(effect_name)
+        material, resolved = _build_effect_material(
+            effect_name,
+            str(info.get("effect_resource_id") or info.get("resource_id") or ""),
+            str(info.get("effect_id") or ""),
+        )
         if not resolved:
             warnings.append(f"特效名未命中元数据表，剪映可能无法加载: {effect_name}")
         draft["materials"]["video_effects"].append(material)
