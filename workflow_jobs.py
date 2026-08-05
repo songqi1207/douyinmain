@@ -1851,6 +1851,54 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                 and str(call.get("call_id") or "") in {"camera_kf", "opening_fx"}
             )
         ]
+        # If the desktop catalog does not contain the provider's named image
+        # animations, retain the visual motion with native scale keyframes.
+        # Keyframes are part of the draft itself and do not depend on a
+        # Jianying resource id, so the assistant can render them consistently
+        # across 5.9 and 11.x.
+        calls = draft_key.get("calls") or []
+        if not any(
+            isinstance(call, dict)
+            and str(call.get("call_id") or "") == "image_motion_kf"
+            for call in calls
+        ):
+            main_call = next(
+                (
+                    call
+                    for call in calls
+                    if isinstance(call, dict)
+                    and str(call.get("call_id") or "") == "main_images"
+                    and isinstance((call.get("params") or {}).get("image_infos"), list)
+                ),
+                None,
+            )
+            motion_keyframes = []
+            for index, info in enumerate(((main_call or {}).get("params") or {}).get("image_infos") or []):
+                if not isinstance(info, dict):
+                    continue
+                start = _draft_time_to_us(info.get("start"))
+                end = _draft_time_to_us(info.get("end"))
+                duration = max(0, end - start)
+                if duration <= 0:
+                    continue
+                start_scale = 1.02 if index % 2 == 0 else 1.08
+                end_scale = 1.08 if index % 2 == 0 else 1.02
+                ref = {"call_id": "main_images", "index": index}
+                motion_keyframes.extend(
+                    [
+                        {"segment_ref": ref, "offset": 0, "property": "UNIFORM_SCALE", "value": start_scale},
+                        {"segment_ref": ref, "offset": duration, "property": "UNIFORM_SCALE", "value": end_scale},
+                    ]
+                )
+            if main_call is not None and motion_keyframes:
+                motion_call = {
+                    "call_id": "image_motion_kf",
+                    "tool": "add_keyframes",
+                    "params": {"keyframes": motion_keyframes},
+                }
+                normalized_calls = list(calls)
+                normalized_calls.insert(normalized_calls.index(main_call) + 1, motion_call)
+                draft_key["calls"] = normalized_calls
         for call in draft_key.get("calls") or []:
             if not isinstance(call, dict) or call.get("tool") != "add_images":
                 continue
