@@ -1798,6 +1798,38 @@ def _normalize_image_intro_animation(value: Any) -> str:
     return _IMAGE_INTRO_ANIMATION_ALIASES.get(name, name)
 
 
+def _attach_animation_resource_ids(info: dict[str, Any], name_key: str, type_key: str, prefix: str) -> None:
+    """Embed catalog ids so the Windows helper can keep named animations.
+
+    Helper versions may ship an older display-name catalog.  The resource id
+    is the stable Jianying reference, so include it in the draft key whenever
+    our server catalog knows the requested animation.
+    """
+    name = str(info.get(name_key) or "").strip()
+    if not name:
+        return
+    table = {
+        ("video", "in"): "video_intros",
+        ("video", "out"): "video_outros",
+        ("video", "group"): "video_group_animations",
+        ("text", "in"): "text_intros",
+        ("text", "out"): "text_outros",
+        ("text", "loop"): "text_loops",
+    }.get((prefix, type_key))
+    if not table:
+        return
+    try:
+        from utils.jianying_drafts import _lookup_meta
+
+        meta = _lookup_meta(table, name) or {}
+    except Exception:
+        meta = {}
+    if meta.get("resource_id"):
+        info.setdefault(f"{name_key}_resource_id", str(meta["resource_id"]))
+    if meta.get("effect_id"):
+        info.setdefault(f"{name_key}_effect_id", str(meta["effect_id"]))
+
+
 def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
     workflow_code = str(job.get("workflow_code") or "").upper()
     if workflow_code == DRAFT_KEY_RENDER_CODE:
@@ -1834,112 +1866,26 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                     caption["text"] = replacement
         return
     if workflow_code == "OWN03":
-        # Provider drafts sometimes use the full image segment duration as
-        # the entrance-animation duration. Jianying can then leave that image
-        # transparent after the animation, while captions keep rendering.
-        # Keep the requested style, but bound entrance durations to a short,
-        # reliable transition window. Replacing the requested animation name
-        # here makes the published video lose the template's image motion.
+        # Preserve the template's complete visual language.  In particular,
+        # do not replace the named image animations, camera keyframes, or
+        # opening sparkle lane; those are intentional parts of the template.
         calls = draft_key.get("calls") or []
-        # The recorded camera keyframes and long opening sparkle effect can
-        # blank the final scene in Jianying 11.x. Remove those two operations;
-        # the opening animation and the image-layer fades remain intact.
-        draft_key["calls"] = [
-            call for call in calls
-            if not (
-                isinstance(call, dict)
-                and str(call.get("call_id") or "") in {"camera_kf", "opening_fx"}
-            )
-        ]
-        # If the desktop catalog does not contain the provider's named image
-        # animations, retain the visual motion with native scale keyframes.
-        # Keyframes are part of the draft itself and do not depend on a
-        # Jianying resource id, so the assistant can render them consistently
-        # across 5.9 and 11.x.
-        calls = draft_key.get("calls") or []
-        if not any(
-            isinstance(call, dict)
-            and str(call.get("call_id") or "") == "image_motion_kf"
-            for call in calls
-        ):
-            motion_keyframes = []
-            motion_calls = []
-            # Jianying 11.2.5 can stall when keyframes target the special
-            # intro lane. The first story image is in main_images, so keep
-            # motion there and leave the intro resource untouched.
-            for lane in ("main_images",):
-                lane_call = next(
-                    (
-                        call
-                        for call in calls
-                        if isinstance(call, dict)
-                        and str(call.get("call_id") or "") == lane
-                        and isinstance((call.get("params") or {}).get("image_infos"), list)
-                    ),
-                    None,
-                )
-                if lane_call is None:
-                    continue
-                lane_infos = ((lane_call.get("params") or {}).get("image_infos") or [])
-                for index, info in enumerate(lane_infos):
-                    if not isinstance(info, dict):
-                        continue
-                    start = _draft_time_to_us(info.get("start"))
-                    end = _draft_time_to_us(info.get("end"))
-                    duration = max(0, end - start)
-                    if duration <= 0:
-                        continue
-                    # Make the movement clearly visible while keeping it
-                    # inside the already-cropped 16:9 image canvas.
-                    start_scale = 1.00 if index % 2 == 0 else 1.28
-                    end_scale = 1.28 if index % 2 == 0 else 1.00
-                    ref = {"call_id": lane, "index": index}
-                    motion_keyframes.extend(
-                        [
-                            {"segment_ref": ref, "offset": 0, "property": "UNIFORM_SCALE", "value": start_scale},
-                            {"segment_ref": ref, "offset": duration, "property": "UNIFORM_SCALE", "value": end_scale},
-                        ]
-                    )
-                motion_calls.append(lane_call)
-            if motion_calls and motion_keyframes:
-                motion_call = {
-                    "call_id": "image_motion_kf",
-                    "tool": "add_keyframes",
-                    "params": {"keyframes": motion_keyframes},
-                }
-                normalized_calls = list(calls)
-                # The provider may order main_images before intro_images, so
-                # place the keyframe call after the later referenced lane.
-                insert_after = max(normalized_calls.index(call) for call in motion_calls)
-                normalized_calls.insert(insert_after + 1, motion_call)
-                draft_key["calls"] = normalized_calls
-        for call in draft_key.get("calls") or []:
-            if not isinstance(call, dict) or call.get("tool") != "add_images":
+        for call in calls:
+            if not isinstance(call, dict):
                 continue
             params = call.get("params") if isinstance(call.get("params"), dict) else {}
-            image_infos = params.get("image_infos")
-            if not isinstance(image_infos, list):
-                continue
-            for info in image_infos:
-                if not isinstance(info, dict) or not info.get("in_animation"):
-                    continue
-                # Native keyframes below are version-independent.  Do not
-                # leave a provider resource animation on the image lane: an
-                # older assistant may import the image but discard that
-                # resource, making the result look static.
-                info.pop("in_animation", None)
-                info.pop("in_animation_duration", None)
-                start = _draft_time_to_us(info.get("start"))
-                end = _draft_time_to_us(info.get("end"))
-                if end <= 0:
-                    end = start + _draft_time_to_us(info.get("duration"))
-                segment_duration = max(0, end - start)
-                if segment_duration <= 0:
-                    continue
-                requested = _draft_time_to_us(info.get("in_animation_duration"))
-                safe_duration = min(segment_duration, 800_000)
-                if requested <= 0 or requested > safe_duration:
-                    info["in_animation_duration"] = safe_duration
+            if call.get("tool") == "add_images":
+                for info in params.get("image_infos") or []:
+                    if not isinstance(info, dict):
+                        continue
+                    for name_key, type_key in (("in_animation", "in"), ("out_animation", "out"), ("group_animation", "group")):
+                        _attach_animation_resource_ids(info, name_key, type_key, "video")
+            elif call.get("tool") == "add_captions":
+                for info in params.get("captions") or []:
+                    if not isinstance(info, dict):
+                        continue
+                    for name_key, type_key in (("in_animation", "in"), ("out_animation", "out"), ("loop_animation", "loop")):
+                        _attach_animation_resource_ids(info, name_key, type_key, "text")
         # Jianying 11.x may stop rendering the last item of a multi-image
         # batch while the border/background and captions continue.  Keep a
         # separate tail image lane for the final scene.  It starts shortly

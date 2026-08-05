@@ -1287,10 +1287,19 @@ def _build_animation_material(animations: list[dict[str, Any]]) -> dict[str, Any
     }
 
 
-def _resolve_video_animation(name: str, animation_type: str, start_us: int, duration_us: Any) -> dict[str, Any] | None:
+def _resolve_video_animation(
+    name: str,
+    animation_type: str,
+    start_us: int,
+    duration_us: Any,
+    resource_id: Any = None,
+    effect_id: Any = None,
+) -> dict[str, Any] | None:
     table = {"in": "video_intros", "out": "video_outros", "group": "video_group_animations"}[animation_type]
-    meta = _lookup_meta(table, name)
-    if meta is None:
+    meta = _lookup_meta(table, name) or {}
+    resolved_resource_id = str(resource_id or meta.get("resource_id") or "").strip()
+    resolved_effect_id = str(effect_id or meta.get("effect_id") or "").strip()
+    if not resolved_resource_id:
         return None
     duration = _duration_to_us(duration_us) or int(meta.get("duration_us") or 500_000)
     return {
@@ -1299,22 +1308,31 @@ def _resolve_video_animation(name: str, animation_type: str, start_us: int, dura
         "panel": "video",
         "material_type": "video",
         "name": str(name).strip(),
-        "id": str(meta.get("effect_id", "")),
+        "id": resolved_effect_id,
         "type": animation_type,
-        "resource_id": str(meta.get("resource_id", "")),
+        "resource_id": resolved_resource_id,
         "start": start_us,
         "duration": duration,
     }
 
 
-def _resolve_text_animation(name: str, animation_type: str, start_us: int, duration_us: Any) -> dict[str, Any] | None:
+def _resolve_text_animation(
+    name: str,
+    animation_type: str,
+    start_us: int,
+    duration_us: Any,
+    resource_id: Any = None,
+    effect_id: Any = None,
+) -> dict[str, Any] | None:
     table = {
         "in": "text_intros",
         "out": "text_outros",
         "loop": "text_loops",
     }[animation_type]
-    meta = _lookup_meta(table, name)
-    if meta is None:
+    meta = _lookup_meta(table, name) or {}
+    resolved_resource_id = str(resource_id or meta.get("resource_id") or "").strip()
+    resolved_effect_id = str(effect_id or meta.get("effect_id") or "").strip()
+    if not resolved_resource_id:
         return None
 
     duration = _duration_to_us(duration_us)
@@ -1335,9 +1353,9 @@ def _resolve_text_animation(name: str, animation_type: str, start_us: int, durat
         "panel": "",
         "material_type": "sticker",
         "name": str(name).strip(),
-        "id": str(meta.get("effect_id", "")),
+        "id": resolved_effect_id,
         "type": animation_type,
-        "resource_id": str(meta.get("resource_id", "")),
+        "resource_id": resolved_resource_id,
         "start": start_us,
         "duration": duration,
         "path": "",
@@ -1497,14 +1515,28 @@ def append_images(
         animations = []
         in_name = str(info.get("in_animation") or "").strip()
         if in_name:
-            animation = _resolve_video_animation(in_name, "in", 0, info.get("in_animation_duration"))
+            animation = _resolve_video_animation(
+                in_name,
+                "in",
+                0,
+                info.get("in_animation_duration"),
+                info.get("in_animation_resource_id"),
+                info.get("in_animation_effect_id"),
+            )
             if animation is None:
                 warnings.append(f"未知入场动画已忽略: {in_name}")
             else:
                 animations.append(animation)
         out_name = str(info.get("out_animation") or "").strip()
         if out_name:
-            animation = _resolve_video_animation(out_name, "out", 0, info.get("out_animation_duration"))
+            animation = _resolve_video_animation(
+                out_name,
+                "out",
+                0,
+                info.get("out_animation_duration"),
+                info.get("out_animation_resource_id"),
+                info.get("out_animation_effect_id"),
+            )
             if animation is None:
                 warnings.append(f"未知出场动画已忽略: {out_name}")
             else:
@@ -1512,7 +1544,14 @@ def append_images(
                 animations.append(animation)
         group_name = str(info.get("group_animation") or "").strip()
         if group_name:
-            animation = _resolve_video_animation(group_name, "group", 0, info.get("group_animation_duration"))
+            animation = _resolve_video_animation(
+                group_name,
+                "group",
+                0,
+                info.get("group_animation_duration"),
+                info.get("group_animation_resource_id"),
+                info.get("group_animation_effect_id"),
+            )
             if animation is None:
                 warnings.append(f"未知组合动画已忽略: {group_name}")
             else:
@@ -1768,7 +1807,14 @@ def append_captions(
             resolved_name = str(animation_name or "").strip()
             if not resolved_name:
                 continue
-            animation = _resolve_text_animation(resolved_name, animation_type, 0, animation_duration)
+            animation = _resolve_text_animation(
+                resolved_name,
+                animation_type,
+                0,
+                animation_duration,
+                info.get(f"{('in' if animation_type == 'in' else 'out' if animation_type == 'out' else 'loop')}_animation_resource_id"),
+                info.get(f"{('in' if animation_type == 'in' else 'out' if animation_type == 'out' else 'loop')}_animation_effect_id"),
+            )
             if animation is None:
                 warnings.append(f"未知文字{animation_labels[animation_type]}动画已忽略: {resolved_name}")
                 continue
