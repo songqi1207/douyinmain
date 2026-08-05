@@ -1929,6 +1929,10 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                     tail_call = {
                         "call_id": "main_tail_images",
                         "tool": "add_images",
+                        # A separate lane is required: this tail intentionally
+                        # overlaps the final main image to prevent JianYing
+                        # 11.x from dropping the last frame.
+                        "track_name": "video_tail",
                         "params": {"image_infos": [tail_info]},
                     }
                     # Insert beside the main image lane.  Appending it after
