@@ -1886,6 +1886,21 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                         continue
                     for name_key, type_key in (("in_animation", "in"), ("out_animation", "out"), ("loop_animation", "loop")):
                         _attach_animation_resource_ids(info, name_key, type_key, "text")
+            elif call.get("tool") == "add_effects":
+                effect_aliases = {
+                    "柔光": ("6714239617916211716", "634095"),
+                    "光晕": ("6714239617916211716", "634095"),
+                    "梦幻": ("6894208129534267912", "961480"),
+                    "金粉闪闪": ("7034048554318434830", "1453820"),
+                }
+                for info in params.get("effect_infos") or []:
+                    if not isinstance(info, dict):
+                        continue
+                    name = str(info.get("effect_title") or info.get("effect") or info.get("name") or "").strip()
+                    resource_id, effect_id = effect_aliases.get(name, ("", ""))
+                    if resource_id:
+                        info.setdefault("effect_resource_id", resource_id)
+                        info.setdefault("effect_id", effect_id)
         # Do not inject the legacy overlapping tail lane. JianYing 11.x
         # rejects that compensation clip during structural validation; the
         # source template's own image lane carries the intended animation.
