@@ -1815,8 +1815,9 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
         # Provider drafts sometimes use the full image segment duration as
         # the entrance-animation duration. Jianying can then leave that image
         # transparent after the animation, while captions keep rendering.
-        # Keep the requested style but bound image entrances to a short,
-        # reliable transition window.
+        # Keep the requested style, but bound entrance durations to a short,
+        # reliable transition window. Replacing the requested animation name
+        # here makes the published video lose the template's image motion.
         calls = draft_key.get("calls") or []
         # The recorded camera keyframes and long opening sparkle effect can
         # blank the final scene in Jianying 11.x. Remove those two operations;
@@ -1834,17 +1835,6 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
             params = call.get("params") if isinstance(call.get("params"), dict) else {}
             image_infos = params.get("image_infos")
             if not isinstance(image_infos, list):
-                continue
-            # Jianying's richer image entrance effects can turn a main-scene
-            # image transparent when the effect finishes (and some versions
-            # reject a segment with the animation fields removed). Keep the
-            # opening image's requested animation, but use a short, stable
-            # fade for main-scene images so every segment remains visible.
-            if str(call.get("call_id") or "") == "main_images":
-                for info in image_infos:
-                    if isinstance(info, dict):
-                        info["in_animation"] = "渐显"
-                        info["in_animation_duration"] = 120_000
                 continue
             for info in image_infos:
                 if not isinstance(info, dict) or not info.get("in_animation"):
