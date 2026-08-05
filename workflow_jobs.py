@@ -1892,11 +1892,17 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
         # after the final batch item begins, so it covers the affected tail
         # without changing the opening or story timing.
         calls = draft_key.get("calls") or []
-        if not any(
-            isinstance(call, dict)
-            and str(call.get("call_id") or "") == "main_tail_images"
+        existing_tail_calls = [
+            call
             for call in calls
-        ):
+            if isinstance(call, dict)
+            and str(call.get("call_id") or "") == "main_tail_images"
+        ]
+        for tail_call in existing_tail_calls:
+            # Draft keys created before this fix may already contain the tail
+            # call without a lane name; upgrade them in place.
+            tail_call.setdefault("track_name", "video_tail")
+        if not existing_tail_calls:
             main_call = next(
                 (
                     call
