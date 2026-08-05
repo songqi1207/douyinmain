@@ -1901,19 +1901,8 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                     if resource_id:
                         info.setdefault("effect_resource_id", resource_id)
                         info.setdefault("effect_id", effect_id)
-        # Do not inject the legacy overlapping tail lane. JianYing 11.x
-        # rejects that compensation clip during structural validation; the
-        # source template's own image lane carries the intended animation.
-        draft_key["calls"] = [
-            call for call in (draft_key.get("calls") or [])
-            if not (isinstance(call, dict) and str(call.get("call_id") or "") == "main_tail_images")
-        ]
-        return
-        # Jianying 11.x may stop rendering the last item of a multi-image
-        # batch while the border/background and captions continue.  Keep a
-        # separate tail image lane for the final scene.  It starts shortly
-        # after the final batch item begins, so it covers the affected tail
-        # without changing the opening or story timing.
+        # Preserve an explicitly split tail image lane. Older drafts may have
+        # omitted its track name; upgrade it in place so it remains isolated.
         calls = draft_key.get("calls") or []
         existing_tail_calls = [
             call
@@ -1922,8 +1911,6 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
             and str(call.get("call_id") or "") == "main_tail_images"
         ]
         for tail_call in existing_tail_calls:
-            # Draft keys created before this fix may already contain the tail
-            # call without a lane name; upgrade them in place.
             tail_call.setdefault("track_name", "video_tail")
         if not existing_tail_calls:
             main_call = next(
@@ -1942,9 +1929,11 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                 last_info = valid_infos[-1]
                 start = _draft_time_to_us(last_info.get("start"))
                 end = _draft_time_to_us(last_info.get("end"))
-                if end > start + 1_500_000:
+                split = min(end - 1_500_000, start + 1_500_000)
+                if start < split < end:
                     tail_info = dict(last_info)
-                    tail_info["start"] = start + 1_500_000
+                    last_info["end"] = split
+                    tail_info["start"] = split
                     tail_info["end"] = end
                     for key in (
                         "in_animation",
@@ -1958,10 +1947,9 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                     tail_call = {
                         "call_id": "main_tail_images",
                         "tool": "add_images",
-                        # A separate lane is required: this tail intentionally
-                        # overlaps the final main image to prevent JianYing
-                        # 11.x from dropping the last frame.
-                        "track_name": "video_tail",
+                        # The tail is sequential with the final main image,
+                        # so JianYing keeps rendering it without an overlap.
+                        "track_name": str(main_call.get("track_name") or "video_main"),
                         "params": {"image_infos": [tail_info]},
                     }
                     # Insert beside the main image lane.  Appending it after
