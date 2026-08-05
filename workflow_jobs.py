@@ -1908,7 +1908,9 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                     "params": {"keyframes": motion_keyframes},
                 }
                 normalized_calls = list(calls)
-                insert_after = normalized_calls.index(motion_calls[-1])
+                # The provider may order main_images before intro_images, so
+                # place the keyframe call after the later referenced lane.
+                insert_after = max(normalized_calls.index(call) for call in motion_calls)
                 normalized_calls.insert(insert_after + 1, motion_call)
                 draft_key["calls"] = normalized_calls
         for call in draft_key.get("calls") or []:
