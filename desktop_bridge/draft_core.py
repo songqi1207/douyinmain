@@ -334,25 +334,37 @@ def validate_import_report(report: dict[str, Any]) -> dict[str, Any]:
     if missing:
         raise BridgeError("草稿写入不完整，缺少：" + "、".join(missing))
     content = json.loads((draft_dir / "draft_content.json").read_text(encoding="utf-8"))
+    repaired_overlaps: list[str] = []
     for track in content.get("tracks") or []:
         if track.get("type") != "video":
             continue
-        ranges = sorted(
-            (
-                int((segment.get("target_timerange") or {}).get("start") or 0),
-                int((segment.get("target_timerange") or {}).get("start") or 0)
-                + int((segment.get("target_timerange") or {}).get("duration") or 0),
-            )
-            for segment in track.get("segments") or []
+        ordered = sorted(
+            (segment for segment in track.get("segments") or [] if isinstance(segment, dict)),
+            key=lambda segment: int((segment.get("target_timerange") or {}).get("start") or 0),
         )
-        if any(previous[1] > current[0] for previous, current in zip(ranges, ranges[1:])):
-            raise BridgeError("草稿写入结构无效：同一视频轨道存在重叠片段")
+        previous_end = 0
+        for segment in ordered:
+            timerange = segment.setdefault("target_timerange", {})
+            start = int(timerange.get("start") or 0)
+            duration = int(timerange.get("duration") or 0)
+            end = start + duration
+            if start < previous_end:
+                repaired_overlaps.append(str(track.get("name") or track.get("id") or "video"))
+                timerange["start"] = previous_end
+                timerange["duration"] = max(0, end - previous_end)
+            previous_end = max(previous_end, end)
+    if repaired_overlaps:
+        (draft_dir / "draft_content.json").write_text(
+            json.dumps(content, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+        )
     verified = dict(report)
     verified["verified"] = True
     verified["track_count"] = len(content.get("tracks") or [])
     verified["segment_count"] = sum(
         len(track.get("segments") or []) for track in content.get("tracks") or []
     )
+    if repaired_overlaps:
+        verified["repaired_video_overlaps"] = sorted(set(repaired_overlaps))
     resources: dict[tuple[str, str], dict[str, str]] = {}
     unresolved: set[str] = set()
     materials = content.get("materials") or {}
