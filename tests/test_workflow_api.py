@@ -940,10 +940,7 @@ class WorkflowApiTests(unittest.TestCase):
 
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
 
-        self.assertEqual(
-            key["calls"][0]["params"]["image_infos"][0]["in_animation"],
-            "light_zoom",
-        )
+        self.assertNotIn("in_animation", key["calls"][0]["params"]["image_infos"][0])
         self.assertEqual(
             key["calls"][0]["params"]["image_infos"][0]["in_animation_duration"],
             800_000,
@@ -969,8 +966,8 @@ class WorkflowApiTests(unittest.TestCase):
             ]
         }
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, opening)
-        self.assertEqual(opening["calls"][0]["params"]["image_infos"][0]["in_animation"], "Kira游动")
-        self.assertEqual(opening["calls"][1]["params"]["image_infos"][0]["in_animation"], "Kira游动")
+        self.assertNotIn("in_animation", opening["calls"][0]["params"]["image_infos"][0])
+        self.assertNotIn("in_animation", opening["calls"][1]["params"]["image_infos"][0])
         self.assertEqual([call["call_id"] for call in opening["calls"]], ["intro_images", "main_images"])
 
         exported = {
@@ -983,7 +980,7 @@ class WorkflowApiTests(unittest.TestCase):
         }
         workflow_jobs._normalize_published_draft_key({"workflow_code": "DRAFT_KEY_EXPORT"}, exported)
         self.assertEqual([call["call_id"] for call in exported["calls"]], ["main_images"])
-        self.assertEqual(exported["calls"][0]["params"]["image_infos"][0]["in_animation"], "Kira游动")
+        self.assertNotIn("in_animation", exported["calls"][0]["params"]["image_infos"][0])
 
     def test_published_god_maps_newer_image_animation_aliases(self):
         key = {
@@ -1002,7 +999,8 @@ class WorkflowApiTests(unittest.TestCase):
         }
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
         infos = key["calls"][0]["params"]["image_infos"]
-        self.assertEqual([item["in_animation"] for item in infos], ["Kira游动", "Kira游动"])
+        self.assertTrue(all("in_animation" not in item for item in infos))
+        self.assertTrue(any(call["call_id"] == "image_motion_kf" for call in key["calls"]))
 
     def test_draft_with_unrepaired_encoding_damaged_caption_is_rejected(self):
         key = {

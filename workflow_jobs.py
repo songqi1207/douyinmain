@@ -1862,42 +1862,54 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
             and str(call.get("call_id") or "") == "image_motion_kf"
             for call in calls
         ):
-            main_call = next(
-                (
-                    call
-                    for call in calls
-                    if isinstance(call, dict)
-                    and str(call.get("call_id") or "") == "main_images"
-                    and isinstance((call.get("params") or {}).get("image_infos"), list)
-                ),
-                None,
-            )
             motion_keyframes = []
-            for index, info in enumerate(((main_call or {}).get("params") or {}).get("image_infos") or []):
-                if not isinstance(info, dict):
-                    continue
-                start = _draft_time_to_us(info.get("start"))
-                end = _draft_time_to_us(info.get("end"))
-                duration = max(0, end - start)
-                if duration <= 0:
-                    continue
-                start_scale = 1.02 if index % 2 == 0 else 1.08
-                end_scale = 1.08 if index % 2 == 0 else 1.02
-                ref = {"call_id": "main_images", "index": index}
-                motion_keyframes.extend(
-                    [
-                        {"segment_ref": ref, "offset": 0, "property": "UNIFORM_SCALE", "value": start_scale},
-                        {"segment_ref": ref, "offset": duration, "property": "UNIFORM_SCALE", "value": end_scale},
-                    ]
+            motion_calls = []
+            for lane in ("intro_images", "main_images"):
+                lane_call = next(
+                    (
+                        call
+                        for call in calls
+                        if isinstance(call, dict)
+                        and str(call.get("call_id") or "") == lane
+                        and isinstance((call.get("params") or {}).get("image_infos"), list)
+                    ),
+                    None,
                 )
-            if main_call is not None and motion_keyframes:
+                if lane_call is None:
+                    continue
+                lane_infos = ((lane_call.get("params") or {}).get("image_infos") or [])
+                for index, info in enumerate(lane_infos):
+                    if not isinstance(info, dict):
+                        continue
+                    start = _draft_time_to_us(info.get("start"))
+                    end = _draft_time_to_us(info.get("end"))
+                    duration = max(0, end - start)
+                    if duration <= 0:
+                        continue
+                    # Make the movement clearly visible while keeping it
+                    # inside the already-cropped 16:9 image canvas.
+                    start_scale = 1.00 if index % 2 == 0 else 1.24
+                    end_scale = 1.24 if index % 2 == 0 else 1.00
+                    direction = -0.10 if index % 2 == 0 else 0.10
+                    ref = {"call_id": lane, "index": index}
+                    motion_keyframes.extend(
+                        [
+                            {"segment_ref": ref, "offset": 0, "property": "UNIFORM_SCALE", "value": start_scale},
+                            {"segment_ref": ref, "offset": duration, "property": "UNIFORM_SCALE", "value": end_scale},
+                            {"segment_ref": ref, "offset": 0, "property": "KFTypePositionX", "value": direction},
+                            {"segment_ref": ref, "offset": duration, "property": "KFTypePositionX", "value": -direction},
+                        ]
+                    )
+                motion_calls.append(lane_call)
+            if motion_calls and motion_keyframes:
                 motion_call = {
                     "call_id": "image_motion_kf",
                     "tool": "add_keyframes",
                     "params": {"keyframes": motion_keyframes},
                 }
                 normalized_calls = list(calls)
-                normalized_calls.insert(normalized_calls.index(main_call) + 1, motion_call)
+                insert_after = normalized_calls.index(motion_calls[-1])
+                normalized_calls.insert(insert_after + 1, motion_call)
                 draft_key["calls"] = normalized_calls
         for call in draft_key.get("calls") or []:
             if not isinstance(call, dict) or call.get("tool") != "add_images":
@@ -1909,7 +1921,12 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
             for info in image_infos:
                 if not isinstance(info, dict) or not info.get("in_animation"):
                     continue
-                info["in_animation"] = _normalize_image_intro_animation(info.get("in_animation"))
+                # Native keyframes below are version-independent.  Do not
+                # leave a provider resource animation on the image lane: an
+                # older assistant may import the image but discard that
+                # resource, making the result look static.
+                info.pop("in_animation", None)
+                info.pop("in_animation_duration", None)
                 start = _draft_time_to_us(info.get("start"))
                 end = _draft_time_to_us(info.get("end"))
                 if end <= 0:
