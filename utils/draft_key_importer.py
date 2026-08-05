@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import logging
 import mimetypes
 import shutil
 import threading
@@ -34,6 +35,9 @@ from utils.jianying_drafts import (
     create_draft,
     extend_visual_tail_to_audio,
 )
+
+logger = logging.getLogger("draft_key_importer")
+logger.addHandler(logging.NullHandler())
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _CACHE_DIR = _PROJECT_ROOT / "temp" / "draft_key_cache"
