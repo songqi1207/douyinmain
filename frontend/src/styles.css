@@ -256,17 +256,18 @@ button { color: inherit; }
 .job-billing-summary.charged strong { color: #83d4a4; }
 .job-billing-summary.refunded { border-color: #5a3834; background: rgba(60, 28, 26, .35); }
 .job-billing-summary.refunded strong { color: #ef9b91; }
-.job-background-status { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 11px; align-items: center; margin-top: 14px; padding: 12px; border: 1px solid #51452f; border-radius: 10px; background: linear-gradient(135deg, rgba(111, 80, 35, .2), rgba(26, 25, 22, .82)); }
+.job-background-status { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 11px; align-items: center; margin-top: 14px; padding: 12px; border: 1px solid #51452f; border-radius: 10px; background: linear-gradient(135deg, rgba(111, 80, 35, .2), rgba(26, 25, 22, .82)); }
+.job-background-status > div { min-width: 0; }
 .job-background-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: #e8bd72; background: rgba(232, 189, 114, .1); }
 .job-background-icon svg { width: 18px; }
 .job-background-status strong { display: block; color: #e4ded3; font-size: 13px; }
 .job-background-status p { margin: 3px 0 5px; color: #a6a198; line-height: 1.5; }
 .job-background-status small { display: flex; align-items: center; gap: 5px; color: #c5a260; font-size: 11px; }
 .job-background-status small svg { width: 13px; }
-.job-background-status button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 7px 10px; border: 1px solid #6f5733; border-radius: 8px; color: #e0b86f; background: #211b13; cursor: pointer; white-space: nowrap; }
+.job-background-status button { grid-column: 1 / -1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 7px 10px; border: 1px solid #6f5733; border-radius: 8px; color: #e0b86f; background: #211b13; cursor: pointer; white-space: nowrap; }
 .job-background-status button svg { width: 14px; }
 .job-background-status button.active { border-color: #315d42; color: #78c995; background: #15251b; cursor: default; }
-@media (max-width: 680px) { .job-background-status { grid-template-columns: 34px minmax(0, 1fr); } .job-background-status button { grid-column: 1 / -1; justify-content: center; } }
+@media (max-width: 680px) { .job-background-status button { white-space: normal; } }
 .coming-soon-panel { min-height: 290px; display: grid; place-content: center; justify-items: center; text-align: center; color: #8a7554; }
 .coming-soon-panel h3 { margin: 12px 0 4px; color: #c8c1b5; }
 .coming-soon-panel p { color: #787671; font-size: 13px; }
@@ -1667,6 +1668,39 @@ html[data-theme="pastel"] .section-title a { color: #de6f9f; }
 html[data-theme="pastel"] .site-footer { border-color: #dce5ef; color: #7c8ca1; }
 html[data-theme="pastel"] .notice.error { border-color: #f0c3c8; color: #b54f5e; background: #fff2f4; }
 html[data-theme="pastel"] .notice.success { border-color: #bfe4d7; color: #287b61; background: #effbf7; }
+html[data-theme="pastel"] .job-panel, html[data-theme="pastel"] .result-panel {
+  border-color: #d9e4f0;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 12px 34px rgba(67, 89, 124, .06);
+}
+html[data-theme="pastel"] .job-heading { color: #334b69; }
+html[data-theme="pastel"] .job-heading > strong { color: #4b96ed; }
+html[data-theme="pastel"] .job-panel > p { color: #6c7f97; }
+html[data-theme="pastel"] .progress-track { background: #e8eff7; }
+html[data-theme="pastel"] .progress-track i { background: linear-gradient(90deg, #67aefa, #f08fbe); }
+html[data-theme="pastel"] .job-phases li { color: #9aa8b8; }
+html[data-theme="pastel"] .job-phases li > span { border-color: #d7e2ee; }
+html[data-theme="pastel"] .job-phases li.done { color: #4389cd; }
+html[data-theme="pastel"] .job-phases li.done > span { color: #fff; border-color: #64b0f4; background: #64b0f4; }
+html[data-theme="pastel"] .job-phases li.active { color: #d47ba7; }
+html[data-theme="pastel"] .job-phases li.active > span { border-color: #e4a2c3; background: #fff2f8; }
+html[data-theme="pastel"] .job-background-status {
+  border-color: #cfe0f1;
+  background: linear-gradient(135deg, #eef7ff, #fff3f8);
+}
+html[data-theme="pastel"] .job-background-icon { color: #559fea; background: #e3f1ff; }
+html[data-theme="pastel"] .job-background-status strong { color: #2c4869; }
+html[data-theme="pastel"] .job-background-status p { color: #71839a; }
+html[data-theme="pastel"] .job-background-status small { color: #5486b5; }
+html[data-theme="pastel"] .job-background-status button { border-color: #c4dcef; color: #3974ac; background: rgba(255, 255, 255, .82); }
+html[data-theme="pastel"] .job-background-status button.active { border-color: #b9e2d4; color: #34856b; background: #effbf7; }
+html[data-theme="pastel"] .job-logs-toggle { color: #66809e; }
+html[data-theme="pastel"] .job-logs-toggle:hover { color: #d26e9e; }
+html[data-theme="pastel"] .job-logs-body { border-color: #dbe6f1; background: #f7faff; }
+html[data-theme="pastel"] .job-log-line { color: #647b96; }
+html[data-theme="pastel"] .job-log-line time { color: #98a7b8; }
+html[data-theme="pastel"] .job-log-line.error span { color: #bd5968; }
+html[data-theme="pastel"] .job-log-line.warning span { color: #b27b36; }
 
 /* Pastel surfaces must stay airy: never inherit dark-theme filled panels. */
 html[data-theme="pastel"] :where(
