@@ -1886,6 +1886,14 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                         continue
                     for name_key, type_key in (("in_animation", "in"), ("out_animation", "out"), ("loop_animation", "loop")):
                         _attach_animation_resource_ids(info, name_key, type_key, "text")
+        # Do not inject the legacy overlapping tail lane. JianYing 11.x
+        # rejects that compensation clip during structural validation; the
+        # source template's own image lane carries the intended animation.
+        draft_key["calls"] = [
+            call for call in (draft_key.get("calls") or [])
+            if not (isinstance(call, dict) and str(call.get("call_id") or "") == "main_tail_images")
+        ]
+        return
         # Jianying 11.x may stop rendering the last item of a multi-image
         # batch while the border/background and captions continue.  Keep a
         # separate tail image lane for the final scene.  It starts shortly
