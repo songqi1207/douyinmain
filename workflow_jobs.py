@@ -1783,8 +1783,13 @@ def _draft_time_to_us(value: Any) -> int:
 # intro resources.  Other names are left untouched so newly installed
 # Jianying versions can use them directly.
 _IMAGE_INTRO_ANIMATION_ALIASES = {
-    "动感缩小": "缩小",
-    "轻微放大": "放大",
+    # Kira游动 is present in the helper catalog on both Jianying 5.9 and
+    # 11.x.  The plain zoom resources are not consistently present there,
+    # so use this animated fallback instead of dropping motion entirely.
+    "动感缩小": "Kira游动",
+    "轻微放大": "Kira游动",
+    "缩小": "Kira游动",
+    "放大": "Kira游动",
 }
 
 
