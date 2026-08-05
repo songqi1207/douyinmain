@@ -970,7 +970,7 @@ class WorkflowApiTests(unittest.TestCase):
         }
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, opening)
         self.assertEqual(opening["calls"][0]["params"]["image_infos"][0]["in_animation"], "Kira游动")
-        self.assertEqual(opening["calls"][1]["params"]["image_infos"][0]["in_animation"], "轻微放大")
+        self.assertEqual(opening["calls"][1]["params"]["image_infos"][0]["in_animation"], "放大")
         self.assertEqual([call["call_id"] for call in opening["calls"]], ["intro_images", "main_images"])
 
         exported = {
@@ -983,7 +983,26 @@ class WorkflowApiTests(unittest.TestCase):
         }
         workflow_jobs._normalize_published_draft_key({"workflow_code": "DRAFT_KEY_EXPORT"}, exported)
         self.assertEqual([call["call_id"] for call in exported["calls"]], ["main_images"])
-        self.assertEqual(exported["calls"][0]["params"]["image_infos"][0]["in_animation"], "轻微放大")
+        self.assertEqual(exported["calls"][0]["params"]["image_infos"][0]["in_animation"], "放大")
+
+    def test_published_god_maps_newer_image_animation_aliases(self):
+        key = {
+            "calls": [
+                {
+                    "call_id": "main_images",
+                    "tool": "add_images",
+                    "params": {
+                        "image_infos": [
+                            {"in_animation": "动感缩小", "start": 0, "end": 4_000_000},
+                            {"in_animation": "轻微放大", "start": 4_000_000, "end": 8_000_000},
+                        ]
+                    },
+                }
+            ]
+        }
+        workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
+        infos = key["calls"][0]["params"]["image_infos"]
+        self.assertEqual([item["in_animation"] for item in infos], ["缩小", "放大"])
 
     def test_draft_with_unrepaired_encoding_damaged_caption_is_rejected(self):
         key = {

@@ -1776,6 +1776,23 @@ def _draft_time_to_us(value: Any) -> int:
     return max(0, int(round(number)))
 
 
+# The provider occasionally returns aliases from a newer Jianying catalog.
+# Older desktop assistants do not have those resource ids and silently drop
+# the animation (or fail the quality check).  Keep the intended motion by
+# translating only the known aliases to the equivalent, widely available
+# intro resources.  Other names are left untouched so newly installed
+# Jianying versions can use them directly.
+_IMAGE_INTRO_ANIMATION_ALIASES = {
+    "动感缩小": "缩小",
+    "轻微放大": "放大",
+}
+
+
+def _normalize_image_intro_animation(value: Any) -> str:
+    name = str(value or "").strip()
+    return _IMAGE_INTRO_ANIMATION_ALIASES.get(name, name)
+
+
 def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
     workflow_code = str(job.get("workflow_code") or "").upper()
     if workflow_code == DRAFT_KEY_RENDER_CODE:
@@ -1839,6 +1856,7 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
             for info in image_infos:
                 if not isinstance(info, dict) or not info.get("in_animation"):
                     continue
+                info["in_animation"] = _normalize_image_intro_animation(info.get("in_animation"))
                 start = _draft_time_to_us(info.get("start"))
                 end = _draft_time_to_us(info.get("end"))
                 if end <= 0:
