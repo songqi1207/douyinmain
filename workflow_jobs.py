@@ -114,6 +114,7 @@ def init_database():
                 render_claimed_at REAL,
                 cost_cents INTEGER NOT NULL DEFAULT 0,
                 price_cents INTEGER NOT NULL DEFAULT 0,
+                user_hidden_at REAL,
                 created_at REAL NOT NULL,
                 updated_at REAL NOT NULL
             )
@@ -126,6 +127,8 @@ def init_database():
             db.execute("ALTER TABLE jobs ADD COLUMN render_claimed_at REAL")
         if "failed_stage" not in columns:
             db.execute("ALTER TABLE jobs ADD COLUMN failed_stage TEXT")
+        if "user_hidden_at" not in columns:
+            db.execute("ALTER TABLE jobs ADD COLUMN user_hidden_at REAL")
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS job_logs (
@@ -392,7 +395,8 @@ def list_jobs(
 ) -> tuple[list[dict], int]:
     """Return newest jobs without exposing their submitted input payloads."""
     offset = (page - 1) * page_size
-    clauses = ["user_id = ?"]
+    # User-side deletion is a soft hide so administrators retain the audit trail.
+    clauses = ["user_id = ?", "user_hidden_at IS NULL"]
     parameters: list[Any] = [user_id]
     normalized_status = str(status or "").strip().lower()
     if normalized_status and normalized_status != "all":
