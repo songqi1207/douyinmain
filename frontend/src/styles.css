@@ -776,6 +776,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .device-onboarding p { flex: 1; margin: 0 0 18px; color: #817d75; font-size: 12px; line-height: 1.7; }
 .device-onboarding .secondary-button { min-height: 38px; gap: 6px; }
 .device-onboarding .secondary-button svg { width: 14px; }
+.device-onboarding .helper-redownload-button { width: 100%; margin-top: 10px; }
 .device-onboarding .subtle-link { margin-top: 10px; color: #817d75; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
 .device-onboarding .subtle-link:hover { color: #dfba77; }
 .helper-update-progress { width: 100%; margin-top: 12px; color: #a9a49a; font-size: 12px; }

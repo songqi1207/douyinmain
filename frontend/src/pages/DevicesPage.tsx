@@ -82,6 +82,7 @@ export function DevicesPage() {
   const latestHelperVersion = capabilityText(status.latest_helper_version);
   const helperRecoveryRequired = status.devices.length > 0 && !status.device_online;
   const helperDownloadUrl = `/api/v1/downloads/draft-bridge${latestHelperVersion ? `?v=${encodeURIComponent(latestHelperVersion)}` : ""}`;
+  const helperRedownloadUrl = `${helperDownloadUrl}${helperDownloadUrl.includes("?") ? "&" : "?"}download=again`;
 
   async function refresh() {
     try {
@@ -279,9 +280,9 @@ export function DevicesPage() {
             )}
             <button className="secondary-button" type="button" onClick={() => calibrateHelper()}><Laptop />校准导出按钮</button>
             <a
-              className="subtle-link"
-              href={helperDownloadUrl}
-            >{tr("下载安装包", "Download installer")}</a>
+              className="secondary-button helper-redownload-button"
+              href={helperRedownloadUrl}
+            ><Download />{tr("重新下载安装包", "Download installer again")}</a>
           </article>
           <article>
             <em>03</em>
