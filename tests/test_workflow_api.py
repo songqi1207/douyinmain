@@ -881,6 +881,48 @@ class WorkflowApiTests(unittest.TestCase):
             "  ",
         )
 
+    def test_published_book_draft_splits_long_captions_into_two_lines(self):
+        original = (
+            "活着，在我们中国的语言里充满了力量，它的力量不是来自于喊叫，"
+            "也不是来自于进攻，而是忍受，去忍受生命赋予我们的责任，去忍受"
+            "现实给予我们的幸福和苦难、无聊和平庸。"
+        )
+        style = {"font_size": 14, "text_color": "#ffffff", "in_animation": "打字机"}
+        key = {
+            "calls": [
+                {
+                    "call_id": "call_143757",
+                    "tool": "add_captions",
+                    "params": {
+                        "captions": [
+                            {
+                                "text": original,
+                                "start": 45_460_000,
+                                "end": 63_124_000,
+                                **style,
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+
+        workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN01"}, key)
+
+        captions = key["calls"][0]["params"]["captions"]
+        self.assertGreater(len(captions), 1)
+        self.assertEqual(captions[0]["start"], 45_460_000)
+        self.assertEqual(captions[-1]["end"], 63_124_000)
+        self.assertEqual("".join(item["text"].replace("\n", "") for item in captions), original)
+        for previous, current in zip(captions, captions[1:]):
+            self.assertEqual(previous["end"], current["start"])
+        for caption in captions:
+            lines = caption["text"].splitlines()
+            self.assertLessEqual(len(lines), 2)
+            self.assertTrue(all(0 < len(line) <= 14 for line in lines))
+            for key_name, value in style.items():
+                self.assertEqual(caption[key_name], value)
+
     def test_published_cigarette_draft_repairs_question_mark_corner_text(self):
         key = {
             "calls": [

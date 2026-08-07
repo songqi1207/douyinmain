@@ -1780,6 +1780,88 @@ def _draft_time_to_us(value: Any) -> int:
     return max(0, int(round(number)))
 
 
+_OWN01_CAPTION_LINE_CHARS = 14
+_OWN01_CAPTION_MAX_CHARS = _OWN01_CAPTION_LINE_CHARS * 2
+_OWN01_CAPTION_BREAKS = "，。！？；、：,.!?;:"
+
+
+def _own01_caption_chars(value: Any) -> list[str]:
+    """Return visible caption characters without provider-added line breaks."""
+    text = str(value or "").replace("\r", "").replace("\n", "").strip()
+    return list(text)
+
+
+def _own01_split_caption_text(value: Any) -> list[str]:
+    """Split book narration into captions that render on at most two lines."""
+    chars = _own01_caption_chars(value)
+    if not chars:
+        return []
+
+    chunks: list[list[str]] = []
+    offset = 0
+    while offset < len(chars):
+        end = min(len(chars), offset + _OWN01_CAPTION_MAX_CHARS)
+        if end < len(chars):
+            # Prefer a natural punctuation boundary, but avoid leaving a tiny
+            # fragment at the beginning of the caption.
+            minimum = offset + max(6, _OWN01_CAPTION_LINE_CHARS // 2)
+            punctuation_end = next(
+                (
+                    index + 1
+                    for index in range(end - 1, minimum - 2, -1)
+                    if chars[index] in _OWN01_CAPTION_BREAKS
+                ),
+                0,
+            )
+            if punctuation_end:
+                end = punctuation_end
+        chunks.append(chars[offset:end])
+        offset = end
+
+    wrapped: list[str] = []
+    for chunk in chunks:
+        if len(chunk) <= _OWN01_CAPTION_LINE_CHARS:
+            wrapped.append("".join(chunk))
+            continue
+
+        lower = max(1, len(chunk) - _OWN01_CAPTION_LINE_CHARS)
+        upper = min(_OWN01_CAPTION_LINE_CHARS, len(chunk) - 1)
+        midpoint = len(chunk) / 2
+        candidates = [
+            index + 1
+            for index in range(lower - 1, upper)
+            if chunk[index] in _OWN01_CAPTION_BREAKS
+        ]
+        split_at = min(candidates, key=lambda index: abs(index - midpoint)) if candidates else int(round(midpoint))
+        split_at = max(lower, min(upper, split_at))
+        wrapped.append("".join(chunk[:split_at]) + "\n" + "".join(chunk[split_at:]))
+    return wrapped
+
+
+def _own01_split_caption(caption: dict[str, Any]) -> list[dict[str, Any]]:
+    parts = _own01_split_caption_text(caption.get("text"))
+    if len(parts) <= 1:
+        if parts:
+            caption["text"] = parts[0]
+        return [caption]
+
+    start = _draft_time_to_us(caption.get("start"))
+    end = _draft_time_to_us(caption.get("end"))
+    duration = max(0, end - start)
+    weights = [max(1, len(part.replace("\n", ""))) for part in parts]
+    total_weight = sum(weights)
+    result: list[dict[str, Any]] = []
+    elapsed_weight = 0
+    for index, (part, weight) in enumerate(zip(parts, weights)):
+        item = dict(caption)
+        item["text"] = part
+        item["start"] = start + round(duration * elapsed_weight / total_weight)
+        elapsed_weight += weight
+        item["end"] = end if index == len(parts) - 1 else start + round(duration * elapsed_weight / total_weight)
+        result.append(item)
+    return result
+
+
 # The provider occasionally returns aliases from a newer Jianying catalog.
 # Older desktop assistants do not have those resource ids and silently drop
 # the animation (or fail the quality check).  Keep the intended motion by
@@ -2007,17 +2089,24 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
     if workflow_code != "OWN01":
         return
     for call in draft_key.get("calls") or []:
-        if not isinstance(call, dict) or call.get("call_id") != "call_138594":
+        if not isinstance(call, dict):
             continue
         params = call.get("params") if isinstance(call.get("params"), dict) else {}
         captions = params.get("captions")
         if not isinstance(captions, list):
-            return
-        for caption in captions:
-            if isinstance(caption, dict):
+            continue
+        if call.get("call_id") == "call_143757":
+            split_captions: list[dict[str, Any]] = []
+            for caption in captions:
+                if isinstance(caption, dict):
+                    split_captions.extend(_own01_split_caption(caption))
+            params["captions"] = split_captions
+        elif call.get("call_id") == "call_138594":
+            for caption in captions:
+                if not isinstance(caption, dict):
+                    continue
                 # This is deliberately invisible text, not an empty value.
                 caption["text"] = "  "
-        return
 
 
 def _save_draft_key_result(job: dict, data: Any) -> list[dict]:
