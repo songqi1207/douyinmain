@@ -48,10 +48,15 @@ def _device_progress_state(message: str) -> tuple[str, int]:
     text = str(message or "")
     if "传回网站" in text or "上传" in text:
         return "device_uploading", 96
+    if (
+        "启动剪映" in text
+        or "正在用剪映" in text
+        or "打开剪映" in text
+        or "剪映窗口" in text
+    ):
+        return "device_opening_jianying", 88
     if "导出" in text and "草稿" not in text:
         return "device_exporting", 92
-    if "启动剪映" in text or "正在用剪映" in text or "打开剪映" in text:
-        return "device_opening_jianying", 88
     if "字体" in text or "资源" in text:
         return "device_preparing_resources", 86
     if "导入成功" in text or "草稿已写入" in text:
@@ -59,6 +64,131 @@ def _device_progress_state(message: str) -> tuple[str, int]:
     if "草稿" in text or "下载素材" in text:
         return "device_importing", 83
     return "device_preparing", 82
+
+
+_AUTOMATION_PROGRESS_MESSAGES = {
+    "starting_jianying": "正在启动剪映专业版…",
+    "jianying_window_ready": "剪映窗口已启动，正在打开视频草稿…",
+    "waiting_for_draft_card": "剪映已启动，正在查找视频草稿…",
+    "draft_opened": "剪映草稿已打开，正在进入编辑页…",
+    "editor_ready": "剪映编辑页已打开，正在准备导出…",
+    "export_dialog_ready": "剪映导出窗口已打开，正在确认参数…",
+    "export_confirmed": "剪映已确认导出，正在生成 MP4…",
+    "waiting_for_output_file": "剪映正在生成 MP4 文件…",
+    "output_file_growing": "剪映正在写入 MP4 文件…",
+    "export_completed": "剪映原生导出已完成…",
+}
+
+
+def _automation_progress_message(line: str) -> str:
+    text = str(line or "")
+    for stage_name, message in _AUTOMATION_PROGRESS_MESSAGES.items():
+        if f"stage={stage_name}" in text:
+            return message
+    return ""
+
+
+def _terminate_compatibility_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+                capture_output=True,
+                timeout=15,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            return
+        except Exception:
+            pass
+    try:
+        process.kill()
+    except Exception:
+        pass
+
+
+def _run_compatibility_process(
+    command_args: list[str],
+    *,
+    timeout_seconds: int,
+    idle_timeout_seconds: int,
+    log_prefix: str,
+    job_id: str,
+    progress: StatusCallback | None,
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    """Run PowerShell while forwarding automation milestones immediately."""
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    process = subprocess.Popen(
+        command_args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        creationflags=flags,
+    )
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+    stage_lines: list[str] = []
+    last_output_at = [time.monotonic()]
+
+    def consume(stream, destination: list[str], *, report_stages: bool) -> None:
+        if stream is None:
+            return
+        for raw_line in iter(stream.readline, ""):
+            destination.append(raw_line)
+            last_output_at[0] = time.monotonic()
+            line = raw_line.strip()
+            if not report_stages or "jianying_automation_stage" not in line:
+                continue
+            stage_lines.append(line)
+            logger.info("%s_output job_id=%s %s", log_prefix, job_id, line)
+            message = _automation_progress_message(line)
+            if message and progress:
+                progress(message)
+
+    stdout_thread = threading.Thread(
+        target=consume,
+        args=(process.stdout, stdout_lines),
+        kwargs={"report_stages": True},
+        daemon=True,
+    )
+    stderr_thread = threading.Thread(
+        target=consume,
+        args=(process.stderr, stderr_lines),
+        kwargs={"report_stages": False},
+        daemon=True,
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+    started_at = time.monotonic()
+    failure_reason = ""
+    while process.poll() is None:
+        now = time.monotonic()
+        if now - started_at > max(60, int(timeout_seconds)):
+            failure_reason = "剪映自动导出超过最长允许时间，已安全终止"
+            break
+        if now - last_output_at[0] > max(60, int(idle_timeout_seconds)):
+            failure_reason = "剪映自动导出长时间没有阶段响应，已安全终止"
+            break
+        time.sleep(0.25)
+    if failure_reason:
+        _terminate_compatibility_process(process)
+        process.wait(timeout=20)
+    stdout_thread.join(timeout=5)
+    stderr_thread.join(timeout=5)
+    if failure_reason:
+        raise BridgeError(failure_reason)
+    return (
+        subprocess.CompletedProcess(
+            command_args,
+            int(process.returncode or 0),
+            "".join(stdout_lines),
+            "".join(stderr_lines),
+        ),
+        stage_lines,
+    )
 
 
 class FontResourceUnavailable(BridgeError):
@@ -814,7 +944,10 @@ def _run_native_export_unlocked(
 
     if progress:
         progress(f"正在用剪映专业版导出“{draft_name}”…")
-    export_timeout = int(os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800)
+    export_timeout = max(
+        180,
+        min(1800, int(os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800)),
+    )
     job_id = str(task.get("job_id") or "-")
     jianying_version = detect_jianying_version(executable)
     modern_jianying = jianying_version_key(jianying_version) >= (7,)
@@ -939,8 +1072,6 @@ def _run_native_export_unlocked(
                 str(export_confirm_calibration["y_from_bottom_ratio"]),
             ]
         )
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
     def run_compatibility_export(
         command_args: list[str],
         *,
@@ -948,14 +1079,19 @@ def _run_native_export_unlocked(
     ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
         export_started_at = time.monotonic()
         logger.info("%s_started job_id=%s", log_prefix, job_id)
-        completed_process = subprocess.run(
+        completed_process, parsed_stage_lines = _run_compatibility_process(
             command_args,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=export_timeout + 60,
-            creationflags=flags,
+            timeout_seconds=export_timeout + 60,
+            idle_timeout_seconds=max(
+                120,
+                min(
+                    720,
+                    int(os.getenv("DEVICE_JIANYING_AUTOMATION_IDLE_TIMEOUT_SECONDS") or 720),
+                ),
+            ),
+            log_prefix=log_prefix,
+            job_id=job_id,
+            progress=progress,
         )
         logger.info(
             "%s_finished job_id=%s returncode=%s elapsed_seconds=%.3f",
@@ -964,19 +1100,6 @@ def _run_native_export_unlocked(
             completed_process.returncode,
             time.monotonic() - export_started_at,
         )
-        parsed_stage_lines = [
-            line.strip()
-            for line in (completed_process.stdout or "").splitlines()
-            if "jianying_automation_stage" in line
-        ]
-        for output_line in parsed_stage_lines:
-            if output_line:
-                logger.info(
-                    "%s_output job_id=%s %s",
-                    log_prefix,
-                    job_id,
-                    output_line,
-                )
         return completed_process, parsed_stage_lines
 
     fast_compatibility_path = (

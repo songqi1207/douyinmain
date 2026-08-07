@@ -56,7 +56,8 @@ class DesktopBridgeTests(unittest.TestCase):
     def test_device_progress_messages_map_to_truthful_online_stages(self):
         self.assertEqual(_device_progress_state("正在把任务写入本机剪映草稿…"), ("device_importing", 83))
         self.assertEqual(_device_progress_state("草稿已写入，正在验证文件结构……"), ("device_draft_ready", 85))
-        self.assertEqual(_device_progress_state("正在用剪映专业版导出…"), ("device_exporting", 92))
+        self.assertEqual(_device_progress_state("正在用剪映专业版导出…"), ("device_opening_jianying", 88))
+        self.assertEqual(_device_progress_state("剪映已确认导出，正在生成 MP4…"), ("device_exporting", 92))
         self.assertEqual(_device_progress_state("剪映导出完成，正在把视频传回网站…"), ("device_uploading", 96))
 
     def test_device_agent_bypasses_system_proxy_for_large_video_uploads(self):
@@ -255,7 +256,7 @@ class DesktopBridgeTests(unittest.TestCase):
                 ],
             )
 
-    @patch("desktop_bridge.device_agent.subprocess.run")
+    @patch("desktop_bridge.device_agent._run_compatibility_process")
     @patch("desktop_bridge.device_agent._run_pyjianying_export")
     @patch("desktop_bridge.device_agent.import_draft_payload")
     def test_native_export_uses_pyjianyingdraft_before_compatibility_driver(
@@ -411,7 +412,7 @@ class DesktopBridgeTests(unittest.TestCase):
         side_effect=BridgeError("primary failed"),
     )
     @patch("desktop_bridge.jianying_uia_export.export_draft_uia")
-    @patch("desktop_bridge.device_agent.subprocess.run")
+    @patch("desktop_bridge.device_agent._run_compatibility_process")
     @patch("desktop_bridge.device_agent.import_draft_payload")
     def test_hidden_qml_controls_fall_back_to_uia2(
         self,
@@ -436,22 +437,22 @@ class DesktopBridgeTests(unittest.TestCase):
                 "warnings": [],
             }
             run_legacy_export.side_effect = [
-                MagicMock(
+                (MagicMock(
                     returncode=1,
                     stdout=(
                         "jianying_automation_stage "
                         "stage=ui_tree_unavailable action=restart_with_helper"
                     ),
                     stderr="",
-                ),
-                MagicMock(
+                ), ["jianying_automation_stage stage=ui_tree_unavailable action=restart_with_helper"]),
+                (MagicMock(
                     returncode=1,
                     stdout=(
                         "jianying_automation_stage "
                         "stage=ui_tree_unavailable action=use_supported_jianying"
                     ),
                     stderr="",
-                ),
+                ), ["jianying_automation_stage stage=ui_tree_unavailable action=use_supported_jianying"]),
             ]
 
             def write_uia2_result(_name, output_path, **_kwargs):
@@ -483,7 +484,7 @@ class DesktopBridgeTests(unittest.TestCase):
         return_value="11.2.5.12345",
     )
     @patch("desktop_bridge.device_agent._run_pyjianying_export")
-    @patch("desktop_bridge.device_agent.subprocess.run")
+    @patch("desktop_bridge.device_agent._run_compatibility_process")
     @patch("desktop_bridge.device_agent.import_draft_payload")
     def test_modern_jianying_uses_restarted_compatibility_driver(
         self,
@@ -512,7 +513,7 @@ class DesktopBridgeTests(unittest.TestCase):
                 output_path = Path(command[command.index("-OutputPath") + 1])
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_path.write_bytes(b"mp4")
-                return MagicMock(returncode=0, stdout="", stderr="")
+                return MagicMock(returncode=0, stdout="", stderr=""), []
 
             run_compatibility_export.side_effect = complete_export
 
