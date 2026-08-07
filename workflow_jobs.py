@@ -2533,6 +2533,16 @@ _DEVICE_PROGRESS_STAGES = {
     "device_uploading",
 }
 
+_DEVICE_PROGRESS_STAGE_RANK = {
+    "device_preparing": 0,
+    "device_importing": 1,
+    "device_draft_ready": 2,
+    "device_preparing_resources": 3,
+    "device_opening_jianying": 4,
+    "device_exporting": 5,
+    "device_uploading": 6,
+}
+
 
 def report_device_render_progress(
     job_id: str,
@@ -2554,6 +2564,11 @@ def report_device_render_progress(
         return False
     current_progress = int(job.get("progress") or 0)
     normalized_progress = max(current_progress, min(99, max(82, int(progress))))
+    current_stage = str(job.get("stage") or "")
+    if _DEVICE_PROGRESS_STAGE_RANK.get(normalized_stage, -1) < _DEVICE_PROGRESS_STAGE_RANK.get(
+        current_stage, -1
+    ):
+        normalized_stage = current_stage
     _update_job(
         job_id,
         stage=normalized_stage,

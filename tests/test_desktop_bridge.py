@@ -28,6 +28,7 @@ from desktop_bridge.device_agent import (
     _prime_jianying_cloud_resources,
     _run_native_export,
     _run_pyjianying_export,
+    _without_one_click_enhance,
     normalize_site_url,
     pair_with_site,
 )
@@ -53,6 +54,29 @@ from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_plain_export_retry_removes_enhancement_switches(self):
+        command = [
+            "powershell.exe",
+            "-File",
+            "export.ps1",
+            "-EnableOneClickEnhance",
+            "-NoOutputTimeoutSeconds",
+            "600",
+            "-TimeoutSeconds",
+            "1800",
+        ]
+
+        self.assertEqual(
+            _without_one_click_enhance(command),
+            [
+                "powershell.exe",
+                "-File",
+                "export.ps1",
+                "-TimeoutSeconds",
+                "1800",
+            ],
+        )
+
     def test_device_progress_messages_map_to_truthful_online_stages(self):
         self.assertEqual(_device_progress_state("正在把任务写入本机剪映草稿…"), ("device_importing", 83))
         self.assertEqual(_device_progress_state("草稿已写入，正在验证文件结构……"), ("device_draft_ready", 85))

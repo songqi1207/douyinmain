@@ -88,6 +88,23 @@ def _automation_progress_message(line: str) -> str:
     return ""
 
 
+def _without_one_click_enhance(command_args: list[str]) -> list[str]:
+    """Remove optional enhancement switches for a plain export retry."""
+    cleaned: list[str] = []
+    skip_value = False
+    for argument in command_args:
+        if skip_value:
+            skip_value = False
+            continue
+        if argument == "-EnableOneClickEnhance":
+            continue
+        if argument == "-NoOutputTimeoutSeconds":
+            skip_value = True
+            continue
+        cleaned.append(argument)
+    return cleaned
+
+
 def _terminate_compatibility_process(process: subprocess.Popen[str]) -> None:
     if process.poll() is not None:
         return
@@ -1161,6 +1178,29 @@ def _run_native_export_unlocked(
         completed, stage_lines = run_compatibility_export(
             [*command, "-RestartExisting"],
             log_prefix="jianying_draft_refresh_restart",
+        )
+    stage_output = "\n".join(stage_lines)
+    enhance_output_timeout = (
+        completed.returncode != 0
+        and enable_one_click_enhance
+        and (
+            "stage=output_file_not_started" in stage_output
+            or "stage=failed reason=output_file_timeout" in stage_output
+        )
+    )
+    if enhance_output_timeout:
+        logger.warning(
+            "jianying_enhance_timeout_retrying_plain_export job_id=%s",
+            job_id,
+        )
+        if output_path.exists():
+            output_path.unlink()
+        if progress:
+            progress("一键超清长时间未开始生成，正在关闭增强并自动重试导出…")
+        plain_command = _without_one_click_enhance(command)
+        completed, stage_lines = run_compatibility_export(
+            [*plain_command, "-RestartExisting"],
+            log_prefix="jianying_plain_export_retry",
         )
     if completed.returncode != 0:
         stage_output = "\n".join(stage_lines)
