@@ -105,6 +105,16 @@ def _without_one_click_enhance(command_args: list[str]) -> list[str]:
     return cleaned
 
 
+def _one_click_enhance_enabled() -> bool:
+    """Keep enhancement opt-in because some Jianying builds never start it."""
+    return (os.getenv("DEVICE_JIANYING_ENABLE_ONE_CLICK_ENHANCE") or "0").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
 def _terminate_compatibility_process(process: subprocess.Popen[str]) -> None:
     if process.poll() is not None:
         return
@@ -1047,9 +1057,7 @@ def _run_native_export_unlocked(
         "-ResourceWaitSeconds",
         str(resource_wait_seconds),
     ]
-    enable_one_click_enhance = (
-        os.getenv("DEVICE_JIANYING_ENABLE_ONE_CLICK_ENHANCE") or "1"
-    ).strip().lower() not in {"0", "false", "no", "off"}
+    enable_one_click_enhance = _one_click_enhance_enabled()
     if enable_one_click_enhance:
         command.extend(
             [

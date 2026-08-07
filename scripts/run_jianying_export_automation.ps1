@@ -1511,7 +1511,6 @@ if ($EnableOneClickEnhance) {
 if ($edits.Count -eq 0) {
     Invoke-ExportDialogByCoordinate $process.Id
     Write-Stage "export_confirmed" "mode=coordinate_confirm_only"
-    Minimize-JianyingWindow $process "export_wait"
 }
 else {
 if (-not $nameEdit) {
@@ -1586,7 +1585,6 @@ Write-Stage "export_confirm_reliable_click" "x=$confirmX y=$confirmY calibrated=
 Write-Stage "export_confirm_coordinate_click" "x=$confirmX y=$confirmY mode=verified_retry"
 Invoke-ExportConfirmationReliably $process.Id $exportRoot $confirmX $confirmY
 Write-Stage "export_confirmed" "mode=verified"
-Minimize-JianyingWindow $process "export_wait"
 }
 
 $fileDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -1596,11 +1594,16 @@ $lastPath = ""
 $stable = 0
 $lastProgressLog = (Get-Date).AddSeconds(-15)
 $waitStartedAt = (Get-Date).AddSeconds(-5)
+$outputStarted = $false
 $candidateOutputPaths = @(Get-CandidateOutputPaths)
 Write-Stage "waiting_for_output_file"
 while ((Get-Date) -lt $fileDeadline) {
     $source = Find-CandidateOutputFile $waitStartedAt
     if ($source) {
+        if (-not $outputStarted) {
+            $outputStarted = $true
+            Minimize-JianyingWindow $process "output_started"
+        }
         $sourcePath = [System.IO.Path]::GetFullPath($source.FullName)
         $size = $source.Length
         if ((Get-Date) -ge $lastProgressLog.AddSeconds(15)) {

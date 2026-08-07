@@ -25,6 +25,7 @@ from desktop_bridge.device_agent import (
     _cloud_resource_wait_seconds,
     _device_progress_state,
     _font_verification_enabled,
+    _one_click_enhance_enabled,
     _prime_jianying_cloud_resources,
     _run_native_export,
     _run_pyjianying_export,
@@ -54,6 +55,16 @@ from desktop_bridge.windows_integration import parse_protocol_url
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_one_click_enhance_is_opt_in(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(_one_click_enhance_enabled())
+        with patch.dict(
+            os.environ,
+            {"DEVICE_JIANYING_ENABLE_ONE_CLICK_ENHANCE": "1"},
+            clear=True,
+        ):
+            self.assertTrue(_one_click_enhance_enabled())
+
     def test_plain_export_retry_removes_enhancement_switches(self):
         command = [
             "powershell.exe",
@@ -75,6 +86,21 @@ class DesktopBridgeTests(unittest.TestCase):
                 "-TimeoutSeconds",
                 "1800",
             ],
+        )
+
+    def test_jianying_stays_visible_until_output_starts(self):
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "run_jianying_export_automation.ps1"
+        ).read_text(encoding="utf-8")
+
+        waiting = script.index('Write-Stage "waiting_for_output_file"')
+        output_started = script.index('Minimize-JianyingWindow $process "output_started"')
+        self.assertLess(waiting, output_started)
+        self.assertNotIn(
+            'Minimize-JianyingWindow $process "export_wait"',
+            script,
         )
 
     def test_device_progress_messages_map_to_truthful_online_stages(self):
@@ -553,8 +579,8 @@ class DesktopBridgeTests(unittest.TestCase):
             self.assertIn("-RestartExisting", run_compatibility_export.call_args.args[0])
             command = run_compatibility_export.call_args.args[0]
             self.assertEqual(command[command.index("-ResourceWaitSeconds") + 1], "0")
-            self.assertIn("-EnableOneClickEnhance", command)
-            self.assertEqual(command[command.index("-NoOutputTimeoutSeconds") + 1], "600")
+            self.assertNotIn("-EnableOneClickEnhance", command)
+            self.assertNotIn("-NoOutputTimeoutSeconds", command)
 
     def test_jianying_automation_uses_full_description_controls(self):
         script = (
