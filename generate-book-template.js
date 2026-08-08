@@ -28,6 +28,42 @@ const path = require('path');
 
 const DEFAULT_BASE = path.join(__dirname, '书单工作流模板_荐书-v1.json');
 
+const BOOK_IMAGE_USER_PROMPT = `书名：{{subject}}
+作者：{{author}}
+正文字幕时间线：{{wenanTimeline}}
+配图数量：{{img_count}}
+
+请严格按正文叙事顺序，将全部字幕划分为恰好 {{img_count}} 个连续视觉章节，并为每章生成一条与《{{subject}}》内容直接相关的配图提示词。所有章节合起来必须完整覆盖字幕时间线。`;
+
+const BOOK_IMAGE_SYSTEM_PROMPT = `# 角色
+你是文学作品视觉改编导演，负责把荐书口播转化为忠于书籍主体的竖屏视频配图。书名、作者和当前字幕是最高优先级依据，禁止套用与本书无关的通用哲学画面。
+
+# 核心要求
+1. 先确认书名、作者、时代背景、地域环境、主要人物及标志性事件，再理解当前视觉章节表达的具体内容。
+2. 每个提示词必须直接呈现该书相关的具体人物、场景、物件或事件。优先使用原作中可识别的环境、服饰、建筑、生活细节和人物关系，不能只写“孤独的人影”“抽象宇宙”“迷宫”“破碎面孔”等万能意象。
+3. 画面主体必须与当前章节字幕一致。字幕讲人物就画该人物及其行动；讲地点就画该地点；讲关键情节就画该情节；讲作品主题时，也要用书中的人物、场景或标志性物件承载主题。
+4. 对知名作品，使用可靠的原作常识校准人物身份、历史年代和环境，不得串入其他作品的人物、服饰或世界观。对不熟悉的作品，只依据书名、作者和字幕中明确出现的信息，不得编造具体姓名或情节。
+5. 同一本书的全部图片保持统一的时代、人物外观、服装、色彩和绘画风格。人物再次出现时，年龄、发型、服饰和气质保持连续。
+6. 可以艺术化，但必须“内容准确优先”。仅当字幕本身表达抽象思想时才允许象征表达，而且象征物必须来自本书已出现的场景或物件。
+7. 每条提示词使用中文，包含：主体身份与动作、具体环境、时代与服饰、镜头构图、光线、色彩、情绪、统一艺术风格。画面为竖屏 9:16，电影感叙事插画，细节丰富。
+8. 图片中不得出现书名、字幕、文字、标志、水印、UI、边框或书籍封面排版；不要生成现代摄影棚、无关名人或与原作时代冲突的物品。
+
+# 分组与时间线
+- 按语义和情节转折划分视觉章节，不要机械按字数截断。
+- 必须输出恰好用户指定的数量，不多不少。
+- 每项 start 等于本章第一句字幕的 start，end 等于本章最后一句字幕的 end。
+- 第一项从全部字幕的最早 start 开始，最后一项到全部字幕的最晚 end 结束；相邻章节连续且不重叠、不留空档。
+
+# 输出格式
+只输出 JSON 数组，不要 Markdown，不要解释：
+[
+  {
+    "img_prompt": "与该书及本章字幕直接相关的中文绘画提示词",
+    "start": 1000000,
+    "end": 5000000
+  }
+]`;
+
 function parseArgs(argv) {
   const out = { _: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -79,6 +115,32 @@ function llmPrompt(doc, nodeId, which) {
   return p;
 }
 
+function ensureRefInput(doc, nodeId, name, blockID, outputName) {
+  const n = nodeById(doc, nodeId);
+  if (!n) throw new Error(`节点 ${nodeId} 不存在`);
+  const params = n.data.inputs.inputParameters || (n.data.inputs.inputParameters = []);
+  let item = params.find((x) => x.name === name);
+  if (!item) {
+    item = { name, input: { type: 'string', value: {} } };
+    params.push(item);
+  }
+  item.input = {
+    type: 'string',
+    value: {
+      type: 'ref',
+      content: { source: 'block-output', blockID, name: outputName },
+      rawMeta: { type: 1 },
+    },
+  };
+}
+
+function applyBookImagePrompt(doc) {
+  ensureRefInput(doc, '172269', 'subject', '100001', 'subject');
+  ensureRefInput(doc, '172269', 'author', '100001', 'author');
+  llmPrompt(doc, '172269', 'prompt').input.value.content = BOOK_IMAGE_USER_PROMPT;
+  llmPrompt(doc, '172269', 'systemPrompt').input.value.content = BOOK_IMAGE_SYSTEM_PROMPT;
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const bookName = (args._[0] || '').trim();
@@ -90,6 +152,10 @@ function main() {
   const doc = loadTemplate(basePath);
 
   const changes = [];
+
+  // 始终修正历史母版中遗留的“泛哲学抽象画”提示词，让正文配图锚定本书。
+  applyBookImagePrompt(doc);
+  changes.push('正文配图提示词(172269): 已按书名、作者和字幕锚定');
 
   // 1) 书名 → 旁白主题（开始节点 subject）
   setStartDefault(doc, 'subject', bookName);
