@@ -2073,7 +2073,11 @@ html[data-theme="pastel"] .admin-provider-table article { border-bottom-color: #
 .result-panel.compact > .section-title > small { text-align: right; line-height: 1.45; }
 .result-panel.compact .result-grid.single { grid-template-columns: minmax(0, 1fr); }
 .result-panel.compact .result-item { border-color: #dbe5f0; border-radius: 16px; background: #f8fbff; box-shadow: 0 12px 30px rgba(66, 96, 137, .08); }
-.result-panel.compact .result-item video, .result-panel.compact .result-item img { aspect-ratio: 16 / 9; max-height: none; object-fit: cover; }
+.result-panel.compact .result-item img { aspect-ratio: 16 / 9; max-height: none; object-fit: cover; }
+.result-panel.compact .video-preview-shell { display: grid; place-items: center; min-height: 420px; background: #080808; }
+.result-panel.compact .video-preview-shell > video { width: 100%; height: min(62vh, 620px); max-height: 620px; aspect-ratio: auto; object-fit: contain; }
+.video-preview-shell > video:fullscreen,
+.video-preview-shell > video:-webkit-full-screen { width: 100vw !important; height: 100vh !important; max-height: none !important; aspect-ratio: auto !important; object-fit: contain !important; background: #000; }
 .result-panel.compact .result-actions { align-items: center; padding: 12px 14px; color: #70829a; background: #fff; }
 .result-panel.compact .result-actions a { display: inline-flex; align-items: center; gap: 6px; border-radius: 9px; padding: 8px 10px; color: #3278bb; background: #edf6ff; }
 .result-panel.compact .result-footer { display: none; }
