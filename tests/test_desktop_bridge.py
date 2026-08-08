@@ -103,6 +103,21 @@ class DesktopBridgeTests(unittest.TestCase):
             script,
         )
 
+    def test_export_confirmation_retries_all_safe_click_methods(self):
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "run_jianying_export_automation.ps1"
+        ).read_text(encoding="utf-8")
+
+        control = script.index('"export_confirm_attempt" "mode=control"')
+        physical = script.index('"export_confirm_attempt" "mode=slow_physical attempt=1')
+        send_input = script.index('"export_confirm_attempt" "mode=send_input attempt=2')
+        window_message = script.index('"export_confirm_attempt" "mode=window_message attempt=3')
+        self.assertLess(control, physical)
+        self.assertLess(physical, send_input)
+        self.assertLess(send_input, window_message)
+
     def test_device_progress_messages_map_to_truthful_online_stages(self):
         self.assertEqual(_device_progress_state("正在把任务写入本机剪映草稿…"), ("device_importing", 83))
         self.assertEqual(_device_progress_state("草稿已写入，正在验证文件结构……"), ("device_draft_ready", 85))

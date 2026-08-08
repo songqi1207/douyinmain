@@ -497,14 +497,16 @@ function Invoke-ExportConfirmationReliably([int]$ProcessId, $ExportRoot, [int]$X
 
     if ($confirm) {
         Write-Stage "export_confirm_attempt" "mode=control"
+        $confirmRect = $confirm.Current.BoundingRectangle
+        $X = [int]($confirmRect.X + ($confirmRect.Width / 2))
+        $Y = [int]($confirmRect.Y + ($confirmRect.Height / 2))
         try {
             Invoke-Element $confirm
             if (Wait-ExportConfirmationAccepted $ProcessId 3500) {
                 Write-Stage "export_confirm_accepted" "mode=control"
                 return
             }
-            Write-Stage "export_confirm_unverified" "mode=control action=monitor_output"
-            return
+            Write-Stage "export_confirm_unverified" "mode=control action=retry_physical x=$X y=$Y"
         }
         catch {
             Write-Stage "export_confirm_control_failed" "error=$($_.Exception.Message)"
@@ -518,10 +520,21 @@ function Invoke-ExportConfirmationReliably([int]$ProcessId, $ExportRoot, [int]$X
         Write-Stage "export_confirm_accepted" "mode=slow_physical attempt=1"
         return
     }
-    # JianYing 11 can keep the same QML window while exporting and expose no
-    # progress text through UIA. The physical click is visible and was sent;
-    # let output-file monitoring decide whether export actually started.
-    Write-Stage "export_confirm_unverified" "mode=slow_physical action=monitor_output x=$X y=$Y"
+    Set-ElementWindowForeground $ExportRoot
+    Write-Stage "export_confirm_attempt" "mode=send_input attempt=2 x=$X y=$Y"
+    Invoke-SendInputPoint $X $Y
+    if (Wait-ExportConfirmationAccepted $ProcessId 4000) {
+        Write-Stage "export_confirm_accepted" "mode=send_input attempt=2"
+        return
+    }
+    Set-ElementWindowForeground $ExportRoot
+    Write-Stage "export_confirm_attempt" "mode=window_message attempt=3 x=$X y=$Y"
+    Invoke-ElementWindowMessagePoint $ExportRoot $X $Y | Out-Null
+    if (Wait-ExportConfirmationAccepted $ProcessId 4000) {
+        Write-Stage "export_confirm_accepted" "mode=window_message attempt=3"
+        return
+    }
+    Write-Stage "export_confirm_unverified" "mode=all_click_methods action=monitor_output x=$X y=$Y"
 }
 
 function Invoke-WindowMessagePoint($Process, [int]$X, [int]$Y) {
