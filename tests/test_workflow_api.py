@@ -756,6 +756,14 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(params["subject"], "克林索尔的最后夏天")
         self.assertEqual(params["author"], "黑塞")
 
+    def test_published_book_removes_author_credit_suffix_before_workflow(self):
+        params = _provider_inputs(
+            {"theme": "\u7ea2\u697c\u68a6", "author": "\u66f9\u96ea\u82b9 \u8457\u8457"},
+            "OWN01",
+        )
+
+        self.assertEqual(params["author"], "\u66f9\u96ea\u82b9")
+
     @patch("workflow_jobs._lookup_book_author", return_value="余华")
     def test_published_book_looks_up_missing_author(self, lookup_author):
         params = _provider_inputs({"theme": "活着", "author": "佚名"}, "OWN01")

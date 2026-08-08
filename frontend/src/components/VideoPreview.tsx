@@ -6,6 +6,7 @@ import type { JobResult } from "../types";
 
 export function VideoPreview({ jobId, result }: { jobId: string; result: JobResult }) {
   const [quality, setQuality] = useState<"720" | "1080">("720");
+  const [orientation, setOrientation] = useState<"unknown" | "portrait" | "landscape">("unknown");
   const [highUrl, setHighUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -32,8 +33,19 @@ export function VideoPreview({ jobId, result }: { jobId: string; result: JobResu
   }
 
   return (
-    <div className="video-preview-shell">
-      <video key={source} src={source} poster={result.poster_url || undefined} controls playsInline preload="none" />
+    <div className={`video-preview-shell ${orientation}`} data-orientation={orientation}>
+      <video
+        key={source}
+        src={source}
+        poster={result.poster_url || undefined}
+        controls
+        playsInline
+        preload="metadata"
+        onLoadedMetadata={(event) => {
+          const video = event.currentTarget;
+          setOrientation(video.videoHeight > video.videoWidth ? "portrait" : "landscape");
+        }}
+      />
       <div className="video-quality-bar" role="group" aria-label="视频清晰度">
         <button type="button" className={quality === "720" ? "active" : ""} onClick={() => setQuality("720")}>
           720P <small>流畅预览</small>

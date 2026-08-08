@@ -789,6 +789,13 @@ def _book_author_is_placeholder(value: str) -> bool:
     return str(value or "").strip().casefold() in _BOOK_AUTHOR_PLACEHOLDERS
 
 
+def _normalize_book_author(value: str) -> str:
+    """Keep the author name only; the workflow caption adds its own 著 suffix."""
+
+    author = str(value or "").strip()
+    return re.sub(r"(?:\s*(?:作者\s*)?著)+\s*$", "", author).strip()
+
+
 def _split_book_theme(value: str) -> tuple[str, str]:
     subject = str(value or "").strip()
     for separator in ("｜", "|"):
@@ -949,6 +956,7 @@ def _normalize_book_inputs(inputs: dict[str, Any], *, lookup_missing: bool) -> d
         current_author = inline_author
     elif lookup_missing and _book_author_is_placeholder(current_author):
         current_author = _lookup_book_author(subject) or current_author
+    current_author = _normalize_book_author(current_author)
     result["theme"] = subject
     if current_author:
         result["author"] = current_author
@@ -971,7 +979,9 @@ def _provider_inputs(inputs: dict, workflow_code: str = "") -> dict:
         result = _normalize_book_inputs(result, lookup_missing=True)
         subject = str(result.pop("theme", "") or result.pop("book_name", "") or "").strip()
         author = str(result.pop("author", "") or "").strip()
-        author = author or _configured_visible_text("BOOK_DEFAULT_AUTHOR", "佚名")
+        author = _normalize_book_author(
+            author or _configured_visible_text("BOOK_DEFAULT_AUTHOR", "佚名")
+        )
         try:
             image_count = max(
                 2,
