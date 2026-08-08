@@ -277,7 +277,12 @@ button { color: inherit; }
 .result-item { overflow: hidden; border: 1px solid #353430; border-radius: 10px; background: #111; }
 .result-item img, .result-item video { display: block; width: 100%; max-height: 620px; object-fit: contain; background: #080808; }
 .video-preview-shell { position: relative; background: transparent; }
-.video-preview-shell > video { display: block; width: 100%; height: auto; max-height: 620px; margin: 0 auto; object-fit: contain; background: transparent; }
+.video-preview-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #eef4fa; }
+.video-preview-shell.portrait .video-preview-stage { aspect-ratio: 9 / 16; }
+.video-preview-stage > video { display: block; width: 100%; height: 100%; max-height: 620px; margin: 0 auto; object-fit: contain; background: transparent; }
+.video-preview-stage.loading > video { opacity: 0; }
+.video-preview-loading { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; color: #71849a; font-size: 13px; background: linear-gradient(145deg, #f8fbff, #eaf2fa); }
+.video-preview-loading svg { color: #5b9cff; }
 .video-preview-shell.portrait { width: min(100%, 349px); margin-inline: auto; }
 .video-preview-shell.landscape { width: 100%; }
 .video-quality-bar { display: flex; gap: 8px; padding: 8px 10px; align-items: center; background: rgba(14, 18, 28, .96); }
@@ -819,8 +824,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .record-actions svg { width: 13px; height: 13px; }
 .record-actions .record-result-actions { display: inline-flex; align-items: center; gap: 12px; margin: 0; }
 .record-actions .delete-video-action { color: #c78379; }
-.record-video-preview { width: min(100%, 128vh); aspect-ratio: 16 / 9; overflow: hidden; margin: 14px auto 0; border: 1px solid #363531; border-radius: 11px; background: #080808; }
-.record-video-preview video { display: block; width: 100%; height: 100%; object-fit: contain; background: #080808; }
+.record-video-preview { width: 100%; overflow: hidden; margin: 14px auto 0; border: 1px solid #dbe5f0; border-radius: 11px; background: #f8fbff; }
+.record-video-preview video { display: block; width: 100%; object-fit: contain; background: transparent; }
 .pagination { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 24px; color: #7e7a73; font-size: 11px; }
 .pagination button { min-height: 34px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #403a31; border-radius: 8px; padding: 0 10px; color: #b79b70; background: #181612; cursor: pointer; }
 .pagination button:disabled { opacity: .35; cursor: not-allowed; }
@@ -2077,9 +2082,9 @@ html[data-theme="pastel"] .admin-provider-table article { border-bottom-color: #
 .result-panel.compact .result-item { border-color: #dbe5f0; border-radius: 16px; background: #f8fbff; box-shadow: 0 12px 30px rgba(66, 96, 137, .08); }
 .result-panel.compact .result-item img { aspect-ratio: 16 / 9; max-height: none; object-fit: cover; }
 .result-panel.compact .video-preview-shell { background: transparent; }
-.result-panel.compact .video-preview-shell > video { max-height: 620px; aspect-ratio: auto; object-fit: contain; }
-.video-preview-shell > video:fullscreen,
-.video-preview-shell > video:-webkit-full-screen { width: 100vw !important; height: 100vh !important; max-height: none !important; aspect-ratio: auto !important; object-fit: contain !important; background: #eef3f8; }
+.result-panel.compact .video-preview-stage > video { max-height: 620px; aspect-ratio: auto; object-fit: contain; }
+.video-preview-stage > video:fullscreen,
+.video-preview-stage > video:-webkit-full-screen { width: 100vw !important; height: 100vh !important; max-height: none !important; aspect-ratio: auto !important; object-fit: contain !important; background: #eef3f8; }
 .result-panel.compact .result-actions { align-items: center; padding: 12px 14px; color: #70829a; background: #fff; }
 .result-panel.compact .result-actions a { display: inline-flex; align-items: center; gap: 6px; border-radius: 9px; padding: 8px 10px; color: #3278bb; background: #edf6ff; }
 .result-panel.compact .result-footer { display: none; }

@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { JobResult } from "../types";
@@ -22,6 +22,20 @@ function setVideoSize(video: HTMLVideoElement, width: number, height: number) {
 
 
 describe("VideoPreview", () => {
+  it("uses a portrait hint before media metadata is available", () => {
+    const { container } = render(<VideoPreview jobId="portrait-hint" result={result} orientationHint="portrait" />);
+
+    expect(container.querySelector(".video-preview-shell")).toHaveAttribute("data-orientation", "portrait");
+    expect(screen.getByRole("status")).toHaveTextContent("正在加载视频预览");
+  });
+
+  it("removes the loading placeholder once the video can play", async () => {
+    const { container } = render(<VideoPreview jobId="ready-job" result={result} />);
+    fireEvent.canPlay(container.querySelector("video") as HTMLVideoElement);
+
+    await waitFor(() => expect(container.querySelector("[role='status']")).not.toBeInTheDocument());
+  });
+
   it("uses a portrait player only for portrait media", () => {
     const { container } = render(<VideoPreview jobId="portrait-job" result={result} />);
     const video = container.querySelector("video") as HTMLVideoElement;

@@ -1,18 +1,40 @@
 import { LoaderCircle, LockKeyhole, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { unlockJobPreview } from "../api";
 import type { JobResult } from "../types";
 
-export function VideoPreview({ jobId, result }: { jobId: string; result: JobResult }) {
+export type VideoOrientation = "unknown" | "portrait" | "landscape";
+
+const PORTRAIT_WORKFLOW_CODES = new Set(["OWN01", "OWN02", "OWN03"]);
+
+export function videoOrientationHint(workflowCode: string): VideoOrientation {
+  return PORTRAIT_WORKFLOW_CODES.has(String(workflowCode || "").toUpperCase()) ? "portrait" : "unknown";
+}
+
+export function VideoPreview({
+  jobId,
+  result,
+  orientationHint = "unknown",
+}: {
+  jobId: string;
+  result: JobResult;
+  orientationHint?: VideoOrientation;
+}) {
   const [quality, setQuality] = useState<"720" | "1080">("720");
-  const [orientation, setOrientation] = useState<"unknown" | "portrait" | "landscape">("unknown");
+  const [orientation, setOrientation] = useState<VideoOrientation>(orientationHint);
+  const [ready, setReady] = useState(false);
   const [highUrl, setHighUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   // Preview is cached on the application server once, then FileResponse
   // serves fast local Range responses. R2 remains the high-quality download.
   const source = quality === "1080" ? highUrl : `/api/v1/jobs/${encodeURIComponent(jobId)}/preview-stream`;
+
+  useEffect(() => {
+    setOrientation(orientationHint);
+    setReady(false);
+  }, [orientationHint, source]);
 
   async function choose1080() {
     if (highUrl) {
@@ -34,18 +56,28 @@ export function VideoPreview({ jobId, result }: { jobId: string; result: JobResu
 
   return (
     <div className={`video-preview-shell ${orientation}`} data-orientation={orientation}>
-      <video
-        key={source}
-        src={source}
-        poster={result.poster_url || undefined}
-        controls
-        playsInline
-        preload="metadata"
-        onLoadedMetadata={(event) => {
-          const video = event.currentTarget;
-          setOrientation(video.videoHeight > video.videoWidth ? "portrait" : "landscape");
-        }}
-      />
+      <div className={`video-preview-stage ${ready ? "ready" : "loading"}`}>
+        <video
+          key={source}
+          src={source}
+          poster={result.poster_url || undefined}
+          controls
+          playsInline
+          preload="metadata"
+          onLoadedMetadata={(event) => {
+            const video = event.currentTarget;
+            setOrientation(video.videoHeight > video.videoWidth ? "portrait" : "landscape");
+          }}
+          onLoadedData={() => setReady(true)}
+          onCanPlay={() => setReady(true)}
+        />
+        {!ready && (
+          <div className="video-preview-loading" role="status">
+            <LoaderCircle className="spin" size={24} />
+            <span>正在加载视频预览</span>
+          </div>
+        )}
+      </div>
       <div className="video-quality-bar" role="group" aria-label="视频清晰度">
         <button type="button" className={quality === "720" ? "active" : ""} onClick={() => setQuality("720")}>
           720P <small>流畅预览</small>

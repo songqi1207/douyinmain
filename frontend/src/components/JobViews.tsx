@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 
 import { fetchJobLogs } from "../api";
 import type { Job, JobLogEntry } from "../types";
-import { VideoPreview } from "./VideoPreview";
+import { VideoPreview, videoOrientationHint } from "./VideoPreview";
 import {
   JOB_NOTIFICATIONS_ENABLED_KEY,
   JOB_NOTIFICATIONS_REQUEST_EVENT,
@@ -210,7 +210,7 @@ export function Results({ job, compact = false }: { job: Job; compact?: boolean 
             {result.type === "image" ? (
               <img src={result.url} alt={`${job.display_title} 生成结果 ${index + 1}`} />
             ) : result.type === "video" ? (
-              <VideoPreview jobId={job.id} result={result} />
+              <VideoPreview jobId={job.id} result={result} orientationHint={videoOrientationHint(job.workflow_code)} />
             ) : (
               <div className="draft-result">
                 <Sparkles />

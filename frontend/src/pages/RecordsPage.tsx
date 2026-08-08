@@ -5,7 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ApiError, deleteJobVideo, fetchJobs, fetchWorkflows, retryJob } from "../api";
 import { useAuth } from "../auth";
 import { Layout } from "../components/Layout";
-import { VideoPreview } from "../components/VideoPreview";
+import { VideoPreview, videoOrientationHint } from "../components/VideoPreview";
 import { usePreferences } from "../preferences";
 import type { Job, Workflow } from "../types";
 
@@ -197,7 +197,9 @@ export function RecordsPage() {
                   <div className="record-video-preview">
                     {(() => {
                       const videoResult = job.results.find((item) => item.type === "video");
-                      return videoResult ? <VideoPreview jobId={job.id} result={videoResult} /> : null;
+                      return videoResult ? (
+                        <VideoPreview jobId={job.id} result={videoResult} orientationHint={videoOrientationHint(job.workflow_code)} />
+                      ) : null;
                     })()}
                   </div>
                 )}
