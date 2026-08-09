@@ -2091,3 +2091,57 @@ html[data-theme="pastel"] .admin-provider-table article { border-bottom-color: #
 @media (max-width: 1180px) { .workspace-grid { grid-template-columns: minmax(0, 1fr) minmax(320px, .82fr); } }
 @media (max-width: 900px) { .creation-workspace { display: block; } .workflow-choice-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .workspace-grid { grid-template-columns: 1fr; } .workspace-status { min-height: 0; } }
 @media (max-width: 620px) { .workflow-choice-grid { display: flex; overflow-x: auto; margin-right: -4px; padding-bottom: 3px; } .workflow-choice-grid button { min-width: 190px; } .result-panel.compact > .section-title { align-items: flex-start; flex-direction: row; } .result-panel.compact > .section-title > small { max-width: 48%; } }
+
+/* Keep the live job card inside its status column at every zoom level. */
+.workspace-grid,
+.workspace-status,
+.job-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+.workspace-status {
+  overflow-x: clip;
+}
+.job-panel {
+  width: 100%;
+  overflow-x: clip;
+}
+.job-panel > *,
+.job-heading > div,
+.job-background-status > div {
+  min-width: 0;
+  max-width: 100%;
+}
+.job-heading > div,
+.job-panel > p,
+.job-background-status strong,
+.job-background-status p,
+.job-background-status small {
+  overflow-wrap: anywhere;
+}
+.progress-track,
+.job-billing-summary,
+.job-phases,
+.job-background-status {
+  width: 100%;
+  max-width: 100%;
+}
+.job-billing-summary {
+  flex-wrap: wrap;
+}
+.job-billing-summary small {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.job-phases {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.job-phases li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.job-background-status button {
+  max-width: 100%;
+  white-space: normal;
+}
