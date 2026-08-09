@@ -1790,9 +1790,10 @@ def _draft_time_to_us(value: Any) -> int:
     return max(0, int(round(number)))
 
 
-_OWN01_CAPTION_LINE_CHARS = 14
+_OWN01_CAPTION_LINE_CHARS = 9
 _OWN01_CAPTION_MAX_CHARS = _OWN01_CAPTION_LINE_CHARS * 2
 _OWN01_CAPTION_BREAKS = "，。！？；、：,.!?;:"
+_OWN01_CAPTION_TRANSFORM_Y = 500
 
 
 def _own01_caption_chars(value: Any) -> list[str]:
@@ -1811,20 +1812,27 @@ def _own01_split_caption_text(value: Any) -> list[str]:
     offset = 0
     while offset < len(chars):
         end = min(len(chars), offset + _OWN01_CAPTION_MAX_CHARS)
-        if end < len(chars):
-            # Prefer a natural punctuation boundary, but avoid leaving a tiny
-            # fragment at the beginning of the caption.
-            minimum = offset + max(6, _OWN01_CAPTION_LINE_CHARS // 2)
-            punctuation_end = next(
-                (
-                    index + 1
-                    for index in range(end - 1, minimum - 2, -1)
-                    if chars[index] in _OWN01_CAPTION_BREAKS
-                ),
-                0,
-            )
-            if punctuation_end:
-                end = punctuation_end
+        if end - offset > _OWN01_CAPTION_LINE_CHARS:
+            # A chunk may be within the nominal 18-character limit and still
+            # wrap badly in Jianying: its only punctuation can leave one side
+            # wider than the actual nine-character text box. Prefer the latest
+            # punctuation boundary that can itself be wrapped naturally.
+            minimum = offset + max(4, _OWN01_CAPTION_LINE_CHARS // 2)
+            for punctuation_end in range(end, minimum - 1, -1):
+                if chars[punctuation_end - 1] not in _OWN01_CAPTION_BREAKS:
+                    continue
+                chunk_length = punctuation_end - offset
+                if chunk_length <= _OWN01_CAPTION_LINE_CHARS:
+                    end = punctuation_end
+                    break
+                lower = chunk_length - _OWN01_CAPTION_LINE_CHARS
+                upper = _OWN01_CAPTION_LINE_CHARS
+                if any(
+                    chars[index - 1] in _OWN01_CAPTION_BREAKS
+                    for index in range(max(1, lower), min(upper, chunk_length - 1) + 1)
+                ):
+                    end = punctuation_end
+                    break
         chunks.append(chars[offset:end])
         offset = end
 
@@ -2106,10 +2114,13 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
         if not isinstance(captions, list):
             continue
         if call.get("call_id") == "call_143757":
+            params["transform_y"] = _OWN01_CAPTION_TRANSFORM_Y
             split_captions: list[dict[str, Any]] = []
             for caption in captions:
                 if isinstance(caption, dict):
-                    split_captions.extend(_own01_split_caption(caption))
+                    for split_caption in _own01_split_caption(caption):
+                        split_caption["transform_y"] = _OWN01_CAPTION_TRANSFORM_Y
+                        split_captions.append(split_caption)
             params["captions"] = split_captions
         elif call.get("call_id") == "call_138594":
             for caption in captions:

@@ -944,6 +944,7 @@ class WorkflowApiTests(unittest.TestCase):
 
         captions = key["calls"][0]["params"]["captions"]
         self.assertGreater(len(captions), 1)
+        self.assertEqual(key["calls"][0]["params"]["transform_y"], 500)
         self.assertEqual(captions[0]["start"], 45_460_000)
         self.assertEqual(captions[-1]["end"], 63_124_000)
         self.assertEqual("".join(item["text"].replace("\n", "") for item in captions), original)
@@ -952,9 +953,20 @@ class WorkflowApiTests(unittest.TestCase):
         for caption in captions:
             lines = caption["text"].splitlines()
             self.assertLessEqual(len(lines), 2)
-            self.assertTrue(all(0 < len(line) <= 14 for line in lines))
+            self.assertTrue(all(0 < len(line) <= 9 for line in lines))
+            self.assertEqual(caption["transform_y"], 500)
             for key_name, value in style.items():
                 self.assertEqual(caption[key_name], value)
+
+    def test_published_book_draft_prefers_semantic_caption_breaks(self):
+        text = "师徒四人，就像四季里的风，春的炽热，夏的温润，秋的深沉。"
+
+        parts = workflow_jobs._own01_split_caption_text(text)
+
+        self.assertEqual(
+            parts,
+            ["师徒四人，\n就像四季里的风，", "春的炽热，\n夏的温润，", "秋的深沉。"],
+        )
 
     def test_published_cigarette_draft_repairs_question_mark_corner_text(self):
         key = {
