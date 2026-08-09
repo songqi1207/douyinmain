@@ -174,6 +174,13 @@ export async function fetchAdminJobs(params: {
   return request<AdminJobPage>(`/api/v1/admin/jobs?${query}`, { cache: "no-store" });
 }
 
+export async function clearAdminJobQueue() {
+  return request<{ cleared: number; refunded: number; redis_removed: number; job_ids: string[]; message: string }>(
+    "/api/v1/admin/jobs/queue",
+    { method: "DELETE" },
+  );
+}
+
 export async function adjustAdminUserQuota(
   userId: string,
   payload: { points_delta: number; storage_limit_gb?: number; detail?: string },

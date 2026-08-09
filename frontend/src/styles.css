@@ -904,6 +904,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .workflow-pricing-list button svg { width: 14px; }
 .workflow-price-total strong { color: #e5b96d; }
 .unlimited-badge { align-self: center; justify-self: end; padding: 6px 10px; border-radius: 99px; color: #84c89a; background: #17291d; font-size: 11px; }
+.admin-creations-heading > div { min-width: 0; }
+.admin-clear-queue { margin-left: auto; min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: 0 0 auto; border: 1px solid #693e3b; border-radius: 10px; padding: 0 14px; color: #f0a19a; background: #291817; cursor: pointer; }
+.admin-clear-queue:hover:not(:disabled) { border-color: #a55852; background: #351b1a; }
+.admin-clear-queue:disabled { opacity: .45; cursor: not-allowed; }
+.admin-clear-queue svg { width: 16px; }
 .admin-creation-summary { margin-bottom: 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .admin-creation-summary article { min-height: 94px; display: flex; align-items: center; gap: 13px; padding: 17px; border: 1px solid #2c3b42; border-radius: 13px; background: #111820; }
 .admin-creation-summary article > svg { width: 20px; color: #76d4bd; }
@@ -1000,6 +1005,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .record-toolbar .search-box { grid-column: 1 / -1; }
   .security-layout { grid-template-columns: 1fr; }
   .quota-overview-grid { grid-template-columns: 1fr; }
+  .admin-creations-heading { flex-wrap: wrap; }
+  .admin-clear-queue { width: 100%; margin-left: 0; }
   .admin-creation-summary { grid-template-columns: 1fr 1fr; }
   .admin-creation-toolbar { grid-template-columns: 1fr 1fr; }
   .admin-creation-toolbar .search-box { grid-column: 1 / -1; }
@@ -1756,6 +1763,8 @@ html[data-theme="pastel"] :where(
 html[data-theme="pastel"] .admin-creation-user > span { color: #245d8f; background: linear-gradient(145deg, #d8edff, #ffe1ef); }
 html[data-theme="pastel"] .admin-creation-summary article > svg { color: #4f99e5; }
 html[data-theme="pastel"] .admin-creation-progress { color: #4c8fd3; }
+html[data-theme="pastel"] .admin-clear-queue { border-color: #efc7c7; color: #bb5b61; background: #fff5f5; }
+html[data-theme="pastel"] .admin-clear-queue:hover:not(:disabled) { border-color: #e5aaaa; background: #ffeded; }
 html[data-theme="pastel"] .admin-creation-toolbar > button,
 html[data-theme="pastel"] :where(.admin-quota-list, .workflow-pricing-list, .admin-password-actions) button {
   border-color: #c9def3;

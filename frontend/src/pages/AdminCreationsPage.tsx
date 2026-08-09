@@ -1,7 +1,7 @@
-import { ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Download, FileText, LoaderCircle, Play, RefreshCw, Search, UsersRound, Video, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Download, FileText, LoaderCircle, Play, RefreshCw, Search, Trash2, UsersRound, Video, X } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
-import { ApiError, fetchAdminJobs, fetchWorkflows, retryAdminJob } from "../api";
+import { ApiError, clearAdminJobQueue, fetchAdminJobs, fetchWorkflows, retryAdminJob } from "../api";
 import { Layout } from "../components/Layout";
 import { usePreferences } from "../preferences";
 import type { AdminJob, AdminJobPage, Workflow } from "../types";
@@ -50,6 +50,8 @@ export function AdminCreationsPage() {
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<{ jobId: string; url: string; poster?: string | null } | null>(null);
   const [retryingId, setRetryingId] = useState("");
+  const [clearingQueue, setClearingQueue] = useState(false);
+  const [queueMessage, setQueueMessage] = useState("");
 
   async function load() {
     setLoading(true);
@@ -99,14 +101,39 @@ export function AdminCreationsPage() {
     }
   }
 
+  async function clearQueue() {
+    if (summary.active <= 0 || clearingQueue) return;
+    const confirmed = window.confirm(tr(
+      `确定清空当前 ${summary.active} 个活动任务吗？排队、生成中和剪映导出中的任务会被删除，冻结积分会退回；已完成作品不受影响。`,
+      `Clear all ${summary.active} active jobs? Queued, generating and rendering jobs will be deleted and frozen credits refunded. Completed work is kept.`,
+    ));
+    if (!confirmed) return;
+    setClearingQueue(true);
+    setQueueMessage("");
+    try {
+      const result = await clearAdminJobQueue();
+      setQueueMessage(result.message);
+      setPage(1);
+      await load();
+    } catch (nextError) {
+      setError((nextError as ApiError).message);
+    } finally {
+      setClearingQueue(false);
+    }
+  }
+
   const pages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <Layout>
       <main className="content-page page-width admin-creations-page">
-        <div className="page-heading">
+        <div className="page-heading admin-creations-heading">
           <span className="page-icon"><UsersRound /></span>
           <div><h1>{tr("全站创作管理", "All Creations")}</h1><p>{tr("查看每个用户创建的工作流任务、积分消费和最终视频。", "Review every user's workflow jobs, credit usage and delivered videos.")}</p></div>
+          <button className="admin-clear-queue" type="button" disabled={summary.active <= 0 || clearingQueue} onClick={() => void clearQueue()}>
+            {clearingQueue ? <LoaderCircle className="spin" /> : <Trash2 />}
+            {clearingQueue ? tr("正在清空", "Clearing") : tr(`一键清空任务队列 (${summary.active})`, `Clear active queue (${summary.active})`)}
+          </button>
         </div>
 
         <section className="admin-creation-summary">
@@ -133,6 +160,7 @@ export function AdminCreationsPage() {
           <button type="submit"><Search />{tr("查询", "Search")}</button>
         </form>
 
+        {queueMessage && <div className="notice success">{queueMessage}</div>}
         {error && <div className="notice error">{error}</div>}
         {loading ? <div className="loading-state"><LoaderCircle className="spin" />{tr("正在加载全站创作记录", "Loading all creations")}</div> : jobs.length ? (
           <div className="admin-creation-list">

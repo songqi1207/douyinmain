@@ -363,6 +363,32 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["user"]["email"], "workflow-user@example.test")
         self.assertNotIn("inputs", payload["items"][0])
 
+    def test_admin_can_clear_active_queue_without_deleting_completed_jobs(self):
+        user = self.client.get("/api/v1/auth/me").json()["user"]
+        active = workflow_jobs.create_job(
+            "G45", "起号", {"theme": "待清空任务"}, user_id=user["id"], price_points=25,
+        )
+        completed = workflow_jobs.create_job(
+            "G45", "起号", {"theme": "保留完成任务"}, user_id=user["id"], price_points=25,
+        )
+        workflow_jobs._update_job(
+            completed["id"], status="succeeded", stage="completed", progress=100,
+        )
+        fastapi_app.reserve_generation(user["id"], active["id"], 25)
+
+        self.assertEqual(self.client.delete("/api/v1/admin/jobs/queue").status_code, 403)
+        response = self.admin_client.delete("/api/v1/admin/jobs/queue")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertGreaterEqual(response.json()["cleared"], 1)
+        self.assertEqual(response.json()["refunded"], 1)
+        self.assertIn(active["id"], response.json()["job_ids"])
+        self.assertIsNone(workflow_jobs.get_job(active["id"]))
+        self.assertIsNotNone(workflow_jobs.get_job(completed["id"]))
+        listing = self.admin_client.get("/api/v1/admin/jobs").json()
+        self.assertEqual(listing["summary"]["active"], 0)
+        self.assertGreaterEqual(listing["summary"]["succeeded"], 1)
+
     def test_admin_configures_double_cost_pricing_without_exposing_provider_breakdown(self):
         self.assertEqual(self.client.get("/api/v1/admin/workflow-pricing").status_code, 403)
         listing = self.admin_client.get("/api/v1/admin/workflow-pricing")

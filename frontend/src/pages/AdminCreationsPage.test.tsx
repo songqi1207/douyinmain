@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   fetchAdminJobs: vi.fn(),
   fetchWorkflows: vi.fn(),
   fetchAccountQuota: vi.fn(),
+  clearAdminJobQueue: vi.fn(),
 }));
 
 vi.mock("../api", async (importOriginal) => {
@@ -52,6 +53,7 @@ describe("AdminCreationsPage", () => {
     });
     api.fetchWorkflows.mockResolvedValue({ items: [], total: 0 });
     api.fetchAccountQuota.mockRejectedValue(new Error("not needed"));
+    api.clearAdminJobQueue.mockResolvedValue({ cleared: 1, refunded: 1, redis_removed: 0, job_ids: ["job-active"], message: "已清空 1 个活动任务" });
   });
 
   it("shows who created each job and lets the administrator preview its video", async () => {
@@ -64,5 +66,23 @@ describe("AdminCreationsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "播放视频" }));
     await waitFor(() => expect(container.querySelector("video")).toHaveAttribute("src", "/api/v1/job-results/cai-shen.mp4"));
+  });
+
+  it("clears the active queue after administrator confirmation", async () => {
+    api.fetchAdminJobs.mockResolvedValue({
+      items: [{ ...job, id: "job-active", status: "rendering", stage: "waiting_for_device", progress: 78 }],
+      users: [job.user],
+      summary: { total: 1, users: 1, succeeded: 0, failed: 0, active: 1, points: 0 },
+      total: 1,
+      page: 1,
+      page_size: 20,
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<MemoryRouter><AdminCreationsPage /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByRole("button", { name: "一键清空任务队列 (1)" }));
+
+    await waitFor(() => expect(api.clearAdminJobQueue).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("已清空 1 个活动任务")).toBeInTheDocument();
   });
 });

@@ -81,6 +81,7 @@ from workflow_jobs import (
     RESULT_DIR,
     append_job_log,
     claim_device_render_job,
+    clear_active_jobs,
     complete_device_render_job,
     create_asset,
     create_draft_key_render_job,
@@ -1551,6 +1552,16 @@ def api_admin_jobs(
         "total": total,
         "page": page,
         "page_size": page_size,
+    }
+
+
+@app.delete("/api/v1/admin/jobs/queue")
+def api_clear_admin_job_queue(request: Request):
+    _require_admin(request)
+    result = clear_active_jobs()
+    return {
+        **result,
+        "message": f"已清空 {result['cleared']} 个活动任务，退回 {result['refunded']} 笔冻结积分",
     }
 
 

@@ -490,6 +490,65 @@ def list_admin_jobs(
     return [job for row in rows if (job := get_job(row["id"]))], summary["total"], summary
 
 
+def clear_active_jobs() -> dict[str, Any]:
+    """Delete every non-terminal job and refund any frozen user credits."""
+
+    with _connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        rows = db.execute(
+            "SELECT id FROM jobs WHERE status IN ('queued', 'running', 'rendering')"
+        ).fetchall()
+        job_ids = [str(row["id"]) for row in rows]
+        if job_ids:
+            placeholders = ",".join("?" for _ in job_ids)
+            db.execute(
+                f"DELETE FROM job_logs WHERE job_id IN ({placeholders})",
+                job_ids,
+            )
+            db.execute(
+                f"DELETE FROM jobs WHERE id IN ({placeholders})",
+                job_ids,
+            )
+        db.commit()
+
+    refunded = 0
+    for job_id in job_ids:
+        try:
+            from site_accounts import settle_generation_reservation
+
+            refunded += int(settle_generation_reservation(job_id, False))
+        except Exception:
+            logger.exception("admin_queue_refund_failed job_id=%s", job_id)
+
+    redis_removed = 0
+    if job_ids and (os.getenv("WORKFLOW_QUEUE_MODE") or "inline").strip().lower() == "redis":
+        try:
+            from redis import Redis
+            from rq import Queue
+
+            queue = Queue(
+                "workflow-jobs",
+                connection=Redis.from_url(os.getenv("REDIS_URL") or "redis://localhost:6379/0"),
+            )
+            redis_removed = int(queue.count)
+            queue.empty()
+        except Exception:
+            logger.exception("admin_redis_queue_clear_failed")
+
+    logger.warning(
+        "admin_queue_cleared jobs=%s refunded=%s redis_removed=%s",
+        len(job_ids),
+        refunded,
+        redis_removed,
+    )
+    return {
+        "cleared": len(job_ids),
+        "refunded": refunded,
+        "redis_removed": redis_removed,
+        "job_ids": job_ids,
+    }
+
+
 def job_summary() -> dict[str, int]:
     """Return persisted task counts for the public homepage summary."""
     with _connect() as db:
@@ -593,8 +652,9 @@ def append_job_log(job_id: str, message: str, level: str = "info") -> None:
     try:
         with _connect() as db:
             db.execute(
-                "INSERT INTO job_logs (job_id, level, message, created_at) VALUES (?, ?, ?, ?)",
-                (job_id, level, text, time.time()),
+                """INSERT INTO job_logs (job_id, level, message, created_at)
+                   SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM jobs WHERE id = ?)""",
+                (job_id, level, text, time.time(), job_id),
             )
             db.commit()
     except sqlite3.Error:
