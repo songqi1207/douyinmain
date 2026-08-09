@@ -944,7 +944,7 @@ class WorkflowApiTests(unittest.TestCase):
 
         captions = key["calls"][0]["params"]["captions"]
         self.assertGreater(len(captions), 1)
-        self.assertEqual(key["calls"][0]["params"]["transform_y"], 1500)
+        self.assertEqual(key["calls"][0]["params"]["transform_y"], -1200)
         self.assertEqual(captions[0]["start"], 45_460_000)
         self.assertEqual(captions[-1]["end"], 63_124_000)
         self.assertEqual("".join(item["text"].replace("\n", "") for item in captions), original)
@@ -954,7 +954,7 @@ class WorkflowApiTests(unittest.TestCase):
             lines = caption["text"].splitlines()
             self.assertLessEqual(len(lines), 2)
             self.assertTrue(all(0 < len(line) <= 9 for line in lines))
-            self.assertEqual(caption["transform_y"], 1500)
+            self.assertEqual(caption["transform_y"], -1200)
             for key_name, value in style.items():
                 self.assertEqual(caption[key_name], value)
 
