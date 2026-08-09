@@ -974,7 +974,11 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(captions[0]["start"], 45_460_000)
         self.assertEqual(captions[-1]["end"], 63_124_000)
         expected = original.replace("。", "").replace(".", "")
-        self.assertEqual("".join(item["text"].replace("\n", "") for item in captions), expected)
+        actual = "".join(item["text"].replace("\n", "") for item in captions)
+        self.assertEqual(
+            actual.replace("，", "").replace(",", ""),
+            expected.replace("，", "").replace(",", ""),
+        )
         for previous, current in zip(captions, captions[1:]):
             self.assertEqual(previous["end"], current["start"])
         for caption in captions:
@@ -983,6 +987,7 @@ class WorkflowApiTests(unittest.TestCase):
             self.assertTrue(all(0 < len(line) <= 9 for line in lines))
             self.assertNotIn("。", caption["text"])
             self.assertNotIn(".", caption["text"])
+            self.assertFalse(caption["text"].endswith(tuple("，,")))
             self.assertEqual(caption["transform_y"], -1200)
             for key_name, value in style.items():
                 self.assertEqual(caption[key_name], value)
@@ -994,14 +999,24 @@ class WorkflowApiTests(unittest.TestCase):
 
         self.assertEqual(
             parts,
-            ["师徒四人，\n就像四季里的风，", "春的炽热，\n夏的温润，", "秋的深沉"],
+            ["师徒四人，\n就像四季里的风", "春的炽热，\n夏的温润", "秋的深沉"],
         )
 
     def test_published_book_draft_removes_periods_but_keeps_commas(self):
-        parts = workflow_jobs._own01_split_caption_text("第一句。第二句，第三句.")
+        parts = workflow_jobs._own01_split_caption_text("甲，乙.")
 
         combined = "".join(item.replace("\n", "") for item in parts)
-        self.assertEqual(combined, "第一句第二句，第三句")
+        self.assertEqual(combined, "甲，乙")
+
+    def test_published_book_draft_removes_page_trailing_commas(self):
+        self.assertEqual(workflow_jobs._own01_split_caption_text("第一句，"), ["第一句"])
+        english_parts = workflow_jobs._own01_split_caption_text("First line,")
+        self.assertEqual("".join(english_parts).replace("\n", ""), "First line")
+        self.assertTrue(all(not part.endswith(",") for part in english_parts))
+        self.assertEqual(
+            workflow_jobs._own01_split_caption_text("第一句，第二句"),
+            ["第一句，第二句"],
+        )
 
     def test_published_book_draft_keeps_de_phrase_together(self):
         parts = workflow_jobs._own01_split_caption_text("让我们重新找回失落已久的童心")
@@ -1044,7 +1059,7 @@ class WorkflowApiTests(unittest.TestCase):
                 any(phrase_start < len(prefix) < phrase_start + len(phrase) for prefix in boundaries),
                 (phrase, parts),
             )
-        self.assertIn("在战争与和平的交织中，", lines)
+        self.assertIn("在战争与和平的交织中", lines)
         self.assertTrue(all(not line.endswith(tuple("这那该此每各")) for line in lines))
         self.assertTrue(all(not line.startswith(tuple("中着了过")) for line in lines))
 

@@ -1855,6 +1855,7 @@ _OWN01_CAPTION_SOFT_LINE_CHARS = 11
 _OWN01_CAPTION_MAX_CHARS = _OWN01_CAPTION_LINE_CHARS * 2
 _OWN01_CAPTION_BREAKS = "，。！？；、：,.!?;:"
 _OWN01_CAPTION_PERIODS = "。."
+_OWN01_CAPTION_TRAILING_COMMAS = "，,"
 _OWN01_CAPTION_CONNECTORS = "的地得"
 _OWN01_CAPTION_NO_LINE_END = "的地得与和及或而这那该此每各也又都仍还更再正将把被从向对给为因于"
 _OWN01_CAPTION_NO_LINE_START = "的地得中里上下内外着了过而与和及或"
@@ -2095,7 +2096,11 @@ def _own01_split_caption_text(value: Any) -> list[str]:
     return [
         cleaned
         for item in wrapped
-        if (cleaned := item.translate(str.maketrans("", "", _OWN01_CAPTION_PERIODS))).strip()
+        if (
+            cleaned := item.translate(
+                str.maketrans("", "", _OWN01_CAPTION_PERIODS)
+            ).strip().rstrip(_OWN01_CAPTION_TRAILING_COMMAS).rstrip()
+        )
     ]
 
 
