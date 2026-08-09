@@ -1044,6 +1044,7 @@ class WorkflowApiTests(unittest.TestCase):
                 any(phrase_start < len(prefix) < phrase_start + len(phrase) for prefix in boundaries),
                 (phrase, parts),
             )
+        self.assertIn("在战争与和平的交织中，", lines)
         self.assertTrue(all(not line.endswith(tuple("这那该此每各")) for line in lines))
         self.assertTrue(all(not line.startswith(tuple("中着了过")) for line in lines))
 

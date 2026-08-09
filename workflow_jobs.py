@@ -1851,6 +1851,7 @@ def _draft_time_to_us(value: Any) -> int:
 
 
 _OWN01_CAPTION_LINE_CHARS = 9
+_OWN01_CAPTION_SOFT_LINE_CHARS = 11
 _OWN01_CAPTION_MAX_CHARS = _OWN01_CAPTION_LINE_CHARS * 2
 _OWN01_CAPTION_BREAKS = "，。！？；、：,.!?;:"
 _OWN01_CAPTION_PERIODS = "。."
@@ -1858,6 +1859,7 @@ _OWN01_CAPTION_CONNECTORS = "的地得"
 _OWN01_CAPTION_NO_LINE_END = "的地得与和及或而这那该此每各也又都仍还更再正将把被从向对给为因于"
 _OWN01_CAPTION_NO_LINE_START = "的地得中里上下内外着了过而与和及或"
 _OWN01_CAPTION_MIN_CHUNK_CHARS = 4
+_OWN01_CAPTION_UNSAFE_WRAP_SCORE = 200
 _OWN01_CAPTION_TRANSFORM_Y = -1200
 
 
@@ -2020,6 +2022,14 @@ def _own01_split_caption_text(value: Any) -> list[str]:
     wrapped: list[str] = []
     for chunk in chunks:
         if len(chunk) <= _OWN01_CAPTION_LINE_CHARS:
+            wrapped.append("".join(chunk))
+            continue
+        if (
+            len(chunk) <= _OWN01_CAPTION_SOFT_LINE_CHARS
+            and _own01_caption_wrap_penalty(chunk) >= _OWN01_CAPTION_UNSAFE_WRAP_SCORE
+        ):
+            # A slightly longer intact phrase is preferable to a short but
+            # grammatically broken line such as "在战争 / 与和平的交织中".
             wrapped.append("".join(chunk))
             continue
 
