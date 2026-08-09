@@ -8,4 +8,5 @@ uvicorn[standard]
 python-multipart
 redis
 rq
+jieba==0.42.1
 volcengine==1.0.226

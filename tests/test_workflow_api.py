@@ -1023,6 +1023,38 @@ class WorkflowApiTests(unittest.TestCase):
             all(len(part.replace("\n", "")) >= 4 for part in punctuation_parts)
         )
 
+    def test_published_book_draft_keeps_chinese_words_and_idioms_together(self):
+        text = (
+            "我见过战火纷飞里的残垣断壁，也见过和平原野上的繁花似锦。"
+            "他们在动荡里坚守着内心的温暖。"
+            "在战争与和平的交织中，人性的光辉熠熠生辉。"
+            "也懂得了珍惜那来之不易的宁静。"
+        )
+
+        parts = workflow_jobs._own01_split_caption_text(text)
+        lines = [line for part in parts for line in part.splitlines()]
+        boundaries = {
+            "".join(lines[:index])
+            for index in range(1, len(lines))
+        }
+        combined = "".join(lines)
+        for phrase in ("和平", "繁花似锦", "坚守", "熠熠生辉", "来之不易"):
+            phrase_start = combined.index(phrase)
+            self.assertFalse(
+                any(phrase_start < len(prefix) < phrase_start + len(phrase) for prefix in boundaries),
+                (phrase, parts),
+            )
+        self.assertTrue(all(not line.endswith(tuple("这那该此每各")) for line in lines))
+        self.assertTrue(all(not line.startswith(tuple("中着了过")) for line in lines))
+
+        action_parts = workflow_jobs._own01_split_caption_text(
+            "人们在硝烟中跌撞求生，鲜血染红了大地，"
+        )
+        action_lines = [line for part in action_parts for line in part.splitlines()]
+        self.assertTrue(all(not line.startswith(tuple("，。！？；、：")) for line in action_lines))
+        self.assertTrue(all(not line.endswith("跌") for line in action_lines))
+        self.assertTrue(all(not line.startswith("撞") for line in action_lines))
+
     def test_published_cigarette_draft_repairs_question_mark_corner_text(self):
         key = {
             "calls": [

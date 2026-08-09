@@ -1855,6 +1855,8 @@ _OWN01_CAPTION_MAX_CHARS = _OWN01_CAPTION_LINE_CHARS * 2
 _OWN01_CAPTION_BREAKS = "，。！？；、：,.!?;:"
 _OWN01_CAPTION_PERIODS = "。."
 _OWN01_CAPTION_CONNECTORS = "的地得"
+_OWN01_CAPTION_NO_LINE_END = "的地得与和及或而这那该此每各也又都仍还更再正将把被从向对给为因于"
+_OWN01_CAPTION_NO_LINE_START = "的地得中里上下内外着了过而与和及或"
 _OWN01_CAPTION_MIN_CHUNK_CHARS = 4
 _OWN01_CAPTION_TRANSFORM_Y = -1200
 
@@ -1880,7 +1882,7 @@ def _own01_connector_spans(chars: list[str]) -> list[tuple[int, int]]:
         left_count = 0
         while (
             start > 0
-            and left_count < 4
+            and left_count < 3
             and _own01_is_han_character(chars[start - 1])
         ):
             start -= 1
@@ -1899,6 +1901,29 @@ def _own01_connector_spans(chars: list[str]) -> list[tuple[int, int]]:
     return spans
 
 
+@lru_cache(maxsize=1024)
+def _own01_caption_word_breaks(text: str) -> frozenset[int]:
+    """Return safe Chinese word boundaries, with a dependency-free fallback."""
+    try:
+        import jieba
+
+        jieba.setLogLevel(logging.WARNING)
+        # Dictionary mode is deterministic and avoids HMM guesses such as
+        # treating "中跌" as one word, which can then split "跌撞" in half.
+        words = jieba.lcut(text, HMM=False)
+    except (ImportError, UnicodeError, ValueError):
+        return frozenset(range(1, len(text)))
+
+    if "".join(words) != text:
+        return frozenset(range(1, len(text)))
+    boundaries: set[int] = set()
+    offset = 0
+    for word in words[:-1]:
+        offset += len(word)
+        boundaries.add(offset)
+    return frozenset(boundaries)
+
+
 def _own01_caption_break_penalty(chars: list[str], break_at: int) -> int:
     """Penalize breaks that tear apart short modifier phrases."""
     if break_at <= 0 or break_at >= len(chars):
@@ -1911,7 +1936,40 @@ def _own01_caption_break_penalty(chars: list[str], break_at: int) -> int:
         penalty += 200
     if any(start < break_at < end for start, end in _own01_connector_spans(chars)):
         penalty += 80
+    if chars[break_at - 1] in _OWN01_CAPTION_NO_LINE_END:
+        penalty += 160
+    if chars[break_at] in _OWN01_CAPTION_NO_LINE_START:
+        penalty += 160
+    if chars[break_at] in _OWN01_CAPTION_BREAKS:
+        penalty += 500
+    if break_at not in _own01_caption_word_breaks("".join(chars)):
+        penalty += 300
     return penalty
+
+
+def _own01_caption_line_break_score(chars: list[str], break_at: int) -> float:
+    midpoint = len(chars) / 2
+    return (
+        _own01_caption_break_penalty(chars, break_at)
+        + (
+            80
+            if min(break_at, len(chars) - break_at) < _OWN01_CAPTION_MIN_CHUNK_CHARS
+            else 0
+        )
+        - (100 if chars[break_at - 1] in _OWN01_CAPTION_BREAKS else 0)
+        + abs(break_at - midpoint)
+    )
+
+
+def _own01_caption_wrap_penalty(chars: list[str]) -> float:
+    if len(chars) <= _OWN01_CAPTION_LINE_CHARS:
+        return 0
+    lower = max(1, len(chars) - _OWN01_CAPTION_LINE_CHARS)
+    upper = min(_OWN01_CAPTION_LINE_CHARS, len(chars) - 1)
+    return min(
+        _own01_caption_line_break_score(chars, index)
+        for index in range(lower, upper + 1)
+    )
 
 
 def _own01_split_caption_text(value: Any) -> list[str]:
@@ -1926,43 +1984,34 @@ def _own01_split_caption_text(value: Any) -> list[str]:
         end = min(len(chars), offset + _OWN01_CAPTION_MAX_CHARS)
         if 0 < len(chars) - end < _OWN01_CAPTION_MIN_CHUNK_CHARS:
             end = len(chars) - _OWN01_CAPTION_MIN_CHUNK_CHARS
-        default_end = end
-        used_punctuation = False
         if end - offset > _OWN01_CAPTION_LINE_CHARS:
-            # A chunk may be within the nominal 18-character limit and still
-            # wrap badly in Jianying: its only punctuation can leave one side
-            # wider than the actual nine-character text box. Prefer the latest
-            # punctuation boundary that can itself be wrapped naturally.
-            minimum = offset + max(4, _OWN01_CAPTION_LINE_CHARS // 2)
-            for punctuation_end in range(end, minimum - 1, -1):
-                if chars[punctuation_end - 1] not in _OWN01_CAPTION_BREAKS:
-                    continue
-                chunk_length = punctuation_end - offset
-                if chunk_length <= _OWN01_CAPTION_LINE_CHARS:
-                    end = punctuation_end
-                    used_punctuation = True
-                    break
-                lower = chunk_length - _OWN01_CAPTION_LINE_CHARS
-                upper = _OWN01_CAPTION_LINE_CHARS
-                if any(
-                    chars[index - 1] in _OWN01_CAPTION_BREAKS
-                    for index in range(max(1, lower), min(upper, chunk_length - 1) + 1)
-                ):
-                    end = punctuation_end
-                    used_punctuation = True
-                    break
-        if not used_punctuation and default_end < len(chars):
-            # Do not let the hard 18-character boundary cut through phrases
-            # such as "失落已久的童心", or leave a one/two-character tail.
-            upper = default_end
+            # Score every feasible page boundary. Punctuation is the strongest
+            # pause, followed by a complete word boundary; the hard visual
+            # limit is used only when no semantic boundary is available. Even
+            # text shorter than 18 characters becomes two pages when it cannot
+            # form two clean nine-character lines on a single page.
+            upper = end
             lower = offset + _OWN01_CAPTION_MIN_CHUNK_CHARS
-            candidates = range(lower, max(lower, upper) + 1)
+            candidates = [
+                candidate
+                for candidate in range(lower, max(lower, upper) + 1)
+                if candidate == len(chars)
+                or len(chars) - candidate >= _OWN01_CAPTION_MIN_CHUNK_CHARS
+            ]
             end = min(
                 candidates,
                 key=lambda candidate: (
                     _own01_caption_break_penalty(chars, candidate)
-                    + (upper - candidate),
-                    abs(candidate - default_end),
+                    - (
+                        180
+                        if candidate < len(chars)
+                        and chars[candidate - 1] in _OWN01_CAPTION_BREAKS
+                        else 0
+                    )
+                    + (upper - candidate)
+                    + _own01_caption_wrap_penalty(chars[offset:candidate]),
+                    _own01_caption_wrap_penalty(chars[offset:candidate]),
+                    abs(candidate - upper),
                 ),
             )
         chunks.append(chars[offset:end])
@@ -1981,10 +2030,7 @@ def _own01_split_caption_text(value: Any) -> list[str]:
         split_at = min(
             candidates,
             key=lambda index: (
-                _own01_caption_break_penalty(chunk, index)
-                + (80 if min(index, len(chunk) - index) < _OWN01_CAPTION_MIN_CHUNK_CHARS else 0)
-                - (100 if chunk[index - 1] in _OWN01_CAPTION_BREAKS else 0)
-                + abs(index - midpoint),
+                _own01_caption_line_break_score(chunk, index),
                 abs(index - midpoint),
             ),
         )
