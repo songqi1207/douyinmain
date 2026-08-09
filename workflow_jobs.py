@@ -1853,6 +1853,7 @@ def _draft_time_to_us(value: Any) -> int:
 _OWN01_CAPTION_LINE_CHARS = 9
 _OWN01_CAPTION_MAX_CHARS = _OWN01_CAPTION_LINE_CHARS * 2
 _OWN01_CAPTION_BREAKS = "，。！？；、：,.!?;:"
+_OWN01_CAPTION_PERIODS = "。."
 _OWN01_CAPTION_TRANSFORM_Y = -1200
 
 
@@ -1913,7 +1914,11 @@ def _own01_split_caption_text(value: Any) -> list[str]:
         split_at = min(candidates, key=lambda index: abs(index - midpoint)) if candidates else int(round(midpoint))
         split_at = max(lower, min(upper, split_at))
         wrapped.append("".join(chunk[:split_at]) + "\n" + "".join(chunk[split_at:]))
-    return wrapped
+    return [
+        cleaned
+        for item in wrapped
+        if (cleaned := item.translate(str.maketrans("", "", _OWN01_CAPTION_PERIODS))).strip()
+    ]
 
 
 def _own01_split_caption(caption: dict[str, Any]) -> list[dict[str, Any]]:

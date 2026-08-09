@@ -973,13 +973,16 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(key["calls"][0]["params"]["transform_y"], -1200)
         self.assertEqual(captions[0]["start"], 45_460_000)
         self.assertEqual(captions[-1]["end"], 63_124_000)
-        self.assertEqual("".join(item["text"].replace("\n", "") for item in captions), original)
+        expected = original.replace("。", "").replace(".", "")
+        self.assertEqual("".join(item["text"].replace("\n", "") for item in captions), expected)
         for previous, current in zip(captions, captions[1:]):
             self.assertEqual(previous["end"], current["start"])
         for caption in captions:
             lines = caption["text"].splitlines()
             self.assertLessEqual(len(lines), 2)
             self.assertTrue(all(0 < len(line) <= 9 for line in lines))
+            self.assertNotIn("。", caption["text"])
+            self.assertNotIn(".", caption["text"])
             self.assertEqual(caption["transform_y"], -1200)
             for key_name, value in style.items():
                 self.assertEqual(caption[key_name], value)
@@ -991,8 +994,14 @@ class WorkflowApiTests(unittest.TestCase):
 
         self.assertEqual(
             parts,
-            ["师徒四人，\n就像四季里的风，", "春的炽热，\n夏的温润，", "秋的深沉。"],
+            ["师徒四人，\n就像四季里的风，", "春的炽热，\n夏的温润，", "秋的深沉"],
         )
+
+    def test_published_book_draft_removes_periods_but_keeps_commas(self):
+        parts = workflow_jobs._own01_split_caption_text("第一句。第二句，第三句.")
+
+        combined = "".join(item.replace("\n", "") for item in parts)
+        self.assertEqual(combined, "第一句第二句，第三句")
 
     def test_published_cigarette_draft_repairs_question_mark_corner_text(self):
         key = {
