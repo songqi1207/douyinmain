@@ -1854,6 +1854,8 @@ _OWN01_CAPTION_LINE_CHARS = 9
 _OWN01_CAPTION_MAX_CHARS = _OWN01_CAPTION_LINE_CHARS * 2
 _OWN01_CAPTION_BREAKS = "，。！？；、：,.!?;:"
 _OWN01_CAPTION_PERIODS = "。."
+_OWN01_CAPTION_CONNECTORS = "的地得"
+_OWN01_CAPTION_MIN_CHUNK_CHARS = 4
 _OWN01_CAPTION_TRANSFORM_Y = -1200
 
 
@@ -1861,6 +1863,55 @@ def _own01_caption_chars(value: Any) -> list[str]:
     """Return visible caption characters without provider-added line breaks."""
     text = str(value or "").replace("\r", "").replace("\n", "").strip()
     return list(text)
+
+
+def _own01_is_han_character(value: str) -> bool:
+    return bool(value) and "\u3400" <= value <= "\u9fff"
+
+
+def _own01_connector_spans(chars: list[str]) -> list[tuple[int, int]]:
+    """Return short Chinese phrases joined by 的/地/得 as protected spans."""
+    spans: list[tuple[int, int]] = []
+    for index, char in enumerate(chars):
+        if char not in _OWN01_CAPTION_CONNECTORS:
+            continue
+
+        start = index
+        left_count = 0
+        while (
+            start > 0
+            and left_count < 4
+            and _own01_is_han_character(chars[start - 1])
+        ):
+            start -= 1
+            left_count += 1
+
+        end = index + 1
+        right_count = 0
+        while (
+            end < len(chars)
+            and right_count < 4
+            and _own01_is_han_character(chars[end])
+        ):
+            end += 1
+            right_count += 1
+        spans.append((start, end))
+    return spans
+
+
+def _own01_caption_break_penalty(chars: list[str], break_at: int) -> int:
+    """Penalize breaks that tear apart short modifier phrases."""
+    if break_at <= 0 or break_at >= len(chars):
+        return 0
+
+    penalty = 0
+    if chars[break_at - 1] in _OWN01_CAPTION_CONNECTORS:
+        penalty += 200
+    if chars[break_at] in _OWN01_CAPTION_CONNECTORS:
+        penalty += 200
+    if any(start < break_at < end for start, end in _own01_connector_spans(chars)):
+        penalty += 80
+    return penalty
 
 
 def _own01_split_caption_text(value: Any) -> list[str]:
@@ -1873,6 +1924,10 @@ def _own01_split_caption_text(value: Any) -> list[str]:
     offset = 0
     while offset < len(chars):
         end = min(len(chars), offset + _OWN01_CAPTION_MAX_CHARS)
+        if 0 < len(chars) - end < _OWN01_CAPTION_MIN_CHUNK_CHARS:
+            end = len(chars) - _OWN01_CAPTION_MIN_CHUNK_CHARS
+        default_end = end
+        used_punctuation = False
         if end - offset > _OWN01_CAPTION_LINE_CHARS:
             # A chunk may be within the nominal 18-character limit and still
             # wrap badly in Jianying: its only punctuation can leave one side
@@ -1885,6 +1940,7 @@ def _own01_split_caption_text(value: Any) -> list[str]:
                 chunk_length = punctuation_end - offset
                 if chunk_length <= _OWN01_CAPTION_LINE_CHARS:
                     end = punctuation_end
+                    used_punctuation = True
                     break
                 lower = chunk_length - _OWN01_CAPTION_LINE_CHARS
                 upper = _OWN01_CAPTION_LINE_CHARS
@@ -1893,7 +1949,22 @@ def _own01_split_caption_text(value: Any) -> list[str]:
                     for index in range(max(1, lower), min(upper, chunk_length - 1) + 1)
                 ):
                     end = punctuation_end
+                    used_punctuation = True
                     break
+        if not used_punctuation and default_end < len(chars):
+            # Do not let the hard 18-character boundary cut through phrases
+            # such as "失落已久的童心", or leave a one/two-character tail.
+            upper = default_end
+            lower = offset + _OWN01_CAPTION_MIN_CHUNK_CHARS
+            candidates = range(lower, max(lower, upper) + 1)
+            end = min(
+                candidates,
+                key=lambda candidate: (
+                    _own01_caption_break_penalty(chars, candidate)
+                    + (upper - candidate),
+                    abs(candidate - default_end),
+                ),
+            )
         chunks.append(chars[offset:end])
         offset = end
 
@@ -1906,13 +1977,17 @@ def _own01_split_caption_text(value: Any) -> list[str]:
         lower = max(1, len(chunk) - _OWN01_CAPTION_LINE_CHARS)
         upper = min(_OWN01_CAPTION_LINE_CHARS, len(chunk) - 1)
         midpoint = len(chunk) / 2
-        candidates = [
-            index + 1
-            for index in range(lower - 1, upper)
-            if chunk[index] in _OWN01_CAPTION_BREAKS
-        ]
-        split_at = min(candidates, key=lambda index: abs(index - midpoint)) if candidates else int(round(midpoint))
-        split_at = max(lower, min(upper, split_at))
+        candidates = range(lower, upper + 1)
+        split_at = min(
+            candidates,
+            key=lambda index: (
+                _own01_caption_break_penalty(chunk, index)
+                + (80 if min(index, len(chunk) - index) < _OWN01_CAPTION_MIN_CHUNK_CHARS else 0)
+                - (100 if chunk[index - 1] in _OWN01_CAPTION_BREAKS else 0)
+                + abs(index - midpoint),
+                abs(index - midpoint),
+            ),
+        )
         wrapped.append("".join(chunk[:split_at]) + "\n" + "".join(chunk[split_at:]))
     return [
         cleaned

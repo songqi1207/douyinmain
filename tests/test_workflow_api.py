@@ -1003,6 +1003,26 @@ class WorkflowApiTests(unittest.TestCase):
         combined = "".join(item.replace("\n", "") for item in parts)
         self.assertEqual(combined, "第一句第二句，第三句")
 
+    def test_published_book_draft_keeps_de_phrase_together(self):
+        parts = workflow_jobs._own01_split_caption_text("让我们重新找回失落已久的童心")
+
+        self.assertEqual(parts, ["让我们重新找回\n失落已久的童心"])
+
+    def test_published_book_draft_avoids_semantic_orphan_tail(self):
+        parts = workflow_jobs._own01_split_caption_text(
+            "这本书让我们在喧嚣生活里重新找回失落已久的童心"
+        )
+
+        lines = [line for part in parts for line in part.splitlines()]
+        self.assertIn("失落已久的童心", lines)
+        self.assertTrue(all(not line.endswith(tuple("的地得")) for line in lines))
+        self.assertGreaterEqual(len(parts[-1].replace("\n", "")), 4)
+
+        punctuation_parts = workflow_jobs._own01_split_caption_text("甲" * 17 + "，童心")
+        self.assertTrue(
+            all(len(part.replace("\n", "")) >= 4 for part in punctuation_parts)
+        )
+
     def test_published_cigarette_draft_repairs_question_mark_corner_text(self):
         key = {
             "calls": [
