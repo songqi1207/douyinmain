@@ -1858,6 +1858,17 @@ _OWN01_CAPTION_PERIODS = "。."
 _OWN01_CAPTION_CONNECTORS = "的地得"
 _OWN01_CAPTION_NO_LINE_END = "的地得与和及或而这那该此每各也又都仍还更再正将把被从向对给为因于"
 _OWN01_CAPTION_NO_LINE_START = "的地得中里上下内外着了过而与和及或"
+_OWN01_CAPTION_PREDICATE_ENDINGS = (
+    "见过",
+    "看见",
+    "看到",
+    "发现",
+    "听见",
+    "懂得",
+    "明白",
+    "记得",
+    "知道",
+)
 _OWN01_CAPTION_MIN_CHUNK_CHARS = 4
 _OWN01_CAPTION_UNSAFE_WRAP_SCORE = 200
 _OWN01_CAPTION_TRANSFORM_Y = -1200
@@ -1940,17 +1951,40 @@ def _own01_caption_break_penalty(chars: list[str], break_at: int) -> int:
         penalty += 80
     if chars[break_at - 1] in _OWN01_CAPTION_NO_LINE_END:
         penalty += 160
-    if chars[break_at] in _OWN01_CAPTION_NO_LINE_START:
+    word_breaks = _own01_caption_word_breaks("".join(chars))
+    next_word_end = min(
+        (boundary for boundary in word_breaks if boundary > break_at),
+        default=len(chars),
+    )
+    starts_multi_character_word = next_word_end > break_at + 1
+    if (
+        chars[break_at] in _OWN01_CAPTION_NO_LINE_START
+        and not (
+            chars[break_at] in "而与和及或"
+            and starts_multi_character_word
+        )
+    ):
         penalty += 160
     if chars[break_at] in _OWN01_CAPTION_BREAKS:
         penalty += 500
-    if break_at not in _own01_caption_word_breaks("".join(chars)):
+    if break_at not in word_breaks:
         penalty += 300
     return penalty
 
 
+def _own01_caption_predicate_break_bonus(chars: list[str], break_at: int) -> int:
+    left = "".join(chars[:break_at]).rstrip(_OWN01_CAPTION_BREAKS)
+    if any(left.endswith(ending) for ending in _OWN01_CAPTION_PREDICATE_ENDINGS):
+        return 120
+    return 0
+
+
 def _own01_caption_line_break_score(chars: list[str], break_at: int) -> float:
     midpoint = len(chars) / 2
+    overflow = max(0, break_at - _OWN01_CAPTION_LINE_CHARS) + max(
+        0,
+        len(chars) - break_at - _OWN01_CAPTION_LINE_CHARS,
+    )
     return (
         _own01_caption_break_penalty(chars, break_at)
         + (
@@ -1959,18 +1993,33 @@ def _own01_caption_line_break_score(chars: list[str], break_at: int) -> float:
             else 0
         )
         - (100 if chars[break_at - 1] in _OWN01_CAPTION_BREAKS else 0)
+        - _own01_caption_predicate_break_bonus(chars, break_at)
+        + (overflow * 20)
         + abs(break_at - midpoint)
     )
+
+
+def _own01_caption_line_break_candidates(chars: list[str]) -> list[int]:
+    lower = max(1, len(chars) - _OWN01_CAPTION_LINE_CHARS)
+    upper = min(_OWN01_CAPTION_LINE_CHARS, len(chars) - 1)
+    candidates = set(range(lower, upper + 1))
+
+    soft_lower = max(1, len(chars) - _OWN01_CAPTION_SOFT_LINE_CHARS)
+    soft_upper = min(_OWN01_CAPTION_SOFT_LINE_CHARS, len(chars) - 1)
+    candidates.update(
+        index
+        for index in range(soft_lower, soft_upper + 1)
+        if _own01_caption_predicate_break_bonus(chars, index)
+    )
+    return sorted(candidates)
 
 
 def _own01_caption_wrap_penalty(chars: list[str]) -> float:
     if len(chars) <= _OWN01_CAPTION_LINE_CHARS:
         return 0
-    lower = max(1, len(chars) - _OWN01_CAPTION_LINE_CHARS)
-    upper = min(_OWN01_CAPTION_LINE_CHARS, len(chars) - 1)
     return min(
         _own01_caption_line_break_score(chars, index)
-        for index in range(lower, upper + 1)
+        for index in _own01_caption_line_break_candidates(chars)
     )
 
 
@@ -2033,10 +2082,8 @@ def _own01_split_caption_text(value: Any) -> list[str]:
             wrapped.append("".join(chunk))
             continue
 
-        lower = max(1, len(chunk) - _OWN01_CAPTION_LINE_CHARS)
-        upper = min(_OWN01_CAPTION_LINE_CHARS, len(chunk) - 1)
         midpoint = len(chunk) / 2
-        candidates = range(lower, upper + 1)
+        candidates = _own01_caption_line_break_candidates(chunk)
         split_at = min(
             candidates,
             key=lambda index: (

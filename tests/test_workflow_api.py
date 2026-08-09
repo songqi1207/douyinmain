@@ -1056,6 +1056,13 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertTrue(all(not line.endswith("跌") for line in action_lines))
         self.assertTrue(all(not line.startswith("撞") for line in action_lines))
 
+        self.assertEqual(
+            workflow_jobs._own01_split_caption_text(
+                "也见过和平原野上的繁花似锦"
+            ),
+            ["也见过\n和平原野上的繁花似锦"],
+        )
+
     def test_published_cigarette_draft_repairs_question_mark_corner_text(self):
         key = {
             "calls": [
