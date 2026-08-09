@@ -995,7 +995,10 @@ function Get-CandidateOutputPaths {
 }
 
 function Find-CandidateOutputFile([datetime]$WaitStartedAt) {
-    $threshold = $WaitStartedAt.AddMinutes(-15)
+    # Jianying keeps an existing file and writes repeated exports as
+    # ``name (1).mp4``.  Only accept the exact name or that numbered form from
+    # the current export, otherwise a stale video can be uploaded by mistake.
+    $threshold = $WaitStartedAt.AddSeconds(-5)
     $directories = @(
         $outputDirectory,
         (Join-Path $env:USERPROFILE "Downloads"),
@@ -1023,7 +1026,8 @@ function Find-CandidateOutputFile([datetime]$WaitStartedAt) {
     foreach ($directory in $directories) {
         foreach ($name in $names) {
             foreach ($item in (Get-ChildItem -LiteralPath $directory -Filter "$name*.mp4" -File -ErrorAction SilentlyContinue)) {
-                if ($item.LastWriteTime -ge $threshold) {
+                $escapedName = [regex]::Escape($name)
+                if ($item.BaseName -match "^$escapedName(?: \(\d+\))?$" -and $item.LastWriteTime -ge $threshold) {
                     $matches.Add($item)
                 }
             }

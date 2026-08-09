@@ -8,6 +8,7 @@ server processes do not need to load COM.
 
 from __future__ import annotations
 
+import re
 import shutil
 import time
 from pathlib import Path
@@ -48,6 +49,30 @@ def _resolve_export_path(value: str, draft_name: str) -> Path:
     if path.is_dir() or raw.endswith(("\\", "/")):
         path = path / f"{draft_name}.mp4"
     return path.resolve()
+
+
+def _latest_numbered_export(path: Path, started_at: float) -> Path | None:
+    """Return this run's newest ``name.mp4`` or ``name (N).mp4`` output."""
+
+    parent = path.parent
+    if not parent.is_dir():
+        return None
+    pattern = re.compile(
+        rf"^{re.escape(path.stem)}(?: \(\d+\))?{re.escape(path.suffix)}$",
+        re.IGNORECASE,
+    )
+    candidates = []
+    for candidate in parent.iterdir():
+        try:
+            if (
+                candidate.is_file()
+                and pattern.fullmatch(candidate.name)
+                and candidate.stat().st_mtime >= started_at - 5
+            ):
+                candidates.append(candidate)
+        except OSError:
+            continue
+    return max(candidates, key=lambda item: item.stat().st_mtime, default=None)
 
 
 def _export_field_points(
@@ -756,6 +781,7 @@ def export_draft_uia(
     else:
         _emit(stage, "uia2_export_path_ready", f"path={source}")
 
+    export_started_at = time.time()
     confirm_calibration = export_confirm_calibration or {}
     confirm_x_ratio = confirm_calibration.get("x_from_right_ratio")
     confirm_y_ratio = confirm_calibration.get("y_from_bottom_ratio")
@@ -817,7 +843,9 @@ def export_draft_uia(
         except JianyingUIAError:
             pass
 
-        if source.is_file():
+        current_source = _latest_numbered_export(source, export_started_at)
+        if current_source is not None:
+            source = current_source
             size = source.stat().st_size
             if size > 0 and size == last_size:
                 stable_count += 1

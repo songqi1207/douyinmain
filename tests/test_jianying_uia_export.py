@@ -1,4 +1,5 @@
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from desktop_bridge.jianying_uia_export import (
     _export_field_points,
     _first_draft_card_point,
     _is_cross_process_jianying_popup,
+    _latest_numbered_export,
     _popup_close_points,
     _resolve_export_path,
 )
@@ -88,6 +90,29 @@ class JianyingUIAExportTests(unittest.TestCase):
     def test_empty_export_path_is_rejected(self):
         with self.assertRaises(JianyingUIAError):
             _resolve_export_path("", "DRAFT-ID")
+
+    def test_latest_numbered_export_accepts_jianying_collision_name(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            expected = root / "job-id.mp4"
+            started_at = time.time()
+            numbered = root / "job-id (1).mp4"
+            numbered.write_bytes(b"video")
+            (root / "job-id-old.mp4").write_bytes(b"wrong")
+
+            self.assertEqual(
+                _latest_numbered_export(expected, started_at),
+                numbered,
+            )
+
+    def test_latest_numbered_export_ignores_stale_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            expected = Path(temporary) / "job-id.mp4"
+            expected.write_bytes(b"old")
+
+            self.assertIsNone(
+                _latest_numbered_export(expected, time.time() + 10),
+            )
 
     def test_first_draft_card_coordinate_matches_legacy_click_point(self):
         self.assertEqual(
