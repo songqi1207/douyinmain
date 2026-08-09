@@ -1793,7 +1793,7 @@ def _draft_time_to_us(value: Any) -> int:
 _OWN01_CAPTION_LINE_CHARS = 9
 _OWN01_CAPTION_MAX_CHARS = _OWN01_CAPTION_LINE_CHARS * 2
 _OWN01_CAPTION_BREAKS = "，。！？；、：,.!?;:"
-_OWN01_CAPTION_TRANSFORM_Y = 500
+_OWN01_CAPTION_TRANSFORM_Y = 1500
 
 
 def _own01_caption_chars(value: Any) -> list[str]:
