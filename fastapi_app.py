@@ -1091,6 +1091,19 @@ def api_render_agent_heartbeat(request: Request, payload: dict = Body(default_fa
 def api_render_agent_claim(request: Request):
     device = _require_render_device(request)
     heartbeat_device(device["id"])
+    reported_helper_version = str(
+        (device.get("capabilities") or {}).get("helper_version") or ""
+    ).strip()
+    if reported_helper_version and reported_helper_version != HELPER_VERSION:
+        raise HTTPException(
+            status_code=426,
+            detail={
+                "code": "helper_update_required",
+                "message": f"导出助手需要更新到 v{HELPER_VERSION} 后再领取任务",
+                "latest_helper_version": HELPER_VERSION,
+                "download_url": "/api/v1/downloads/draft-bridge",
+            },
+        )
     task = claim_device_render_job(
         device["id"],
         int(os.getenv("DEVICE_RENDER_LEASE_SECONDS") or 900),

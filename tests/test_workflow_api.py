@@ -2104,6 +2104,29 @@ class WorkflowApiTests(unittest.TestCase):
             removed = self.admin_client.delete(f"/api/v1/render-devices/{device_id}")
             self.assertEqual(removed.status_code, 204, removed.text)
 
+    def test_outdated_helper_cannot_claim_new_render_jobs(self):
+        pairing = self.client.post("/api/v1/render-devices/pairing-codes")
+        paired = TestClient(app).post(
+            "/api/v1/render-agent/pair",
+            json={
+                "code": pairing.json()["code"],
+                "name": "OLD-HELPER",
+                "platform": "windows",
+                "capabilities": {
+                    "jianying_native_export": True,
+                    "helper_version": "1.4.78",
+                },
+            },
+        )
+        headers = {"Authorization": f"Bearer {paired.json()['device_token']}"}
+        try:
+            claimed = TestClient(app).post("/api/v1/render-agent/claim", headers=headers)
+            self.assertEqual(claimed.status_code, 426, claimed.text)
+            self.assertEqual(claimed.json()["detail"]["code"], "helper_update_required")
+            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.79")
+        finally:
+            self.client.delete(f"/api/v1/render-devices/{paired.json()['device_id']}")
+
     def test_z_user_computer_can_pair_claim_and_return_native_mp4(self):
         pairing = self.client.post("/api/v1/render-devices/pairing-codes")
         self.assertEqual(pairing.status_code, 201, pairing.text)
