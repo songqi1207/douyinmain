@@ -450,6 +450,41 @@ function Set-ElementWindowForeground($Element) {
     }
 }
 
+function Dismiss-ExportBlockingPopups([int]$ProcessId, $ExportRoot) {
+    $exportHandle = if ($ExportRoot) { [IntPtr]$ExportRoot.Current.NativeWindowHandle } else { [IntPtr]::Zero }
+    $dismissPattern = '(放弃福利|暂不|以后再说|取消|跳过|我知道了|知道了|Not now|Later|Skip|Cancel)'
+    foreach ($popup in @(Get-JianyingPopupRoots $ProcessId)) {
+        $className = [string]$popup.Current.ClassName
+        $handle = [IntPtr]$popup.Current.NativeWindowHandle
+        if (
+            $handle -eq [IntPtr]::Zero -or
+            $handle -eq $exportHandle -or
+            $className -match 'ExportWindow' -or
+            $className -notmatch 'LVInfoDialog|SplashDialog|Popup'
+        ) {
+            continue
+        }
+        $rect = $popup.Current.BoundingRectangle
+        if ($rect.Width -le 200 -or $rect.Height -le 120) {
+            continue
+        }
+        $safeDismiss = @(Get-VisibleElementsUnder $popup) | Where-Object {
+            $text = ($_.Current.Name + " " + (Get-FullDescription $_)).Trim()
+            $text -match $dismissPattern -and
+            $_.Current.ControlType.ProgrammaticName -match '(Button|Text|Custom)'
+        } | Select-Object -First 1
+        if ($safeDismiss) {
+            Write-Stage "export_blocking_popup_dismissed" "mode=safe_text class=$className"
+            Invoke-Element $safeDismiss
+        }
+        else {
+            Write-Stage "export_blocking_popup_dismissed" "mode=window_close class=$className"
+            [JianyingNative]::PostMessage($handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+        }
+        Start-Sleep -Milliseconds 900
+    }
+}
+
 function Test-ExportConfirmationAccepted([int]$ProcessId) {
     if (Test-Path -LiteralPath $OutputPath) {
         return $true
@@ -479,6 +514,7 @@ function Wait-ExportConfirmationAccepted([int]$ProcessId, [int]$Milliseconds = 3
 }
 
 function Invoke-ExportConfirmationReliably([int]$ProcessId, $ExportRoot, [int]$X, [int]$Y) {
+    Dismiss-ExportBlockingPopups $ProcessId $ExportRoot
     Set-ElementWindowForeground $ExportRoot
 
     $confirm = Get-VisibleElementsUnder $ExportRoot | Where-Object {
@@ -1630,6 +1666,7 @@ $stable = 0
 $lastProgressLog = (Get-Date).AddSeconds(-15)
 $waitStartedAt = (Get-Date).AddSeconds(-5)
 $outputStarted = $false
+$lastSourceSeenAt = $null
 $confirmRetryCount = 0
 $nextConfirmRetry = (Get-Date).AddSeconds(12)
 $candidateOutputPaths = @(Get-CandidateOutputPaths)
@@ -1637,6 +1674,7 @@ Write-Stage "waiting_for_output_file"
 while ((Get-Date) -lt $fileDeadline) {
     $source = Find-CandidateOutputFile $waitStartedAt
     if ($source) {
+        $lastSourceSeenAt = Get-Date
         $size = $source.Length
         if (-not $outputStarted -and $size -gt 0) {
             $outputStarted = $true
@@ -1678,6 +1716,10 @@ while ((Get-Date) -lt $fileDeadline) {
         }
         $lastSize = $size
         $lastPath = $sourcePath
+    }
+    elseif ($outputStarted -and $lastSourceSeenAt -and (Get-Date) -ge $lastSourceSeenAt.AddSeconds(8)) {
+        Write-Stage "output_file_disappeared" "action=restart_without_enhance"
+        break
     }
     elseif (-not $outputStarted -and (Get-Date) -ge $nextConfirmRetry -and $confirmRetryCount -lt 2) {
         $retryRoot = Get-ExportDialogRoot $process.Id

@@ -655,6 +655,8 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "export_confirm_unverified"', script)
         self.assertIn("action=retry_while_waiting", script)
         self.assertIn('Write-Stage "export_confirm_retry"', script)
+        self.assertIn('Write-Stage "export_blocking_popup_dismissed"', script)
+        self.assertIn('Write-Stage "output_file_disappeared"', script)
         self.assertIn('mode=keyboard_enter attempt=4', script)
         self.assertIn('$size -gt 0', script)
         self.assertNotIn('Write-Stage "export_confirm_not_accepted"', script)

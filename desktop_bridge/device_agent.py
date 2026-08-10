@@ -1193,6 +1193,7 @@ def _run_native_export_unlocked(
         and enable_one_click_enhance
         and (
             "stage=output_file_not_started" in stage_output
+            or "stage=output_file_disappeared" in stage_output
             or "stage=failed reason=output_file_timeout" in stage_output
         )
     )
@@ -1241,8 +1242,9 @@ def _run_native_export_unlocked(
                 result = export_draft_uia(
                     draft_name,
                     output_path,
-                    timeout=int(
-                        os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800
+                    timeout=min(
+                        600,
+                        int(os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800),
                     ),
                     stage=log_uia2_stage,
                     editor_export_calibration=export_calibration,

@@ -167,9 +167,9 @@ class WorkflowApiTests(unittest.TestCase):
             with patch.object(fastapi_app, "ROOT", root):
                 response = fastapi_app.api_download_draft_bridge()
             self.assertEqual(Path(response.path), executable)
-            self.assertIn("AI-Video-Creator-v1.4.79.exe", response.headers["content-disposition"])
+            self.assertIn("AI-Video-Creator-v1.4.80.exe", response.headers["content-disposition"])
             self.assertIn("no-store", response.headers["cache-control"])
-            self.assertEqual(response.headers["x-helper-version"], "1.4.79")
+            self.assertEqual(response.headers["x-helper-version"], "1.4.80")
             self.assertEqual(
                 response.headers["x-content-sha256"],
                 hashlib.sha256(executable.read_bytes()).hexdigest(),
@@ -179,7 +179,7 @@ class WorkflowApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/draft-key-renders/status")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["latest_helper_version"], "1.4.79")
+        self.assertEqual(response.json()["latest_helper_version"], "1.4.80")
 
     def test_spa_index_must_revalidate_after_frontend_deploy(self):
         with tempfile.TemporaryDirectory(prefix="frontend-dist-") as temporary:
@@ -2123,7 +2123,7 @@ class WorkflowApiTests(unittest.TestCase):
             claimed = TestClient(app).post("/api/v1/render-agent/claim", headers=headers)
             self.assertEqual(claimed.status_code, 426, claimed.text)
             self.assertEqual(claimed.json()["detail"]["code"], "helper_update_required")
-            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.79")
+            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.80")
         finally:
             self.client.delete(f"/api/v1/render-devices/{paired.json()['device_id']}")
 
