@@ -2924,6 +2924,7 @@ def claim_device_render_job(device_id: str, lease_seconds: int = 600) -> dict | 
         "job_id": job["id"],
         "workflow_code": job["workflow_code"],
         "draft_key": draft_key,
+        "recover_local_after": job["inputs"].get("_recover_local_after"),
     }
 
 

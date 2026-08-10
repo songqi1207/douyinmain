@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import threading
@@ -1335,6 +1336,85 @@ def _run_native_export_unlocked(
     return output_path
 
 
+def _recover_recent_local_export(
+    task: dict,
+    output_dir: Path,
+    *,
+    home_dir: Path | None = None,
+) -> Path | None:
+    """Copy a recent JianYing export that used an unexpected name/path."""
+
+    try:
+        recover_after = float(task.get("recover_local_after") or 0)
+    except (TypeError, ValueError):
+        return None
+    if recover_after <= 0:
+        return None
+
+    home = (home_dir or Path.home()).resolve()
+    roots = [
+        output_dir,
+        home / "Downloads",
+        home / "Videos",
+        home / "Desktop",
+        home / "Documents",
+        home / "OneDrive" / "Videos",
+        home / "OneDrive" / "Desktop",
+        home / "OneDrive" / "Documents",
+    ]
+    candidates: list[tuple[float, int, Path]] = []
+    visited: set[Path] = set()
+    for raw_root in roots:
+        try:
+            root = raw_root.resolve()
+        except OSError:
+            continue
+        if root in visited or not root.is_dir():
+            continue
+        visited.add(root)
+        for current_root, directory_names, file_names in os.walk(root):
+            current = Path(current_root)
+            try:
+                depth = len(current.relative_to(root).parts)
+            except ValueError:
+                continue
+            if depth >= 4:
+                directory_names[:] = []
+            for file_name in file_names:
+                if not file_name.lower().endswith(".mp4"):
+                    continue
+                candidate = current / file_name
+                try:
+                    stat = candidate.stat()
+                    if stat.st_mtime < recover_after - 5 or stat.st_size < 100_000:
+                        continue
+                    with candidate.open("rb") as stream:
+                        if b"ftyp" not in stream.read(64):
+                            continue
+                except OSError:
+                    continue
+                candidates.append((stat.st_mtime, stat.st_size, candidate))
+    if not candidates:
+        return None
+
+    _modified_at, _size, source = max(candidates, key=lambda item: (item[0], item[1]))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    target = (output_dir / f"{task['job_id']}.mp4").resolve()
+    if source.resolve() != target:
+        temporary = target.with_suffix(".mp4.recovering")
+        temporary.unlink(missing_ok=True)
+        shutil.copy2(source, temporary)
+        temporary.replace(target)
+    logger.info(
+        "local_export_recovered job_id=%s source=%s target=%s size_bytes=%s",
+        task.get("job_id"),
+        source,
+        target,
+        target.stat().st_size,
+    )
+    return target
+
+
 class DeviceAgent:
     def __init__(
         self,
@@ -1485,13 +1565,17 @@ class DeviceAgent:
                 self._report_task_progress(job_id, message)
 
             task_progress("助手已收到任务数据，正在等待本机执行")
-            output_path = _run_native_export(
-                task,
-                self.draft_root,
-                self.jianying_exe,
-                self.output_dir,
-                task_progress,
-            )
+            output_path = _recover_recent_local_export(task, self.output_dir)
+            if output_path is not None:
+                task_progress("已找到剪映导出的本地视频，正在直接回传网站…")
+            else:
+                output_path = _run_native_export(
+                    task,
+                    self.draft_root,
+                    self.jianying_exe,
+                    self.output_dir,
+                    task_progress,
+                )
             task_progress("剪映导出完成，正在把视频传回网站…")
             upload_attempts = max(
                 1,

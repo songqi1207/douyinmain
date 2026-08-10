@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import unittest
 import zipfile
 from pathlib import Path
@@ -27,6 +28,7 @@ from desktop_bridge.device_agent import (
     _font_verification_enabled,
     _one_click_enhance_enabled,
     _prime_jianying_cloud_resources,
+    _recover_recent_local_export,
     _run_native_export,
     _run_pyjianying_export,
     _without_one_click_enhance,
@@ -117,6 +119,27 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertLess(control, physical)
         self.assertLess(physical, send_input)
         self.assertLess(send_input, window_message)
+
+    def test_recover_recent_local_export_finds_nested_unexpected_filename(self):
+        with tempfile.TemporaryDirectory(prefix="recover-local-export-") as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            output = root / "output"
+            nested = home / "Videos" / "JianyingPro" / "exports"
+            nested.mkdir(parents=True)
+            exported = nested / "妈祖成片.mp4"
+            exported.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"v" * 100_000))
+            now = time.time()
+            os.utime(exported, (now, now))
+
+            recovered = _recover_recent_local_export(
+                {"job_id": "god-job", "recover_local_after": now - 10},
+                output,
+                home_dir=home,
+            )
+
+            self.assertEqual(recovered, (output / "god-job.mp4").resolve())
+            self.assertEqual(recovered.read_bytes(), exported.read_bytes())
 
     def test_device_progress_messages_map_to_truthful_online_stages(self):
         self.assertEqual(_device_progress_state("正在把任务写入本机剪映草稿…"), ("device_importing", 83))
