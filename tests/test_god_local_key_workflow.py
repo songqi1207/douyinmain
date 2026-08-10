@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import tempfile
 import unittest
@@ -224,6 +225,12 @@ class GodLocalKeyWorkflowTests(unittest.TestCase):
                 self.assertTrue(Path(second["draft_dir"]).is_dir())
                 self.assertFalse(first["already_imported"])
                 self.assertTrue(second["already_imported"])
+
+                changed_key = copy.deepcopy(key)
+                changed_key["calls"][0]["params"]["captions"][0]["text"] = "updated"
+                changed = draft_importer.import_draft_key(changed_key)
+                self.assertFalse(changed["already_imported"])
+                self.assertNotEqual(first["draft_id"], changed["draft_id"])
 
                 (Path(second["draft_dir"]) / "draft_content.json").write_text("", encoding="utf-8")
                 repaired = draft_importer.import_draft_key(key)

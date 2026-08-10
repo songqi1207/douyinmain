@@ -2182,13 +2182,13 @@ def _attach_animation_resource_ids(info: dict[str, Any], name_key: str, type_key
         info.setdefault(f"{name_key}_effect_id", str(meta["effect_id"]))
 
 
-def _strengthen_own01_final_image_motion(draft_key: dict) -> None:
-    """Keep the final long book image moving through the timeline end.
+def _strengthen_own01_image_motion(draft_key: dict) -> None:
+    """Give every book image an obvious, JianYing-safe camera move.
 
-    JianYing can ignore a keyframe placed exactly at a segment's terminal
-    timestamp, especially on the final segment where no following frame
-    exists. Replace only that image's camera keyframes with four in-range
-    points so its movement remains visible and continuous.
+    Two-point camera moves are the most reliable shape in JianYing 11.  Keep
+    the last point away from the exact segment boundary and normalize weak
+    provider motion as well as the final image.  This avoids both barely
+    visible early shots and a completely static final shot.
     """
 
     calls = draft_key.get("calls") if isinstance(draft_key.get("calls"), list) else []
@@ -2206,12 +2206,6 @@ def _strengthen_own01_final_image_motion(draft_key: dict) -> None:
     valid_indexes = [index for index, info in enumerate(image_infos) if isinstance(info, dict)]
     if not valid_indexes:
         return
-    final_index = valid_indexes[-1]
-    final_info = image_infos[final_index]
-    duration = _draft_time_to_us(final_info.get("end")) - _draft_time_to_us(final_info.get("start"))
-    if duration < 3_000_000:
-        return
-
     keyframe_call = next(
         (
             call
@@ -2238,7 +2232,7 @@ def _strengthen_own01_final_image_motion(draft_key: dict) -> None:
         "KFTypeUniformScale",
     }
     retained: list[dict[str, Any]] = []
-    existing_by_property: dict[str, list[dict[str, Any]]] = {}
+    existing_by_index: dict[int, dict[str, list[dict[str, Any]]]] = {}
     for keyframe in keyframes:
         if not isinstance(keyframe, dict):
             continue
@@ -2247,21 +2241,21 @@ def _strengthen_own01_final_image_motion(draft_key: dict) -> None:
             ref_index = int(ref.get("index", -1)) if isinstance(ref, dict) else -1
         except (TypeError, ValueError):
             ref_index = -1
-        is_final = (
+        is_body_image = (
             isinstance(ref, dict)
             and str(ref.get("call_id") or "") == "call_191365"
-            and ref_index == final_index
+            and ref_index in valid_indexes
         )
         prop = str(keyframe.get("property") or keyframe.get("property_type") or "")
-        if is_final and prop in target_properties:
+        if is_body_image and prop in target_properties:
             normalized_prop = "UNIFORM_SCALE" if prop == "KFTypeUniformScale" else prop
-            existing_by_property.setdefault(normalized_prop, []).append(keyframe)
+            existing_by_index.setdefault(ref_index, {}).setdefault(normalized_prop, []).append(keyframe)
             continue
         retained.append(keyframe)
 
-    def endpoint(prop: str, *, first: bool, fallback: float) -> float:
+    def endpoint(index: int, prop: str, *, first: bool, fallback: float) -> float:
         rows = sorted(
-            existing_by_property.get(prop, []),
+            existing_by_index.get(index, {}).get(prop, []),
             key=lambda row: _draft_time_to_us(row.get("offset")),
         )
         if not rows:
@@ -2272,48 +2266,53 @@ def _strengthen_own01_final_image_motion(draft_key: dict) -> None:
         except (TypeError, ValueError):
             return fallback
 
-    start_x = endpoint("KFTypePositionX", first=True, fallback=0.0)
-    end_x = endpoint("KFTypePositionX", first=False, fallback=0.0)
-    start_y = endpoint("KFTypePositionY", first=True, fallback=0.08)
-    end_y = endpoint("KFTypePositionY", first=False, fallback=-0.08)
-    start_scale = endpoint("UNIFORM_SCALE", first=True, fallback=1.46)
-    end_scale = endpoint("UNIFORM_SCALE", first=False, fallback=max(1.76, start_scale + 0.24))
+    repaired_indexes: list[int] = []
+    for index in valid_indexes:
+        info = image_infos[index]
+        duration = _draft_time_to_us(info.get("end")) - _draft_time_to_us(info.get("start"))
+        if duration < 1_000_000:
+            continue
 
-    if abs(end_x - start_x) < 0.025:
-        end_x = -0.045 if start_x >= 0 else 0.045
-    if abs(end_y - start_y) < 0.08:
-        end_y = start_y - 0.18
-    if abs(end_scale - start_scale) < 0.18:
-        end_scale = start_scale + 0.28
+        direction = -1.0 if index % 2 else 1.0
+        start_x = endpoint(index, "KFTypePositionX", first=True, fallback=-0.065 * direction)
+        end_x = endpoint(index, "KFTypePositionX", first=False, fallback=0.065 * direction)
+        start_y = endpoint(index, "KFTypePositionY", first=True, fallback=0.06 * direction)
+        end_y = endpoint(index, "KFTypePositionY", first=False, fallback=-0.06 * direction)
+        start_scale = endpoint(index, "UNIFORM_SCALE", first=True, fallback=1.46)
+        end_scale = endpoint(index, "UNIFORM_SCALE", first=False, fallback=start_scale + 0.30)
 
-    safe_end = max(1, duration - min(80_000, max(1, duration // 100)))
-    offsets = [0, int(safe_end * 0.34), int(safe_end * 0.68), safe_end]
-    values = {
-        "KFTypePositionX": [start_x, start_x + 0.035, end_x - 0.02, end_x],
-        "KFTypePositionY": [start_y, start_y * 0.55, end_y * 0.45, end_y],
-        "UNIFORM_SCALE": [
-            start_scale,
-            start_scale + ((end_scale - start_scale) * 0.30),
-            start_scale + ((end_scale - start_scale) * 0.68),
-            end_scale,
-        ],
-    }
-    ref = {"call_id": "call_191365", "index": final_index}
-    for prop, prop_values in values.items():
-        for offset, value in zip(offsets, prop_values):
-            retained.append(
-                {
-                    "segment_ref": ref,
-                    "property": prop,
-                    "offset": offset,
-                    "value": round(float(value), 4),
-                }
-            )
+        if abs(end_x - start_x) < 0.11:
+            start_x, end_x = -0.065 * direction, 0.065 * direction
+        if abs(end_y - start_y) < 0.10:
+            start_y, end_y = 0.06 * direction, -0.06 * direction
+        if abs(end_scale - start_scale) < 0.24:
+            # Always zoom in for the repaired shape.  A tiny reverse zoom is
+            # visually indistinguishable from a freeze at preview resolution.
+            end_scale = start_scale + 0.30
+
+        safe_end = max(1, duration - min(300_000, max(1, duration // 20)))
+        ref = {"call_id": "call_191365", "index": index}
+        for prop, start_value, end_value in (
+            ("KFTypePositionX", start_x, end_x),
+            ("KFTypePositionY", start_y, end_y),
+            ("UNIFORM_SCALE", start_scale, end_scale),
+        ):
+            for offset, value in ((0, start_value), (safe_end, end_value)):
+                retained.append(
+                    {
+                        "segment_ref": ref,
+                        "property": prop,
+                        "offset": offset,
+                        "value": round(float(value), 4),
+                    }
+                )
+        repaired_indexes.append(index)
     keyframe_call["params"]["keyframes"] = retained
 
     meta = draft_key.setdefault("meta", {})
     if isinstance(meta, dict):
         meta["final_image_motion_repaired"] = True
+        meta["book_image_motion_repaired_indexes"] = repaired_indexes
 
 
 def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
@@ -2488,7 +2487,7 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
         return
     if workflow_code != "OWN01":
         return
-    _strengthen_own01_final_image_motion(draft_key)
+    _strengthen_own01_image_motion(draft_key)
     for call in draft_key.get("calls") or []:
         if not isinstance(call, dict):
             continue

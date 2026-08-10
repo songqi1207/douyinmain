@@ -225,11 +225,15 @@ def deduplicate_exact_effect_calls(
 
 
 def _fingerprint(key: dict[str, Any]) -> str:
+    canonical = json.dumps(key, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     run_id = str(((key.get("meta") or {}).get("run_id")) or "").strip()
     if run_id:
-        return run_id
-    canonical = json.dumps(key, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        # A retry may repair the portable key while keeping the provider run
+        # id. Include the content hash so the helper rebuilds that repaired
+        # draft instead of silently reopening the stale one.
+        return f"{run_id}:sha256:{digest}"
+    return "sha256:" + digest
 
 
 def _load_registry() -> dict[str, Any]:
