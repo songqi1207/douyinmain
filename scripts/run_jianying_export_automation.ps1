@@ -504,7 +504,7 @@ function Invoke-ExportConfirmationReliably([int]$ProcessId, $ExportRoot, [int]$X
             Invoke-Element $confirm
             if (Wait-ExportConfirmationAccepted $ProcessId 3500) {
                 Write-Stage "export_confirm_accepted" "mode=control"
-                return
+                return $true
             }
             Write-Stage "export_confirm_unverified" "mode=control action=retry_physical x=$X y=$Y"
         }
@@ -518,23 +518,31 @@ function Invoke-ExportConfirmationReliably([int]$ProcessId, $ExportRoot, [int]$X
     Invoke-SlowPoint $X $Y
     if (Wait-ExportConfirmationAccepted $ProcessId 4000) {
         Write-Stage "export_confirm_accepted" "mode=slow_physical attempt=1"
-        return
+        return $true
     }
     Set-ElementWindowForeground $ExportRoot
     Write-Stage "export_confirm_attempt" "mode=send_input attempt=2 x=$X y=$Y"
     Invoke-SendInputPoint $X $Y
     if (Wait-ExportConfirmationAccepted $ProcessId 4000) {
         Write-Stage "export_confirm_accepted" "mode=send_input attempt=2"
-        return
+        return $true
     }
     Set-ElementWindowForeground $ExportRoot
     Write-Stage "export_confirm_attempt" "mode=window_message attempt=3 x=$X y=$Y"
     Invoke-ElementWindowMessagePoint $ExportRoot $X $Y | Out-Null
     if (Wait-ExportConfirmationAccepted $ProcessId 4000) {
         Write-Stage "export_confirm_accepted" "mode=window_message attempt=3"
-        return
+        return $true
     }
-    Write-Stage "export_confirm_unverified" "mode=all_click_methods action=monitor_output x=$X y=$Y"
+    Set-ElementWindowForeground $ExportRoot
+    Write-Stage "export_confirm_attempt" "mode=keyboard_enter attempt=4"
+    [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+    if (Wait-ExportConfirmationAccepted $ProcessId 4000) {
+        Write-Stage "export_confirm_accepted" "mode=keyboard_enter attempt=4"
+        return $true
+    }
+    Write-Stage "export_confirm_unverified" "mode=all_click_methods action=retry_while_waiting x=$X y=$Y"
+    return $false
 }
 
 function Invoke-WindowMessagePoint($Process, [int]$X, [int]$Y) {
@@ -825,7 +833,7 @@ function Invoke-ExportDialogByCoordinate([int]$ProcessId) {
     # final export click. Keep the dialog's existing title/path and click only
     # the bottom-right export button; output discovery covers default folders.
     Write-Stage "export_dialog_coordinate_confirm_only" "confirm_x=$confirmX confirm_y=$confirmY"
-    Invoke-ExportConfirmationReliably $ProcessId $exportRoot $confirmX $confirmY
+    return Invoke-ExportConfirmationReliably $ProcessId $exportRoot $confirmX $confirmY
 }
 
 function Get-ExportConfirmPoint($Rect) {
@@ -1526,8 +1534,13 @@ if ($EnableOneClickEnhance) {
 }
 
 if ($edits.Count -eq 0) {
-    Invoke-ExportDialogByCoordinate $process.Id
-    Write-Stage "export_confirmed" "mode=coordinate_confirm_only"
+    $exportConfirmationAccepted = Invoke-ExportDialogByCoordinate $process.Id
+    if ($exportConfirmationAccepted) {
+        Write-Stage "export_confirmed" "mode=coordinate_confirm_only"
+    }
+    else {
+        Write-Stage "export_confirm_pending" "mode=coordinate_confirm_only action=retry_while_waiting"
+    }
 }
 else {
 if (-not $nameEdit) {
@@ -1600,8 +1613,13 @@ if ($confirm) {
 }
 Write-Stage "export_confirm_reliable_click" "x=$confirmX y=$confirmY calibrated=$($confirmPoint.Calibrated)"
 Write-Stage "export_confirm_coordinate_click" "x=$confirmX y=$confirmY mode=verified_retry"
-Invoke-ExportConfirmationReliably $process.Id $exportRoot $confirmX $confirmY
-Write-Stage "export_confirmed" "mode=verified"
+$exportConfirmationAccepted = Invoke-ExportConfirmationReliably $process.Id $exportRoot $confirmX $confirmY
+if ($exportConfirmationAccepted) {
+    Write-Stage "export_confirmed" "mode=verified"
+}
+else {
+    Write-Stage "export_confirm_pending" "mode=verified action=retry_while_waiting"
+}
 }
 
 $fileDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -1612,17 +1630,19 @@ $stable = 0
 $lastProgressLog = (Get-Date).AddSeconds(-15)
 $waitStartedAt = (Get-Date).AddSeconds(-5)
 $outputStarted = $false
+$confirmRetryCount = 0
+$nextConfirmRetry = (Get-Date).AddSeconds(12)
 $candidateOutputPaths = @(Get-CandidateOutputPaths)
 Write-Stage "waiting_for_output_file"
 while ((Get-Date) -lt $fileDeadline) {
     $source = Find-CandidateOutputFile $waitStartedAt
     if ($source) {
-        if (-not $outputStarted) {
+        $size = $source.Length
+        if (-not $outputStarted -and $size -gt 0) {
             $outputStarted = $true
             Minimize-JianyingWindow $process "output_started"
         }
         $sourcePath = [System.IO.Path]::GetFullPath($source.FullName)
-        $size = $source.Length
         if ((Get-Date) -ge $lastProgressLog.AddSeconds(15)) {
             Write-Stage "output_file_growing" "path=$sourcePath size_bytes=$size"
             $lastProgressLog = Get-Date
@@ -1658,6 +1678,19 @@ while ((Get-Date) -lt $fileDeadline) {
         }
         $lastSize = $size
         $lastPath = $sourcePath
+    }
+    elseif (-not $outputStarted -and (Get-Date) -ge $nextConfirmRetry -and $confirmRetryCount -lt 2) {
+        $retryRoot = Get-ExportDialogRoot $process.Id
+        if ($retryRoot) {
+            $confirmRetryCount += 1
+            $retryPoint = Get-ExportConfirmPoint $retryRoot.Current.BoundingRectangle
+            Write-Stage "export_confirm_retry" "attempt=$confirmRetryCount x=$($retryPoint.X) y=$($retryPoint.Y)"
+            $acceptedOnRetry = Invoke-ExportConfirmationReliably $process.Id $retryRoot $retryPoint.X $retryPoint.Y
+            if ($acceptedOnRetry) {
+                Write-Stage "export_confirmed" "mode=wait_retry attempt=$confirmRetryCount"
+            }
+        }
+        $nextConfirmRetry = (Get-Date).AddSeconds(12)
     }
     elseif ((Get-Date) -ge $noOutputDeadline) {
         Write-Stage "output_file_not_started" "wait_seconds=$NoOutputTimeoutSeconds"

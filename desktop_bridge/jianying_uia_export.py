@@ -821,7 +821,37 @@ def export_draft_uia(
                 "uia2_export_confirmed",
                 f"mode=coordinate_fallback x={confirm_point[0]} y={confirm_point[1]}",
             )
-    _minimize_jianying_window(export_window, stage, "export_wait")
+
+    # Do not hide JianYing merely because a click was sent. QML export buttons
+    # can reject UIA/coordinate clicks while leaving the dialog unchanged. In
+    # that case Enter is a safe fourth confirmation method because we have
+    # already verified that the active window is the real export dialog.
+    confirmation_accepted = False
+    confirmation_deadline = time.monotonic() + 5
+    while time.monotonic() < confirmation_deadline:
+        candidate = _latest_numbered_export(source, export_started_at)
+        if candidate is not None:
+            try:
+                confirmation_accepted = candidate.stat().st_size > 0
+            except OSError:
+                confirmation_accepted = False
+        if confirmation_accepted:
+            break
+        try:
+            _current_window, current_state = _get_window(auto)
+            if current_state != "pre_export":
+                confirmation_accepted = True
+                break
+        except JianyingUIAError:
+            confirmation_accepted = True
+            break
+        time.sleep(0.5)
+    if not confirmation_accepted:
+        _force_foreground(export_window)
+        auto.SendKeys("{ENTER}")
+        _emit(stage, "uia2_export_confirm_retry", "mode=keyboard_enter")
+    else:
+        _minimize_jianying_window(export_window, stage, "export_wait")
 
     deadline = time.monotonic() + max(30, int(timeout))
     last_size = -1
@@ -847,6 +877,9 @@ def export_draft_uia(
         if current_source is not None:
             source = current_source
             size = source.stat().st_size
+            if size > 0 and not confirmation_accepted:
+                confirmation_accepted = True
+                _minimize_jianying_window(export_window, stage, "output_started")
             if size > 0 and size == last_size:
                 stable_count += 1
                 if stable_count >= 3:

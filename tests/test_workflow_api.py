@@ -167,9 +167,9 @@ class WorkflowApiTests(unittest.TestCase):
             with patch.object(fastapi_app, "ROOT", root):
                 response = fastapi_app.api_download_draft_bridge()
             self.assertEqual(Path(response.path), executable)
-            self.assertIn("AI-Video-Creator-v1.4.78.exe", response.headers["content-disposition"])
+            self.assertIn("AI-Video-Creator-v1.4.79.exe", response.headers["content-disposition"])
             self.assertIn("no-store", response.headers["cache-control"])
-            self.assertEqual(response.headers["x-helper-version"], "1.4.78")
+            self.assertEqual(response.headers["x-helper-version"], "1.4.79")
             self.assertEqual(
                 response.headers["x-content-sha256"],
                 hashlib.sha256(executable.read_bytes()).hexdigest(),
@@ -179,7 +179,7 @@ class WorkflowApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/draft-key-renders/status")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["latest_helper_version"], "1.4.78")
+        self.assertEqual(response.json()["latest_helper_version"], "1.4.79")
 
     def test_spa_index_must_revalidate_after_frontend_deploy(self):
         with tempfile.TemporaryDirectory(prefix="frontend-dist-") as temporary:
@@ -991,6 +991,72 @@ class WorkflowApiTests(unittest.TestCase):
             self.assertEqual(caption["transform_y"], -1200)
             for key_name, value in style.items():
                 self.assertEqual(caption[key_name], value)
+
+    def test_published_book_final_long_image_gets_in_range_motion_keyframes(self):
+        key = {
+            "calls": [
+                {
+                    "call_id": "call_191365",
+                    "tool": "add_images",
+                    "params": {
+                        "image_infos": [
+                            {"start": 0, "end": 4_000_000},
+                            {"start": 4_000_000, "end": 14_000_000},
+                        ]
+                    },
+                },
+                {
+                    "call_id": "call_300101",
+                    "tool": "add_keyframes",
+                    "params": {
+                        "keyframes": [
+                            {
+                                "segment_ref": {"call_id": "call_191365", "index": 1},
+                                "property": "KFTypePositionX",
+                                "offset": 0,
+                                "value": 0,
+                            },
+                            {
+                                "segment_ref": {"call_id": "call_191365", "index": 1},
+                                "property": "KFTypePositionX",
+                                "offset": 10_000_000,
+                                "value": 0,
+                            },
+                            {
+                                "segment_ref": {"call_id": "call_191365", "index": 1},
+                                "property": "UNIFORM_SCALE",
+                                "offset": 0,
+                                "value": 1.5,
+                            },
+                            {
+                                "segment_ref": {"call_id": "call_191365", "index": 1},
+                                "property": "UNIFORM_SCALE",
+                                "offset": 10_000_000,
+                                "value": 1.55,
+                            },
+                        ]
+                    },
+                },
+            ]
+        }
+
+        workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN01"}, key)
+
+        frames = key["calls"][1]["params"]["keyframes"]
+        final_frames = [
+            frame
+            for frame in frames
+            if frame["segment_ref"] == {"call_id": "call_191365", "index": 1}
+        ]
+        self.assertEqual(len(final_frames), 12)
+        self.assertTrue(all(frame["offset"] < 10_000_000 for frame in final_frames))
+        x_values = [
+            frame["value"]
+            for frame in final_frames
+            if frame["property"] == "KFTypePositionX"
+        ]
+        self.assertGreater(max(x_values) - min(x_values), 0.05)
+        self.assertTrue(key["meta"]["final_image_motion_repaired"])
 
     def test_published_book_draft_prefers_semantic_caption_breaks(self):
         text = "师徒四人，就像四季里的风，春的炽热，夏的温润，秋的深沉。"
