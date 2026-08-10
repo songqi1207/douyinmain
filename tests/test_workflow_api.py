@@ -2134,6 +2134,12 @@ class WorkflowApiTests(unittest.TestCase):
         finally:
             self.client.delete(f"/api/v1/render-devices/{paired.json()['device_id']}")
 
+    def test_previous_compatible_helper_can_claim_render_jobs(self):
+        self.assertTrue(fastapi_app._helper_version_at_least("1.4.81", "1.4.81"))
+        self.assertTrue(fastapi_app._helper_version_at_least("1.4.82", "1.4.81"))
+        self.assertFalse(fastapi_app._helper_version_at_least("1.4.80", "1.4.81"))
+        self.assertFalse(fastapi_app._helper_version_at_least("invalid", "1.4.81"))
+
     def test_z_user_computer_can_pair_claim_and_return_native_mp4(self):
         pairing = self.client.post("/api/v1/render-devices/pairing-codes")
         self.assertEqual(pairing.status_code, 201, pairing.text)

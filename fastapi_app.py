@@ -134,6 +134,17 @@ ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger("workflow.api")
 RUNTIME_ENV_PATH = ROOT / ".env"
 JIANYING_COMPAT_VERSION = "5.9.0.11632"
+MINIMUM_RENDER_HELPER_VERSION = "1.4.81"
+
+
+def _helper_version_at_least(version: str, minimum: str) -> bool:
+    try:
+        current = tuple(int(part) for part in str(version).split("."))
+        required = tuple(int(part) for part in str(minimum).split("."))
+    except (TypeError, ValueError):
+        return False
+    width = max(len(current), len(required))
+    return current + (0,) * (width - len(current)) >= required + (0,) * (width - len(required))
 JIANYING_COMPAT_DOWNLOAD_URL = (
     os.getenv("JIANYING_COMPAT_DOWNLOAD_URL") or
     "https://lf3-package.vlabstatic.com/obj/faceu-packages/"
@@ -1094,7 +1105,9 @@ def api_render_agent_claim(request: Request):
     reported_helper_version = str(
         (device.get("capabilities") or {}).get("helper_version") or ""
     ).strip()
-    if reported_helper_version and reported_helper_version != HELPER_VERSION:
+    if reported_helper_version and not _helper_version_at_least(
+        reported_helper_version, MINIMUM_RENDER_HELPER_VERSION
+    ):
         raise HTTPException(
             status_code=426,
             detail={
