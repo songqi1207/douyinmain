@@ -11,6 +11,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import requests
 from PIL import Image
 
 from desktop_bridge.core import (
@@ -31,6 +32,7 @@ from desktop_bridge.device_agent import (
     _recover_recent_local_export,
     _run_native_export,
     _run_pyjianying_export,
+    _upload_device_result,
     _without_one_click_enhance,
     normalize_site_url,
     pair_with_site,
@@ -183,6 +185,47 @@ class DesktopBridgeTests(unittest.TestCase):
         )
 
         self.assertFalse(agent._session.trust_env)
+
+    def test_large_video_upload_retries_interrupted_part_without_restarting_manifest(self):
+        with tempfile.TemporaryDirectory(prefix="device-upload-retry-") as temporary:
+            output = Path(temporary) / "result.mp4"
+            output.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"v" * (9 * 1024 * 1024)))
+            created = MagicMock(status_code=201)
+            created.json.return_value = {"upload_id": "a" * 32}
+            uploaded = MagicMock(status_code=200)
+            completed = MagicMock(status_code=200)
+            agent = MagicMock()
+            agent._request.side_effect = [
+                created,
+                requests.ConnectionError("temporary disconnect"),
+                *([uploaded] * 10),
+                completed,
+            ]
+
+            with patch.dict(
+                os.environ,
+                {
+                    "DEVICE_RESULT_CHUNK_THRESHOLD_BYTES": str(8 * 1024 * 1024),
+                    "DEVICE_RESULT_CHUNK_BYTES": str(1024 * 1024),
+                },
+                clear=False,
+            ), patch("desktop_bridge.device_agent.time.sleep"):
+                response = _upload_device_result(agent, "job-1", output)
+
+            self.assertIs(response, completed)
+            create_calls = [
+                call for call in agent._request.call_args_list
+                if call.args[:2] == ("POST", "/api/v1/render-agent/jobs/job-1/uploads")
+            ]
+            self.assertEqual(len(create_calls), 1)
+            first_part_calls = [
+                call for call in agent._request.call_args_list
+                if call.args[:2] == (
+                    "PUT",
+                    f"/api/v1/render-agent/jobs/job-1/uploads/{'a' * 32}/1",
+                )
+            ]
+            self.assertEqual(len(first_part_calls), 2)
 
     def test_interaction_recorder_uses_window_relative_coordinates(self):
         point = normalize_recorded_point(1800, 900, (1000, 100, 2000, 1100))

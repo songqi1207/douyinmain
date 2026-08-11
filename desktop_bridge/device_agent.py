@@ -1449,10 +1449,10 @@ def _upload_device_result(
             )
 
     part_bytes = max(
-        5 * 1024 * 1024,
+        512 * 1024,
         min(
-            32 * 1024 * 1024,
-            int(os.getenv("DEVICE_RESULT_CHUNK_BYTES") or 5 * 1024 * 1024),
+            8 * 1024 * 1024,
+            int(os.getenv("DEVICE_RESULT_CHUNK_BYTES") or 1024 * 1024),
         ),
     )
     size_bytes = output_path.stat().st_size
@@ -1476,19 +1476,35 @@ def _upload_device_result(
         for part_number in range(1, total_parts + 1):
             chunk = stream.read(part_bytes)
             response = None
-            for attempt in range(1, 4):
-                response = agent._request(
-                    "PUT",
-                    f"/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/{part_number}",
-                    files={"chunk": (f"part-{part_number}", chunk, "application/octet-stream")},
-                    timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
-                )
-                if response.status_code in {200, 201, 204}:
-                    break
-                if response.status_code not in {408, 429, 500, 502, 503, 504} or attempt == 3:
+            last_part_error: requests.RequestException | None = None
+            for attempt in range(1, 6):
+                try:
+                    response = agent._request(
+                        "PUT",
+                        f"/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/{part_number}",
+                        files={"chunk": (f"part-{part_number}", chunk, "application/octet-stream")},
+                        timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
+                    )
+                    if response.status_code in {200, 201, 204}:
+                        last_part_error = None
+                        break
                     response.raise_for_status()
-                time.sleep(attempt)
-            if response is None:
+                except requests.RequestException as exc:
+                    last_part_error = exc
+                    logger.warning(
+                        "device_result_part_upload_failed job_id=%s upload_id=%s part=%s/%s attempt=%s/5 error=%s",
+                        job_id,
+                        upload_id,
+                        part_number,
+                        total_parts,
+                        attempt,
+                        exc,
+                    )
+                    if attempt < 5:
+                        time.sleep(min(8, attempt * 2))
+            if response is None or last_part_error is not None:
+                if last_part_error is not None:
+                    raise last_part_error
                 raise requests.RequestException(f"视频分片 {part_number} 上传失败")
 
     return agent._request(
