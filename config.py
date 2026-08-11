@@ -31,7 +31,7 @@ CDN_TOKEN = (os.getenv("CDN_TOKEN") or os.getenv("BOLTP_TOKEN") or "").strip()
 # 图床储存 ID：boltp.com 免费用户=2，VIP=3
 CDN_STORAGE_ID = int(os.getenv("CDN_STORAGE_ID", "2"))
 # 图床过期天数：正数=保留天数，<=0 表示不传 expired_at（由图床按默认策略存；公开图通常不过期）
-CDN_EXPIRE_DAYS = int(os.getenv("CDN_EXPIRE_DAYS", "30"))
+CDN_EXPIRE_DAYS = int(os.getenv("CDN_EXPIRE_DAYS", "0"))
 # 是否自动移除 EXIF（默认开，避免本机 GPS / 设备信息泄露到公网）
 CDN_REMOVE_EXIF = os.getenv("CDN_REMOVE_EXIF", "true").strip().lower() not in ("0", "false", "no", "off")
 
