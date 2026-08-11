@@ -46,7 +46,7 @@ describe("AdminCreationsPage", () => {
     api.fetchAdminJobs.mockResolvedValue({
       items: [job],
       users: [job.user],
-      summary: { total: 1, users: 1, succeeded: 1, failed: 0, active: 0, points: 100 },
+      summary: { total: 1, users: 1, succeeded: 1, failed: 0, active: 0, global_active: 0, points: 100 },
       total: 1,
       page: 1,
       page_size: 20,
@@ -72,17 +72,31 @@ describe("AdminCreationsPage", () => {
     api.fetchAdminJobs.mockResolvedValue({
       items: [{ ...job, id: "job-active", status: "rendering", stage: "waiting_for_device", progress: 78 }],
       users: [job.user],
-      summary: { total: 1, users: 1, succeeded: 0, failed: 0, active: 1, points: 0 },
+      summary: { total: 1, users: 1, succeeded: 0, failed: 0, active: 1, global_active: 1, points: 0 },
       total: 1,
       page: 1,
       page_size: 20,
     });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<MemoryRouter><AdminCreationsPage /></MemoryRouter>);
 
     fireEvent.click(await screen.findByRole("button", { name: "一键清空任务队列 (1)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认清空" }));
 
     await waitFor(() => expect(api.clearAdminJobQueue).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("已清空 1 个活动任务")).toBeInTheDocument();
+  });
+
+  it("keeps the global clear action enabled when the current filter has no active jobs", async () => {
+    api.fetchAdminJobs.mockResolvedValue({
+      items: [job],
+      users: [job.user],
+      summary: { total: 1, users: 1, succeeded: 1, failed: 0, active: 0, global_active: 2, points: 100 },
+      total: 1,
+      page: 1,
+      page_size: 20,
+    });
+    render(<MemoryRouter><AdminCreationsPage /></MemoryRouter>);
+
+    expect(await screen.findByRole("button", { name: "一键清空任务队列 (2)" })).toBeEnabled();
   });
 });

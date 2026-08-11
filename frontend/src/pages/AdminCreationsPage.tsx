@@ -29,6 +29,7 @@ const EMPTY_SUMMARY: AdminJobPage["summary"] = {
   succeeded: 0,
   failed: 0,
   active: 0,
+  global_active: 0,
   points: 0,
 };
 
@@ -51,6 +52,7 @@ export function AdminCreationsPage() {
   const [preview, setPreview] = useState<{ jobId: string; url: string; poster?: string | null } | null>(null);
   const [retryingId, setRetryingId] = useState("");
   const [clearingQueue, setClearingQueue] = useState(false);
+  const [confirmingQueueClear, setConfirmingQueueClear] = useState(false);
   const [queueMessage, setQueueMessage] = useState("");
 
   async function load() {
@@ -102,13 +104,9 @@ export function AdminCreationsPage() {
   }
 
   async function clearQueue() {
-    if (summary.active <= 0 || clearingQueue) return;
-    const confirmed = window.confirm(tr(
-      `确定清空当前 ${summary.active} 个活动任务吗？排队、生成中和剪映导出中的任务会被删除，冻结积分会退回；已完成作品不受影响。`,
-      `Clear all ${summary.active} active jobs? Queued, generating and rendering jobs will be deleted and frozen credits refunded. Completed work is kept.`,
-    ));
-    if (!confirmed) return;
+    if (summary.global_active <= 0 || clearingQueue) return;
     setClearingQueue(true);
+    setConfirmingQueueClear(false);
     setQueueMessage("");
     try {
       const result = await clearAdminJobQueue();
@@ -130,11 +128,22 @@ export function AdminCreationsPage() {
         <div className="page-heading admin-creations-heading">
           <span className="page-icon"><UsersRound /></span>
           <div><h1>{tr("全站创作管理", "All Creations")}</h1><p>{tr("查看每个用户创建的工作流任务、积分消费和最终视频。", "Review every user's workflow jobs, credit usage and delivered videos.")}</p></div>
-          <button className="admin-clear-queue" type="button" disabled={summary.active <= 0 || clearingQueue} onClick={() => void clearQueue()}>
+          <button className="admin-clear-queue" type="button" disabled={summary.global_active <= 0 || clearingQueue} onClick={() => setConfirmingQueueClear(true)}>
             {clearingQueue ? <LoaderCircle className="spin" /> : <Trash2 />}
-            {clearingQueue ? tr("正在清空", "Clearing") : tr(`一键清空任务队列 (${summary.active})`, `Clear active queue (${summary.active})`)}
+            {clearingQueue ? tr("正在清空", "Clearing") : tr(`一键清空任务队列 (${summary.global_active})`, `Clear active queue (${summary.global_active})`)}
           </button>
         </div>
+
+        {confirmingQueueClear && (
+          <section className="admin-clear-confirm" role="alertdialog" aria-label={tr("确认清空任务队列", "Confirm queue clear")}>
+            <div>
+              <strong>{tr(`确认清空 ${summary.global_active} 个活动任务？`, `Clear ${summary.global_active} active jobs?`)}</strong>
+              <span>{tr("排队、生成中和剪映导出中的任务会被删除，冻结积分会退回；已完成作品不受影响。", "Queued, generating and rendering jobs will be deleted and frozen credits refunded. Completed work is kept.")}</span>
+            </div>
+            <button type="button" className="admin-clear-confirm-danger" onClick={() => void clearQueue()}>{tr("确认清空", "Clear queue")}</button>
+            <button type="button" onClick={() => setConfirmingQueueClear(false)}>{tr("取消", "Cancel")}</button>
+          </section>
+        )}
 
         <section className="admin-creation-summary">
           <article><UsersRound /><div><small>{tr("创作用户", "Creators")}</small><strong>{summary.users}</strong></div></article>

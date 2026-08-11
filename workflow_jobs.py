@@ -486,7 +486,15 @@ def list_admin_jobs(
                 ORDER BY created_at DESC LIMIT ? OFFSET ?""",
             (*parameters, page_size, offset),
         ).fetchall()
+        global_active = int(
+            db.execute(
+                "SELECT COUNT(*) FROM jobs WHERE status IN ('queued', 'running', 'rendering')"
+            ).fetchone()[0]
+        )
     summary = {key: int(summary_row[key] or 0) for key in ("total", "users", "succeeded", "failed", "active", "points")}
+    # The clear-queue control is global. Keep its count independent from the
+    # administrator's current status/user/workflow/search filters.
+    summary["global_active"] = global_active
     return [job for row in rows if (job := get_job(row["id"]))], summary["total"], summary
 
 

@@ -188,6 +188,7 @@ export type AdminJobPage = {
     succeeded: number;
     failed: number;
     active: number;
+    global_active: number;
     points: number;
   };
   total: number;
