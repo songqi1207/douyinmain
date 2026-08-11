@@ -1219,6 +1219,39 @@ class WorkflowApiTests(unittest.TestCase):
             7_224_000,
         )
 
+    def test_published_god_draft_rejects_empty_main_image_urls(self):
+        key = {
+            "meta": {"unresolved_segment_ids": []},
+            "calls": [
+                {
+                    "call_id": "main_images",
+                    "tool": "add_images",
+                    "params": {
+                        "image_infos": [
+                            {"image_url": "", "start": 0, "end": 4_000_000},
+                            {"start": 4_000_000, "end": 8_000_000},
+                        ]
+                    },
+                }
+            ],
+        }
+
+        with self.assertRaises(workflow_jobs.ProviderError) as raised:
+            workflow_jobs._validate_published_draft_completeness(
+                {"workflow_code": "OWN03"},
+                key,
+            )
+
+        self.assertEqual(raised.exception.code, "incomplete_draft_key")
+
+        key["calls"][0]["params"]["image_infos"][0]["image_url"] = (
+            "https://example.test/chang-e.png"
+        )
+        workflow_jobs._validate_published_draft_completeness(
+            {"workflow_code": "OWN03"},
+            key,
+        )
+
         opening = {
             "calls": [
                 {

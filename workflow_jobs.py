@@ -1608,6 +1608,7 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
     if not isinstance(calls, list):
         calls = []
     damaged_caption_ids = []
+    empty_required_image_ids = []
     for call in calls:
         if not isinstance(call, dict) or call.get("tool") != "add_captions":
             continue
@@ -1622,8 +1623,36 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
         ):
             damaged_caption_ids.append(str(call.get("call_id") or "unknown"))
 
+    required_image_call_ids = {
+        # Fixed intro/background artwork is not a substitute for the
+        # generated mythology subject images used by the body.
+        "OWN03": {"main_images"},
+    }.get(code, set())
+    for call_id in sorted(required_image_call_ids):
+        image_call = next(
+            (
+                item
+                for item in calls
+                if isinstance(item, dict)
+                and str(item.get("call_id") or "") == call_id
+                and item.get("tool") == "add_images"
+            ),
+            None,
+        )
+        params = (
+            image_call.get("params")
+            if isinstance((image_call or {}).get("params"), dict)
+            else {}
+        )
+        image_infos = params.get("image_infos")
+        if not isinstance(image_infos, list) or not any(
+            isinstance(info, dict) and str(info.get("image_url") or "").strip()
+            for info in image_infos
+        ):
+            empty_required_image_ids.append(call_id)
+
     expected_ids = _EXPECTED_PUBLISHED_DRAFT_CALL_IDS.get(code, set())
-    if not expected_ids and not damaged_caption_ids:
+    if not expected_ids and not damaged_caption_ids and not empty_required_image_ids:
         return
 
     actual_ids = {
@@ -1639,7 +1668,7 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
         for value in (meta.get("unresolved_segment_ids") or [])
         if str(value)
     ]
-    if not missing_ids and not unresolved and not damaged_caption_ids:
+    if not missing_ids and not unresolved and not damaged_caption_ids and not empty_required_image_ids:
         return
 
     skipped_titles = {
@@ -1660,6 +1689,8 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
         details.append("存在未解析片段：" + "、".join(sorted(set(unresolved))[:10]))
     if damaged_caption_ids:
         details.append("存在乱码字幕：" + "、".join(sorted(set(damaged_caption_ids))))
+    if empty_required_image_ids:
+        details.append("必须主体图片为空：" + "、".join(empty_required_image_ids))
 
     job_id = str(job.get("id") or "").strip()
     if job_id:
@@ -1668,13 +1699,14 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
         try:
             rejected_file.write_text(json.dumps(draft_key, ensure_ascii=False, indent=2), encoding="utf-8")
             logger.warning(
-                "draft_key_rejected job_id=%s workflow=%s file=%s missing=%s unresolved=%s damaged_captions=%s",
+                "draft_key_rejected job_id=%s workflow=%s file=%s missing=%s unresolved=%s damaged_captions=%s empty_required_images=%s",
                 job_id,
                 code,
                 rejected_file.name,
                 ",".join(missing_ids) or "-",
                 len(unresolved),
                 ",".join(sorted(set(damaged_caption_ids))) or "-",
+                ",".join(empty_required_image_ids) or "-",
             )
         except OSError:
             logger.exception("draft_key_reject_dump_failed job_id=%s", job_id)
@@ -1689,6 +1721,8 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
         public_details.append("部分分镜片段没有匹配到素材")
     if damaged_caption_ids:
         public_details.append("部分字幕发生编码损坏")
+    if empty_required_image_ids:
+        public_details.append("主体配图没有生成成功")
     public_suffix = "；".join(public_details) or "部分素材没有生成完整"
     raise ProviderError(
         "incomplete_draft_key",
