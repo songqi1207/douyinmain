@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "songqi-api-proxy",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "api.songqi.online/*",
+      "zone_name": "songqi.online"
+    }
+  ]
+}

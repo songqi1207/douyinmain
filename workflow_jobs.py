@@ -903,7 +903,7 @@ def _lookup_book_author(title: str) -> str:
     if not normalized_title:
         return ""
     headers = {
-        "User-Agent": "AI-Video-Creator/1.0 (+http://139.155.153.59/)",
+        "User-Agent": "AI-Video-Creator/1.0 (+https://api.songqi.online/)",
         "Accept": "application/json",
     }
     session = requests.Session()
