@@ -64,5 +64,8 @@ frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
 
+# Cloudflare Wrangler local deployment state
+.wrangler/
+
 # PyInstaller 临时构建目录；dist 中的桥接 EXE 是交付产物。
 build/
