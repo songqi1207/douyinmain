@@ -203,6 +203,35 @@ async function deleteExport(request, env, key) {
   return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
 }
 
+async function listExports(request, env, url) {
+  if (!authorizedUpload(request, env)) {
+    return errorResponse(401, "Unauthorized");
+  }
+  const requestedLimit = Number(url.searchParams.get("limit") || 500);
+  const limit = Number.isInteger(requestedLimit)
+    ? Math.max(1, Math.min(1000, requestedLimit))
+    : 500;
+  const cursor = String(url.searchParams.get("cursor") || "");
+  const listed = await env.PUBLIC_BUCKET.list({
+    prefix: "exports/",
+    limit,
+    ...(cursor ? { cursor } : {}),
+  });
+  return Response.json(
+    {
+      objects: listed.objects.map((object) => ({
+        key: object.key,
+        size: object.size,
+        etag: object.httpEtag,
+        uploaded: object.uploaded?.toISOString() || null,
+      })),
+      truncated: listed.truncated,
+      cursor: listed.truncated ? listed.cursor : null,
+    },
+    { headers: { ...CORS_HEADERS, "cache-control": "no-store" } },
+  );
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === "OPTIONS") {
@@ -214,6 +243,10 @@ export default {
 
     const url = new URL(request.url);
     const action = url.searchParams.get("action");
+
+    if (request.method === "GET" && action === "list") {
+      return listExports(request, env, url);
+    }
 
     if (request.method === "POST" && action === "mpu-create") {
       return createMultipartExport(request, env, key);
