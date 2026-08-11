@@ -167,9 +167,9 @@ class WorkflowApiTests(unittest.TestCase):
             with patch.object(fastapi_app, "ROOT", root):
                 response = fastapi_app.api_download_draft_bridge()
             self.assertEqual(Path(response.path), executable)
-            self.assertIn("AI-Video-Creator-v1.4.82.exe", response.headers["content-disposition"])
+            self.assertIn("AI-Video-Creator-v1.4.83.exe", response.headers["content-disposition"])
             self.assertIn("no-store", response.headers["cache-control"])
-            self.assertEqual(response.headers["x-helper-version"], "1.4.82")
+            self.assertEqual(response.headers["x-helper-version"], "1.4.83")
             self.assertEqual(
                 response.headers["x-content-sha256"],
                 hashlib.sha256(executable.read_bytes()).hexdigest(),
@@ -179,7 +179,7 @@ class WorkflowApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/draft-key-renders/status")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["latest_helper_version"], "1.4.82")
+        self.assertEqual(response.json()["latest_helper_version"], "1.4.83")
 
     def test_spa_index_must_revalidate_after_frontend_deploy(self):
         with tempfile.TemporaryDirectory(prefix="frontend-dist-") as temporary:
@@ -2163,7 +2163,7 @@ class WorkflowApiTests(unittest.TestCase):
             claimed = TestClient(app).post("/api/v1/render-agent/claim", headers=headers)
             self.assertEqual(claimed.status_code, 426, claimed.text)
             self.assertEqual(claimed.json()["detail"]["code"], "helper_update_required")
-            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.82")
+            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.83")
         finally:
             self.client.delete(f"/api/v1/render-devices/{paired.json()['device_id']}")
 
@@ -2267,6 +2267,36 @@ class WorkflowApiTests(unittest.TestCase):
                 hosted = self.client.get(result_url)
                 self.assertEqual(hosted.status_code, 200)
                 self.assertEqual(hosted.content, mp4)
+
+                chunked_created = self.client.post("/api/v1/draft-key-renders", json={"draft_key": key})
+                self.assertEqual(chunked_created.status_code, 202, chunked_created.text)
+                chunked_job_id = chunked_created.json()["job"]["id"]
+                chunked_claim = TestClient(app).post("/api/v1/render-agent/claim", headers=headers)
+                self.assertEqual(chunked_claim.status_code, 200, chunked_claim.text)
+                self.assertEqual(chunked_claim.json()["task"]["job_id"], chunked_job_id)
+                split_at = 15
+                upload = TestClient(app).post(
+                    f"/api/v1/render-agent/jobs/{chunked_job_id}/uploads",
+                    headers=headers,
+                    json={"filename": "large.mp4", "size_bytes": len(mp4), "total_parts": 2},
+                )
+                self.assertEqual(upload.status_code, 201, upload.text)
+                upload_id = upload.json()["upload_id"]
+                for number, content in enumerate((mp4[:split_at], mp4[split_at:]), start=1):
+                    uploaded_part = TestClient(app).put(
+                        f"/api/v1/render-agent/jobs/{chunked_job_id}/uploads/{upload_id}/{number}",
+                        headers=headers,
+                        files={"chunk": (f"part-{number}", content, "application/octet-stream")},
+                    )
+                    self.assertEqual(uploaded_part.status_code, 200, uploaded_part.text)
+                chunked_completed = TestClient(app).post(
+                    f"/api/v1/render-agent/jobs/{chunked_job_id}/uploads/{upload_id}/complete",
+                    headers=headers,
+                )
+                self.assertEqual(chunked_completed.status_code, 200, chunked_completed.text)
+                self.assertEqual(chunked_completed.json()["job"]["status"], "succeeded")
+                chunked_url = chunked_completed.json()["job"]["results"][0]["url"]
+                self.assertEqual(self.client.get(chunked_url).content, mp4)
 
                 failed_created = self.client.post("/api/v1/draft-key-renders", json={"draft_key": key})
                 self.assertEqual(failed_created.status_code, 202, failed_created.text)

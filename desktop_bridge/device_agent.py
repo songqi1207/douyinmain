@@ -1362,7 +1362,11 @@ def _recover_recent_local_export(
         home / "OneDrive" / "Desktop",
         home / "OneDrive" / "Documents",
     ]
-    candidates: list[tuple[float, int, Path]] = []
+    job_id = str(task.get("job_id") or "").strip().lower()
+    draft_name = str(
+        ((task.get("draft_key") or {}).get("draft") or {}).get("name") or ""
+    ).strip().lower()
+    candidates: list[tuple[int, float, int, Path]] = []
     visited: set[Path] = set()
     for raw_root in roots:
         try:
@@ -1393,11 +1397,20 @@ def _recover_recent_local_export(
                             continue
                 except OSError:
                     continue
-                candidates.append((stat.st_mtime, stat.st_size, candidate))
+                stem = candidate.stem.strip().lower()
+                priority = 1
+                if job_id and (stem == job_id or stem.startswith(f"{job_id} (")):
+                    priority = 3
+                elif draft_name and (stem == draft_name or stem.startswith(f"{draft_name} (")):
+                    priority = 2
+                candidates.append((priority, stat.st_mtime, stat.st_size, candidate))
     if not candidates:
         return None
 
-    _modified_at, _size, source = max(candidates, key=lambda item: (item[0], item[1]))
+    _priority, _modified_at, _size, source = max(
+        candidates,
+        key=lambda item: (item[0], item[1], item[2]),
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     target = (output_dir / f"{task['job_id']}.mp4").resolve()
     if source.resolve() != target:
@@ -1413,6 +1426,76 @@ def _recover_recent_local_export(
         target.stat().st_size,
     )
     return target
+
+
+def _upload_device_result(
+    agent: "DeviceAgent",
+    job_id: str,
+    output_path: Path,
+) -> requests.Response:
+    """Upload a result, splitting large files so Cloudflare never sees a huge request."""
+
+    threshold = max(
+        8 * 1024 * 1024,
+        int(os.getenv("DEVICE_RESULT_CHUNK_THRESHOLD_BYTES") or 48 * 1024 * 1024),
+    )
+    if output_path.stat().st_size <= threshold:
+        with output_path.open("rb") as stream:
+            return agent._request(
+                "POST",
+                f"/api/v1/render-agent/jobs/{job_id}/complete",
+                files={"video": (output_path.name, stream, "video/mp4")},
+                timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
+            )
+
+    part_bytes = max(
+        5 * 1024 * 1024,
+        min(
+            32 * 1024 * 1024,
+            int(os.getenv("DEVICE_RESULT_CHUNK_BYTES") or 24 * 1024 * 1024),
+        ),
+    )
+    size_bytes = output_path.stat().st_size
+    total_parts = (size_bytes + part_bytes - 1) // part_bytes
+    created = agent._request(
+        "POST",
+        f"/api/v1/render-agent/jobs/{job_id}/uploads",
+        json={
+            "filename": output_path.name,
+            "size_bytes": size_bytes,
+            "total_parts": total_parts,
+        },
+        timeout=30,
+    )
+    created.raise_for_status()
+    upload_id = str((created.json() or {}).get("upload_id") or "")
+    if not upload_id:
+        raise requests.RequestException("服务器没有返回分片上传编号")
+
+    with output_path.open("rb") as stream:
+        for part_number in range(1, total_parts + 1):
+            chunk = stream.read(part_bytes)
+            response = None
+            for attempt in range(1, 4):
+                response = agent._request(
+                    "PUT",
+                    f"/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/{part_number}",
+                    files={"chunk": (f"part-{part_number}", chunk, "application/octet-stream")},
+                    timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
+                )
+                if response.status_code in {200, 201, 204}:
+                    break
+                if response.status_code not in {408, 429, 500, 502, 503, 504} or attempt == 3:
+                    response.raise_for_status()
+                time.sleep(attempt)
+            if response is None:
+                raise requests.RequestException(f"视频分片 {part_number} 上传失败")
+
+    return agent._request(
+        "POST",
+        f"/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/complete",
+        timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
+    )
 
 
 class DeviceAgent:
@@ -1584,13 +1667,7 @@ class DeviceAgent:
             last_upload_error: requests.RequestException | None = None
             for attempt in range(1, upload_attempts + 1):
                 try:
-                    with output_path.open("rb") as stream:
-                        response = self._request(
-                            "POST",
-                            f"/api/v1/render-agent/jobs/{job_id}/complete",
-                            files={"video": (output_path.name, stream, "video/mp4")},
-                            timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
-                        )
+                    response = _upload_device_result(self, job_id, output_path)
                     response.raise_for_status()
                     last_upload_error = None
                     break

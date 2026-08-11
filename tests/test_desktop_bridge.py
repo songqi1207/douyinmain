@@ -141,6 +141,29 @@ class DesktopBridgeTests(unittest.TestCase):
             self.assertEqual(recovered, (output / "god-job.mp4").resolve())
             self.assertEqual(recovered.read_bytes(), exported.read_bytes())
 
+    def test_recover_local_export_prefers_matching_job_over_newer_other_video(self):
+        with tempfile.TemporaryDirectory(prefix="recover-matching-export-") as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            output = root / "output"
+            videos = home / "Videos"
+            videos.mkdir(parents=True)
+            now = time.time()
+            expected = videos / "target-job (1).mp4"
+            unrelated = videos / "newer-other-job.mp4"
+            expected.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"a" * 100_000))
+            unrelated.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"b" * 100_000))
+            os.utime(expected, (now - 5, now - 5))
+            os.utime(unrelated, (now, now))
+
+            recovered = _recover_recent_local_export(
+                {"job_id": "target-job", "recover_local_after": now - 10},
+                output,
+                home_dir=home,
+            )
+
+            self.assertEqual(recovered.read_bytes(), expected.read_bytes())
+
     def test_device_progress_messages_map_to_truthful_online_stages(self):
         self.assertEqual(_device_progress_state("正在把任务写入本机剪映草稿…"), ("device_importing", 83))
         self.assertEqual(_device_progress_state("草稿已写入，正在验证文件结构……"), ("device_draft_ready", 85))

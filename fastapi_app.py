@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import time
 import uuid
 from copy import deepcopy
@@ -135,6 +136,7 @@ logger = logging.getLogger("workflow.api")
 RUNTIME_ENV_PATH = ROOT / ".env"
 JIANYING_COMPAT_VERSION = "5.9.0.11632"
 MINIMUM_RENDER_HELPER_VERSION = "1.4.81"
+DEVICE_UPLOAD_PART_MAX_BYTES = 40 * 1024 * 1024
 
 
 def _helper_version_at_least(version: str, minimum: str) -> bool:
@@ -1175,6 +1177,163 @@ def _publish_device_video_in_background(job_id: str, result_name: str, destinati
     destination.unlink(missing_ok=True)
 
 
+def _device_upload_directory(job_id: str, upload_id: str) -> Path:
+    if not re.fullmatch(r"[0-9a-f]{32}", str(upload_id or "")):
+        raise HTTPException(status_code=404, detail={"code": "upload_not_found", "message": "上传任务不存在"})
+    root = (RESULT_DIR / ".device-uploads").resolve()
+    candidate = (root / str(job_id) / upload_id).resolve()
+    if root not in candidate.parents:
+        raise HTTPException(status_code=404, detail={"code": "upload_not_found", "message": "上传任务不存在"})
+    return candidate
+
+
+def _finish_received_device_video(
+    job: dict,
+    device: dict,
+    result_name: str,
+    destination: Path,
+    total: int,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    job_id = job["id"]
+    if not complete_device_render_job(job_id, device["id"], result_name):
+        destination.unlink(missing_ok=True)
+        raise HTTPException(status_code=409, detail={"code": "job_not_rendering", "message": "任务状态已变化"})
+    record_video_storage(
+        job_id,
+        job["user_id"],
+        f"/api/v1/job-results/{result_name}",
+        f"/api/v1/job-results/{result_name}",
+        total,
+    )
+    if r2_export_configured():
+        append_job_log(job_id, "视频已回传，正在后台压缩并上传到 R2")
+        background_tasks.add_task(
+            _publish_device_video_in_background,
+            job_id,
+            result_name,
+            destination,
+        )
+    heartbeat_device(device["id"])
+    return {"job": _public_job(get_job(job_id))}
+
+
+@app.post("/api/v1/render-agent/jobs/{job_id}/uploads", status_code=201)
+def api_create_render_agent_upload(job_id: str, request: Request, payload: dict = Body(default_factory=dict)):
+    device = _require_render_device(request)
+    job = get_job(job_id)
+    if not job or job.get("render_device_id") != device["id"] or job.get("status") != "rendering":
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "导出任务不存在"})
+    try:
+        size_bytes = int(payload.get("size_bytes") or 0)
+        total_parts = int(payload.get("total_parts") or 0)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail={"code": "invalid_upload", "message": "上传参数无效"}) from exc
+    max_bytes = int(os.getenv("DEVICE_RENDER_MAX_UPLOAD_BYTES") or 2 * 1024 * 1024 * 1024)
+    if size_bytes < 12 or size_bytes > max_bytes or total_parts < 1 or total_parts > 512:
+        raise HTTPException(status_code=422, detail={"code": "invalid_upload", "message": "上传文件大小或分片数量无效"})
+    upload_id = uuid.uuid4().hex
+    directory = _device_upload_directory(job_id, upload_id)
+    directory.mkdir(parents=True, exist_ok=False)
+    manifest = {
+        "job_id": job_id,
+        "device_id": device["id"],
+        "size_bytes": size_bytes,
+        "total_parts": total_parts,
+        "created_at": time.time(),
+    }
+    (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    heartbeat_device(device["id"])
+    return {"upload_id": upload_id}
+
+
+def _load_device_upload(job_id: str, upload_id: str, device_id: str) -> tuple[Path, dict]:
+    directory = _device_upload_directory(job_id, upload_id)
+    try:
+        manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail={"code": "upload_not_found", "message": "上传任务不存在"}) from exc
+    if manifest.get("job_id") != job_id or manifest.get("device_id") != device_id:
+        raise HTTPException(status_code=404, detail={"code": "upload_not_found", "message": "上传任务不存在"})
+    return directory, manifest
+
+
+@app.put("/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/{part_number}")
+async def api_upload_render_agent_part(
+    job_id: str,
+    upload_id: str,
+    part_number: int,
+    request: Request,
+    chunk: UploadFile = File(...),
+):
+    device = _require_render_device(request)
+    job = get_job(job_id)
+    if not job or job.get("render_device_id") != device["id"] or job.get("status") != "rendering":
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "导出任务不存在"})
+    directory, manifest = _load_device_upload(job_id, upload_id, device["id"])
+    if part_number < 1 or part_number > int(manifest["total_parts"]):
+        raise HTTPException(status_code=422, detail={"code": "invalid_part", "message": "视频分片编号无效"})
+    destination = directory / f"{part_number:04d}.part"
+    temporary = directory / f".{part_number:04d}.{time.time_ns()}.part"
+    total = 0
+    try:
+        with temporary.open("wb") as stream:
+            while block := await chunk.read(1024 * 1024):
+                total += len(block)
+                if total > DEVICE_UPLOAD_PART_MAX_BYTES:
+                    raise HTTPException(status_code=413, detail={"code": "part_too_large", "message": "视频分片过大"})
+                stream.write(block)
+        if total <= 0:
+            raise HTTPException(status_code=422, detail={"code": "empty_part", "message": "视频分片为空"})
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    heartbeat_device(device["id"])
+    return {"part_number": part_number, "size_bytes": total}
+
+
+@app.post("/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/complete")
+def api_complete_chunked_render_agent_upload(
+    job_id: str,
+    upload_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
+    device = _require_render_device(request)
+    job = get_job(job_id)
+    owned_by_device = bool(job and job.get("render_device_id") == device["id"])
+    if owned_by_device and job.get("status") == "succeeded":
+        return {"job": _public_job(job)}
+    if not owned_by_device or job.get("status") != "rendering":
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "导出任务不存在"})
+    directory, manifest = _load_device_upload(job_id, upload_id, device["id"])
+    parts = [directory / f"{number:04d}.part" for number in range(1, int(manifest["total_parts"]) + 1)]
+    if any(not part.is_file() for part in parts):
+        raise HTTPException(status_code=409, detail={"code": "parts_missing", "message": "视频分片尚未全部上传"})
+    RESULT_DIR.mkdir(parents=True, exist_ok=True)
+    result_name = f"{job_id}-device.mp4"
+    destination = (RESULT_DIR / result_name).resolve()
+    temporary = (RESULT_DIR / f".{result_name}.{time.time_ns()}.part").resolve()
+    total = 0
+    first_chunk = b""
+    try:
+        with temporary.open("wb") as stream:
+            for part in parts:
+                with part.open("rb") as source:
+                    while block := source.read(1024 * 1024):
+                        if not first_chunk:
+                            first_chunk = block[:64]
+                        total += len(block)
+                        stream.write(block)
+        if total != int(manifest["size_bytes"]) or b"ftyp" not in first_chunk:
+            raise HTTPException(status_code=422, detail={"code": "invalid_video", "message": "合并后的视频文件无效"})
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    shutil.rmtree(directory, ignore_errors=True)
+    return _finish_received_device_video(job, device, result_name, destination, total, background_tasks)
+
+
 @app.post("/api/v1/render-agent/jobs/{job_id}/complete")
 async def api_complete_render_agent_job(
     job_id: str,
@@ -1226,31 +1385,7 @@ async def api_complete_render_agent_job(
         if temporary.exists():
             temporary.unlink()
 
-    if not complete_device_render_job(
-        job_id,
-        device["id"],
-        result_name,
-    ):
-        if destination.exists():
-            destination.unlink()
-        raise HTTPException(status_code=409, detail={"code": "job_not_rendering", "message": "任务状态已变化"})
-    record_video_storage(
-        job_id,
-        job["user_id"],
-        f"/api/v1/job-results/{result_name}",
-        f"/api/v1/job-results/{result_name}",
-        total,
-    )
-    if r2_export_configured():
-        append_job_log(job_id, "视频已回传，正在后台压缩并上传到 R2")
-        background_tasks.add_task(
-            _publish_device_video_in_background,
-            job_id,
-            result_name,
-            destination,
-        )
-    heartbeat_device(device["id"])
-    return {"job": _public_job(get_job(job_id))}
+    return _finish_received_device_video(job, device, result_name, destination, total, background_tasks)
 
 
 @app.post("/api/v1/render-agent/jobs/{job_id}/progress")
