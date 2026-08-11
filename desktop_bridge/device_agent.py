@@ -1452,7 +1452,7 @@ def _upload_device_result(
         5 * 1024 * 1024,
         min(
             32 * 1024 * 1024,
-            int(os.getenv("DEVICE_RESULT_CHUNK_BYTES") or 24 * 1024 * 1024),
+            int(os.getenv("DEVICE_RESULT_CHUNK_BYTES") or 5 * 1024 * 1024),
         ),
     )
     size_bytes = output_path.stat().st_size
