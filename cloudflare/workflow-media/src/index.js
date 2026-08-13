@@ -126,11 +126,6 @@ async function uploadExport(request, env, key) {
   const authorization = await authorizedUpload(request, env, key);
   if (!authorization) return errorResponse(401, "Unauthorized");
   const contentLength = Number(request.headers.get("content-length") || 0);
-  const scopedExpectedLength = authorization.kind === "scoped"
-    ? (partNumber === authorization.payload.total_parts
-        ? authorization.payload.size_bytes - authorization.payload.part_bytes * (partNumber - 1)
-        : authorization.payload.part_bytes)
-    : null;
   if (
     !request.body || contentLength <= 0 || contentLength > MAX_EXPORT_BYTES ||
     (authorization.kind === "scoped" && contentLength !== authorization.payload.size_bytes)
@@ -187,6 +182,11 @@ async function uploadMultipartExportPart(request, env, key, url) {
   const uploadId = url.searchParams.get("uploadId");
   const partNumber = Number(url.searchParams.get("partNumber"));
   const contentLength = Number(request.headers.get("content-length") || 0);
+  const scopedExpectedLength = authorization.kind === "scoped"
+    ? (partNumber === authorization.payload.total_parts
+        ? authorization.payload.size_bytes - authorization.payload.part_bytes * (partNumber - 1)
+        : authorization.payload.part_bytes)
+    : null;
   if (
     !request.body ||
     !uploadId ||
