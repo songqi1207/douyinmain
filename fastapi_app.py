@@ -135,7 +135,7 @@ ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger("workflow.api")
 RUNTIME_ENV_PATH = ROOT / ".env"
 JIANYING_COMPAT_VERSION = "5.9.0.11632"
-MINIMUM_RENDER_HELPER_VERSION = "1.4.85"
+MINIMUM_RENDER_HELPER_VERSION = "1.4.86"
 DEVICE_UPLOAD_PART_MAX_BYTES = 40 * 1024 * 1024
 
 

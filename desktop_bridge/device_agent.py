@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Callable
@@ -1472,40 +1473,61 @@ def _upload_device_result(
     if not upload_id:
         raise requests.RequestException("服务器没有返回分片上传编号")
 
-    with output_path.open("rb") as stream:
-        for part_number in range(1, total_parts + 1):
-            chunk = stream.read(part_bytes)
-            response = None
-            last_part_error: requests.RequestException | None = None
-            for attempt in range(1, 6):
-                try:
-                    response = agent._request(
-                        "PUT",
-                        f"/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/{part_number}",
-                        files={"chunk": (f"part-{part_number}", chunk, "application/octet-stream")},
-                        timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
-                    )
-                    if response.status_code in {200, 201, 204}:
-                        last_part_error = None
-                        break
-                    response.raise_for_status()
-                except requests.RequestException as exc:
-                    last_part_error = exc
-                    logger.warning(
-                        "device_result_part_upload_failed job_id=%s upload_id=%s part=%s/%s attempt=%s/5 error=%s",
-                        job_id,
-                        upload_id,
-                        part_number,
-                        total_parts,
-                        attempt,
-                        exc,
-                    )
-                    if attempt < 5:
-                        time.sleep(min(8, attempt * 2))
-            if response is None or last_part_error is not None:
-                if last_part_error is not None:
-                    raise last_part_error
-                raise requests.RequestException(f"视频分片 {part_number} 上传失败")
+    parallel_uploads = max(
+        1,
+        min(6, int(os.getenv("DEVICE_RESULT_PARALLEL_UPLOADS") or 4)),
+    )
+
+    def upload_part(part_number: int) -> int:
+        offset = (part_number - 1) * part_bytes
+        expected_size = min(part_bytes, size_bytes - offset)
+        with output_path.open("rb") as source:
+            source.seek(offset)
+            chunk = source.read(expected_size)
+        if len(chunk) != expected_size:
+            raise requests.RequestException(f"视频分片 {part_number} 读取不完整")
+        response = None
+        last_part_error: requests.RequestException | None = None
+        for attempt in range(1, 6):
+            try:
+                response = agent._request(
+                    "PUT",
+                    f"/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/{part_number}",
+                    files={"chunk": (f"part-{part_number}", chunk, "application/octet-stream")},
+                    timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
+                )
+                if response.status_code in {200, 201, 204}:
+                    return part_number
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                last_part_error = exc
+                logger.warning(
+                    "device_result_part_upload_failed job_id=%s upload_id=%s part=%s/%s attempt=%s/5 error=%s",
+                    job_id,
+                    upload_id,
+                    part_number,
+                    total_parts,
+                    attempt,
+                    exc,
+                )
+                if attempt < 5:
+                    time.sleep(min(8, attempt * 2))
+        if last_part_error is not None:
+            raise last_part_error
+        raise requests.RequestException(f"视频分片 {part_number} 上传失败")
+
+    logger.info(
+        "device_result_parallel_upload_started job_id=%s upload_id=%s parts=%s workers=%s part_bytes=%s",
+        job_id,
+        upload_id,
+        total_parts,
+        parallel_uploads,
+        part_bytes,
+    )
+    with ThreadPoolExecutor(max_workers=parallel_uploads, thread_name_prefix="video-upload") as executor:
+        futures = [executor.submit(upload_part, part_number) for part_number in range(1, total_parts + 1)]
+        for future in as_completed(futures):
+            future.result()
 
     return agent._request(
         "POST",

@@ -207,6 +207,7 @@ class DesktopBridgeTests(unittest.TestCase):
                 {
                     "DEVICE_RESULT_CHUNK_THRESHOLD_BYTES": str(8 * 1024 * 1024),
                     "DEVICE_RESULT_CHUNK_BYTES": str(1024 * 1024),
+                    "DEVICE_RESULT_PARALLEL_UPLOADS": "1",
                 },
                 clear=False,
             ), patch("desktop_bridge.device_agent.time.sleep"):
