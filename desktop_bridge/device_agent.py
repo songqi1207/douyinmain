@@ -1434,42 +1434,41 @@ def _upload_device_result(
     job_id: str,
     output_path: Path,
 ) -> requests.Response:
-    """Upload directly to R2 when available, with the site upload as a fallback."""
+    """Upload to the site first; direct R2 remains an explicit opt-in mode."""
 
     size_bytes = output_path.stat().st_size
-    try:
-        direct = agent._request(
-            "POST",
-            f"/api/v1/render-agent/jobs/{job_id}/direct-upload",
-            json={"filename": output_path.name, "size_bytes": size_bytes},
-            timeout=30,
-        )
-    except requests.RequestException as exc:
-        logger.warning("direct_r2_init_failed_using_site_fallback job_id=%s error=%s", job_id, exc)
-    else:
-        if direct.status_code in {200, 201}:
-            details = direct.json() or {}
-            # Once R2 has issued a scoped session, keep retries on that direct
-            # path. Falling back to a large API upload can wait half an hour on
-            # a dead connection before the outer retry gets another chance.
-            _upload_device_result_direct_to_r2(output_path, details, job_id=job_id)
-            completed = agent._request(
+    delivery_mode = str(os.getenv("DEVICE_RESULT_DELIVERY_MODE") or "server_first").strip().lower()
+    if delivery_mode == "direct_r2":
+        try:
+            direct = agent._request(
                 "POST",
-                f"/api/v1/render-agent/jobs/{job_id}/direct-upload/complete",
-                json={
-                    "public_url": str(details.get("public_url") or ""),
-                    "size_bytes": size_bytes,
-                },
-                timeout=60,
+                f"/api/v1/render-agent/jobs/{job_id}/direct-upload",
+                json={"filename": output_path.name, "size_bytes": size_bytes},
+                timeout=30,
             )
-            completed.raise_for_status()
-            return completed
-        if direct.status_code not in {404, 409, 503}:
-            direct.raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning("direct_r2_init_failed_using_site_fallback job_id=%s error=%s", job_id, exc)
+        else:
+            if direct.status_code in {200, 201}:
+                details = direct.json() or {}
+                _upload_device_result_direct_to_r2(output_path, details, job_id=job_id)
+                completed = agent._request(
+                    "POST",
+                    f"/api/v1/render-agent/jobs/{job_id}/direct-upload/complete",
+                    json={
+                        "public_url": str(details.get("public_url") or ""),
+                        "size_bytes": size_bytes,
+                    },
+                    timeout=60,
+                )
+                completed.raise_for_status()
+                return completed
+            if direct.status_code not in {404, 409, 503}:
+                direct.raise_for_status()
 
     threshold = max(
-        8 * 1024 * 1024,
-        int(os.getenv("DEVICE_RESULT_CHUNK_THRESHOLD_BYTES") or 48 * 1024 * 1024),
+        1024 * 1024,
+        int(os.getenv("DEVICE_RESULT_CHUNK_THRESHOLD_BYTES") or 8 * 1024 * 1024),
     )
     if output_path.stat().st_size <= threshold:
         with output_path.open("rb") as stream:
@@ -1484,7 +1483,10 @@ def _upload_device_result(
         512 * 1024,
         min(
             8 * 1024 * 1024,
-            int(os.getenv("DEVICE_RESULT_CHUNK_BYTES") or 1024 * 1024),
+            max(
+                int(os.getenv("DEVICE_RESULT_CHUNK_BYTES") or 1024 * 1024),
+                (size_bytes + 511) // 512,
+            ),
         ),
     )
     total_parts = (size_bytes + part_bytes - 1) // part_bytes
@@ -1516,32 +1518,36 @@ def _upload_device_result(
             chunk = source.read(expected_size)
         if len(chunk) != expected_size:
             raise requests.RequestException(f"视频分片 {part_number} 读取不完整")
-        response = None
         last_part_error: requests.RequestException | None = None
-        for attempt in range(1, 6):
-            try:
-                response = agent._request(
-                    "PUT",
-                    f"/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/{part_number}",
-                    files={"chunk": (f"part-{part_number}", chunk, "application/octet-stream")},
-                    timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
-                )
-                if response.status_code in {200, 201, 204}:
-                    return part_number
-                response.raise_for_status()
-            except requests.RequestException as exc:
-                last_part_error = exc
-                logger.warning(
-                    "device_result_part_upload_failed job_id=%s upload_id=%s part=%s/%s attempt=%s/5 error=%s",
-                    job_id,
-                    upload_id,
-                    part_number,
-                    total_parts,
-                    attempt,
-                    exc,
-                )
-                if attempt < 5:
-                    time.sleep(min(8, attempt * 2))
+        part_session = requests.Session()
+        part_session.trust_env = False
+        part_session.headers.update({"Authorization": f"Bearer {agent.device_token}"})
+        try:
+            for attempt in range(1, 6):
+                try:
+                    response = part_session.put(
+                        f"{agent.site_url}/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/{part_number}",
+                        files={"chunk": (f"part-{part_number}", chunk, "application/octet-stream")},
+                        timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
+                    )
+                    if response.status_code in {200, 201, 204}:
+                        return part_number
+                    response.raise_for_status()
+                except requests.RequestException as exc:
+                    last_part_error = exc
+                    logger.warning(
+                        "device_result_part_upload_failed job_id=%s upload_id=%s part=%s/%s attempt=%s/5 error=%s",
+                        job_id,
+                        upload_id,
+                        part_number,
+                        total_parts,
+                        attempt,
+                        exc,
+                    )
+                    if attempt < 5:
+                        time.sleep(min(8, attempt * 2))
+        finally:
+            part_session.close()
         if last_part_error is not None:
             raise last_part_error
         raise requests.RequestException(f"视频分片 {part_number} 上传失败")

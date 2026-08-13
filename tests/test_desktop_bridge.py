@@ -194,14 +194,14 @@ class DesktopBridgeTests(unittest.TestCase):
             created.json.return_value = {"upload_id": "a" * 32}
             uploaded = MagicMock(status_code=200)
             completed = MagicMock(status_code=200)
-            direct_unavailable = MagicMock(status_code=503)
             agent = MagicMock()
-            agent._request.side_effect = [
-                direct_unavailable,
-                created,
+            agent.site_url = "https://video.example.test"
+            agent.device_token = "device-token"
+            agent._request.side_effect = [created, completed]
+            upload_session = MagicMock()
+            upload_session.put.side_effect = [
                 requests.ConnectionError("temporary disconnect"),
                 *([uploaded] * 10),
-                completed,
             ]
 
             with patch.dict(
@@ -212,7 +212,10 @@ class DesktopBridgeTests(unittest.TestCase):
                     "DEVICE_RESULT_PARALLEL_UPLOADS": "1",
                 },
                 clear=False,
-            ), patch("desktop_bridge.device_agent.time.sleep"):
+            ), patch("desktop_bridge.device_agent.time.sleep"), patch(
+                "desktop_bridge.device_agent.requests.Session",
+                return_value=upload_session,
+            ):
                 response = _upload_device_result(agent, "job-1", output)
 
             self.assertIs(response, completed)
@@ -221,13 +224,7 @@ class DesktopBridgeTests(unittest.TestCase):
                 if call.args[:2] == ("POST", "/api/v1/render-agent/jobs/job-1/uploads")
             ]
             self.assertEqual(len(create_calls), 1)
-            first_part_calls = [
-                call for call in agent._request.call_args_list
-                if call.args[:2] == (
-                    "PUT",
-                    f"/api/v1/render-agent/jobs/job-1/uploads/{'a' * 32}/1",
-                )
-            ]
+            first_part_calls = [call for call in upload_session.put.call_args_list if call.args[0].endswith(f"/{'a' * 32}/1")]
             self.assertEqual(len(first_part_calls), 2)
 
     def test_video_result_uses_scoped_direct_r2_upload_when_available(self):
@@ -254,7 +251,9 @@ class DesktopBridgeTests(unittest.TestCase):
             session.post.side_effect = [created, r2_completed]
             session.put.return_value = uploaded
 
-            with patch("desktop_bridge.device_agent.requests.Session", return_value=session):
+            with patch.dict(os.environ, {"DEVICE_RESULT_DELIVERY_MODE": "direct_r2"}), patch(
+                "desktop_bridge.device_agent.requests.Session", return_value=session
+            ):
                 response = _upload_device_result(agent, "job-1", output)
 
             self.assertIs(response, completed)
@@ -277,7 +276,7 @@ class DesktopBridgeTests(unittest.TestCase):
             agent = MagicMock()
             agent._request.return_value = direct
 
-            with patch(
+            with patch.dict(os.environ, {"DEVICE_RESULT_DELIVERY_MODE": "direct_r2"}), patch(
                 "desktop_bridge.device_agent._upload_device_result_direct_to_r2",
                 side_effect=requests.ConnectionError("direct upload interrupted"),
             ):

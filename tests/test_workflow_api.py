@@ -35,6 +35,38 @@ from workflow_registry import get_workflow, runtime_input_schema
 
 
 class WorkflowApiTests(unittest.TestCase):
+    def test_local_video_cache_prunes_oldest_r2_backed_copy(self):
+        with tempfile.TemporaryDirectory(prefix="local-video-cache-") as temporary:
+            root = Path(temporary)
+            oldest = root / f"{'a' * 32}-device.mp4"
+            newest = root / f"{'b' * 32}-device.mp4"
+            oldest.write_bytes(b"a" * 10)
+            newest.write_bytes(b"b" * 10)
+            os.utime(oldest, (1000, 1000))
+            os.utime(newest, (2000, 2000))
+
+            def r2_job(job_id):
+                return {
+                    "id": job_id,
+                    "results": [{"type": "video", "url": f"https://media.example.test/exports/{job_id}.mp4"}],
+                }
+
+            with patch.object(fastapi_app, "RESULT_DIR", root), patch.object(
+                fastapi_app, "get_job", side_effect=r2_job
+            ), patch.dict(
+                os.environ,
+                {
+                    "R2_EXPORT_PUBLIC_BASE_URL": "https://media.example.test/exports",
+                    "SERVER_VIDEO_CACHE_LIMIT_BYTES": "15",
+                    "SERVER_MIN_FREE_DISK_BYTES": "0",
+                },
+                clear=False,
+            ):
+                fastapi_app._prune_local_video_cache()
+
+            self.assertFalse(oldest.exists())
+            self.assertTrue(newest.exists())
+
     def test_device_progress_stage_does_not_regress_during_export(self):
         job = {
             "id": "job-stage-test",
@@ -167,9 +199,9 @@ class WorkflowApiTests(unittest.TestCase):
             with patch.object(fastapi_app, "ROOT", root):
                 response = fastapi_app.api_download_draft_bridge()
             self.assertEqual(Path(response.path), executable)
-            self.assertIn("AI-Video-Creator-v1.4.88.exe", response.headers["content-disposition"])
+            self.assertIn("AI-Video-Creator-v1.4.89.exe", response.headers["content-disposition"])
             self.assertIn("no-store", response.headers["cache-control"])
-            self.assertEqual(response.headers["x-helper-version"], "1.4.88")
+            self.assertEqual(response.headers["x-helper-version"], "1.4.89")
             self.assertEqual(
                 response.headers["x-content-sha256"],
                 hashlib.sha256(executable.read_bytes()).hexdigest(),
@@ -179,7 +211,7 @@ class WorkflowApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/draft-key-renders/status")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["latest_helper_version"], "1.4.88")
+        self.assertEqual(response.json()["latest_helper_version"], "1.4.89")
 
     def test_spa_index_must_revalidate_after_frontend_deploy(self):
         with tempfile.TemporaryDirectory(prefix="frontend-dist-") as temporary:
@@ -2163,15 +2195,15 @@ class WorkflowApiTests(unittest.TestCase):
             claimed = TestClient(app).post("/api/v1/render-agent/claim", headers=headers)
             self.assertEqual(claimed.status_code, 426, claimed.text)
             self.assertEqual(claimed.json()["detail"]["code"], "helper_update_required")
-            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.88")
+            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.89")
         finally:
             self.client.delete(f"/api/v1/render-devices/{paired.json()['device_id']}")
 
     def test_only_fixed_upload_helper_can_claim_render_jobs(self):
-        self.assertTrue(fastapi_app._helper_version_at_least("1.4.88", "1.4.88"))
-        self.assertTrue(fastapi_app._helper_version_at_least("1.4.89", "1.4.88"))
-        self.assertFalse(fastapi_app._helper_version_at_least("1.4.87", "1.4.88"))
-        self.assertFalse(fastapi_app._helper_version_at_least("invalid", "1.4.88"))
+        self.assertTrue(fastapi_app._helper_version_at_least("1.4.89", "1.4.89"))
+        self.assertTrue(fastapi_app._helper_version_at_least("1.4.90", "1.4.89"))
+        self.assertFalse(fastapi_app._helper_version_at_least("1.4.88", "1.4.89"))
+        self.assertFalse(fastapi_app._helper_version_at_least("invalid", "1.4.89"))
 
     def test_z_user_computer_can_pair_claim_and_return_native_mp4(self):
         pairing = self.client.post("/api/v1/render-devices/pairing-codes")

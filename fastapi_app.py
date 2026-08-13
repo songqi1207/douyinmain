@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 import time
 import uuid
 from copy import deepcopy
@@ -136,8 +137,10 @@ ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger("workflow.api")
 RUNTIME_ENV_PATH = ROOT / ".env"
 JIANYING_COMPAT_VERSION = "5.9.0.11632"
-MINIMUM_RENDER_HELPER_VERSION = "1.4.88"
+MINIMUM_RENDER_HELPER_VERSION = "1.4.89"
 DEVICE_UPLOAD_PART_MAX_BYTES = 40 * 1024 * 1024
+_LOCAL_VIDEO_CACHE_LOCK = threading.RLock()
+_ACTIVE_LOCAL_VIDEO_PATHS: set[Path] = set()
 
 
 def _helper_version_at_least(version: str, minimum: str) -> bool:
@@ -1129,7 +1132,68 @@ def api_render_agent_claim(request: Request):
     return {"task": task}
 
 
+def _local_video_has_r2_copy(path: Path) -> bool:
+    match = re.fullmatch(r"([0-9a-f]{32})-device\.mp4", path.name)
+    if not match:
+        return False
+    job = get_job(match.group(1))
+    result = next((item for item in (job or {}).get("results", []) if item.get("type") == "video"), None)
+    source = str((result or {}).get("url") or "")
+    public_base = (os.getenv("R2_EXPORT_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    return bool(public_base and source.startswith(f"{public_base}/"))
+
+
+def _prune_local_video_cache() -> None:
+    """Keep up to 10 GiB of R2-backed local MP4 copies, oldest first."""
+
+    with _LOCAL_VIDEO_CACHE_LOCK:
+        RESULT_DIR.mkdir(parents=True, exist_ok=True)
+        limit = max(0, int(os.getenv("SERVER_VIDEO_CACHE_LIMIT_BYTES") or 10 * 1024**3))
+        minimum_free = max(0, int(os.getenv("SERVER_MIN_FREE_DISK_BYTES") or 5 * 1024**3))
+        active = {path.resolve() for path in _ACTIVE_LOCAL_VIDEO_PATHS}
+        files = []
+        total = 0
+        for path in RESULT_DIR.glob("*.mp4"):
+            try:
+                resolved = path.resolve()
+                stat = path.stat()
+            except OSError:
+                continue
+            total += stat.st_size
+            if resolved not in active and _local_video_has_r2_copy(path):
+                files.append((stat.st_mtime, stat.st_size, path))
+        files.sort(key=lambda item: item[0])
+        removed = 0
+        for _modified_at, size_bytes, path in files:
+            try:
+                free_bytes = shutil.disk_usage(RESULT_DIR).free
+            except OSError:
+                free_bytes = minimum_free
+            if total <= limit and free_bytes >= minimum_free:
+                break
+            try:
+                path.unlink()
+            except OSError:
+                continue
+            total -= size_bytes
+            removed += 1
+        if removed:
+            logger.info("local_video_cache_pruned removed=%s remaining_bytes=%s limit_bytes=%s", removed, total, limit)
+
+
 def _publish_device_video_in_background(job_id: str, result_name: str, destination: Path) -> None:
+    resolved = destination.resolve()
+    with _LOCAL_VIDEO_CACHE_LOCK:
+        _ACTIVE_LOCAL_VIDEO_PATHS.add(resolved)
+    try:
+        _publish_device_video_to_r2(job_id, result_name, destination)
+    finally:
+        with _LOCAL_VIDEO_CACHE_LOCK:
+            _ACTIVE_LOCAL_VIDEO_PATHS.discard(resolved)
+        _prune_local_video_cache()
+
+
+def _publish_device_video_to_r2(job_id: str, result_name: str, destination: Path) -> None:
     try:
         (
             result_url,
@@ -1175,7 +1239,8 @@ def _publish_device_video_in_background(job_id: str, result_name: str, destinati
             job_id,
             f"网页流畅预览版与高清下载版已上传到 R2（预览版减少 {saved_percent}%）",
         )
-    destination.unlink(missing_ok=True)
+    # Keep the local copy for fast customer playback. The cache pruner removes
+    # only the oldest files that already have a verified R2 result.
 
 
 def _device_upload_directory(job_id: str, upload_id: str) -> Path:
