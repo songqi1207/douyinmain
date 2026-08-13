@@ -1434,7 +1434,34 @@ def _upload_device_result(
     job_id: str,
     output_path: Path,
 ) -> requests.Response:
-    """Upload a result, splitting large files so Cloudflare never sees a huge request."""
+    """Upload directly to R2 when available, with the site upload as a fallback."""
+
+    size_bytes = output_path.stat().st_size
+    try:
+        direct = agent._request(
+            "POST",
+            f"/api/v1/render-agent/jobs/{job_id}/direct-upload",
+            json={"filename": output_path.name, "size_bytes": size_bytes},
+            timeout=30,
+        )
+        if direct.status_code in {200, 201}:
+            details = direct.json() or {}
+            _upload_device_result_direct_to_r2(output_path, details, job_id=job_id)
+            completed = agent._request(
+                "POST",
+                f"/api/v1/render-agent/jobs/{job_id}/direct-upload/complete",
+                json={
+                    "public_url": str(details.get("public_url") or ""),
+                    "size_bytes": size_bytes,
+                },
+                timeout=60,
+            )
+            completed.raise_for_status()
+            return completed
+        if direct.status_code not in {404, 409, 503}:
+            direct.raise_for_status()
+    except (requests.RequestException, TypeError, ValueError, KeyError) as exc:
+        logger.warning("direct_r2_upload_failed_using_site_fallback job_id=%s error=%s", job_id, exc)
 
     threshold = max(
         8 * 1024 * 1024,
@@ -1456,7 +1483,6 @@ def _upload_device_result(
             int(os.getenv("DEVICE_RESULT_CHUNK_BYTES") or 1024 * 1024),
         ),
     )
-    size_bytes = output_path.stat().st_size
     total_parts = (size_bytes + part_bytes - 1) // part_bytes
     created = agent._request(
         "POST",
@@ -1534,6 +1560,108 @@ def _upload_device_result(
         f"/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/complete",
         timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
     )
+
+
+def _upload_device_result_direct_to_r2(output_path: Path, details: dict, *, job_id: str) -> None:
+    upload_url = str(details.get("upload_url") or "").strip()
+    token = str(details.get("token") or "").strip()
+    public_url = str(details.get("public_url") or "").strip()
+    if not upload_url.startswith("https://") or not public_url.startswith("https://") or not token:
+        raise ValueError("invalid direct R2 upload instructions")
+    size_bytes = output_path.stat().st_size
+    part_bytes = max(5 * 1024 * 1024, min(64 * 1024 * 1024, int(details.get("part_bytes") or 8 * 1024 * 1024)))
+    workers = max(1, min(6, int(details.get("parallel_uploads") or 4)))
+    total_parts = (size_bytes + part_bytes - 1) // part_bytes
+    session = requests.Session()
+    session.trust_env = False
+    session.headers.update({"Authorization": f"Bearer {token}"})
+    upload_id = ""
+    timeout = int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800)
+    try:
+        created = session.post(
+            upload_url,
+            params={"action": "mpu-create"},
+            headers={"Content-Type": "application/json"},
+            timeout=(20, timeout),
+        )
+        created.raise_for_status()
+        upload_id = str((created.json() or {}).get("uploadId") or "")
+        if not upload_id:
+            raise requests.RequestException("R2 multipart upload did not return an upload ID")
+
+        def upload_part(part_number: int) -> dict:
+            offset = (part_number - 1) * part_bytes
+            expected_size = min(part_bytes, size_bytes - offset)
+            with output_path.open("rb") as source:
+                source.seek(offset)
+                chunk = source.read(expected_size)
+            if len(chunk) != expected_size:
+                raise requests.RequestException(f"R2 part {part_number} could not be read")
+            last_error: requests.RequestException | None = None
+            for attempt in range(1, 6):
+                try:
+                    response = session.put(
+                        upload_url,
+                        params={
+                            "action": "mpu-uploadpart",
+                            "uploadId": upload_id,
+                            "partNumber": str(part_number),
+                        },
+                        headers={"Content-Type": "application/octet-stream"},
+                        data=chunk,
+                        timeout=(20, timeout),
+                    )
+                    response.raise_for_status()
+                    etag = str((response.json() or {}).get("etag") or "")
+                    if not etag:
+                        raise requests.RequestException(f"R2 part {part_number} did not return an ETag")
+                    return {"partNumber": part_number, "etag": etag}
+                except requests.RequestException as exc:
+                    last_error = exc
+                    logger.warning(
+                        "direct_r2_part_upload_failed job_id=%s part=%s/%s attempt=%s/5 error=%s",
+                        job_id,
+                        part_number,
+                        total_parts,
+                        attempt,
+                        exc,
+                    )
+                    if attempt < 5:
+                        time.sleep(min(8, attempt * 2))
+            raise last_error or requests.RequestException(f"R2 part {part_number} upload failed")
+
+        logger.info(
+            "direct_r2_upload_started job_id=%s parts=%s workers=%s part_bytes=%s",
+            job_id,
+            total_parts,
+            workers,
+            part_bytes,
+        )
+        parts: list[dict] = []
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="r2-upload") as executor:
+            futures = [executor.submit(upload_part, number) for number in range(1, total_parts + 1)]
+            for future in as_completed(futures):
+                parts.append(future.result())
+        parts.sort(key=lambda item: int(item["partNumber"]))
+        completed = session.post(
+            upload_url,
+            params={"action": "mpu-complete", "uploadId": upload_id},
+            json={"parts": parts},
+            timeout=(20, timeout),
+        )
+        completed.raise_for_status()
+        upload_id = ""
+    finally:
+        if upload_id:
+            try:
+                session.delete(
+                    upload_url,
+                    params={"action": "mpu-abort", "uploadId": upload_id},
+                    timeout=(20, 60),
+                )
+            except requests.RequestException:
+                pass
+        session.close()
 
 
 class DeviceAgent:

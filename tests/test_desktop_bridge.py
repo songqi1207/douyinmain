@@ -194,8 +194,10 @@ class DesktopBridgeTests(unittest.TestCase):
             created.json.return_value = {"upload_id": "a" * 32}
             uploaded = MagicMock(status_code=200)
             completed = MagicMock(status_code=200)
+            direct_unavailable = MagicMock(status_code=503)
             agent = MagicMock()
             agent._request.side_effect = [
+                direct_unavailable,
                 created,
                 requests.ConnectionError("temporary disconnect"),
                 *([uploaded] * 10),
@@ -227,6 +229,40 @@ class DesktopBridgeTests(unittest.TestCase):
                 )
             ]
             self.assertEqual(len(first_part_calls), 2)
+
+    def test_video_result_uses_scoped_direct_r2_upload_when_available(self):
+        with tempfile.TemporaryDirectory(prefix="device-direct-r2-") as temporary:
+            output = Path(temporary) / "result.mp4"
+            output.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"v" * 1024))
+            direct = MagicMock(status_code=200)
+            direct.json.return_value = {
+                "upload_url": "https://media.example.test/exports/job-1.mp4",
+                "public_url": "https://media.example.test/exports/job-1.mp4?stream=full",
+                "token": "scoped.token",
+                "part_bytes": 5 * 1024 * 1024,
+                "parallel_uploads": 1,
+            }
+            completed = MagicMock(status_code=200)
+            agent = MagicMock()
+            agent._request.side_effect = [direct, completed]
+            created = MagicMock(status_code=201)
+            created.json.return_value = {"uploadId": "r2-upload-1"}
+            uploaded = MagicMock(status_code=200)
+            uploaded.json.return_value = {"etag": "etag-1"}
+            r2_completed = MagicMock(status_code=201)
+            session = MagicMock()
+            session.post.side_effect = [created, r2_completed]
+            session.put.return_value = uploaded
+
+            with patch("desktop_bridge.device_agent.requests.Session", return_value=session):
+                response = _upload_device_result(agent, "job-1", output)
+
+            self.assertIs(response, completed)
+            session.put.assert_called_once()
+            self.assertEqual(
+                agent._request.call_args_list[-1].kwargs["json"]["public_url"],
+                direct.json.return_value["public_url"],
+            )
 
     def test_interaction_recorder_uses_window_relative_coordinates(self):
         point = normalize_recorded_point(1800, 900, (1000, 100, 2000, 1100))

@@ -167,9 +167,9 @@ class WorkflowApiTests(unittest.TestCase):
             with patch.object(fastapi_app, "ROOT", root):
                 response = fastapi_app.api_download_draft_bridge()
             self.assertEqual(Path(response.path), executable)
-            self.assertIn("AI-Video-Creator-v1.4.86.exe", response.headers["content-disposition"])
+            self.assertIn("AI-Video-Creator-v1.4.87.exe", response.headers["content-disposition"])
             self.assertIn("no-store", response.headers["cache-control"])
-            self.assertEqual(response.headers["x-helper-version"], "1.4.86")
+            self.assertEqual(response.headers["x-helper-version"], "1.4.87")
             self.assertEqual(
                 response.headers["x-content-sha256"],
                 hashlib.sha256(executable.read_bytes()).hexdigest(),
@@ -179,7 +179,7 @@ class WorkflowApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/draft-key-renders/status")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["latest_helper_version"], "1.4.86")
+        self.assertEqual(response.json()["latest_helper_version"], "1.4.87")
 
     def test_spa_index_must_revalidate_after_frontend_deploy(self):
         with tempfile.TemporaryDirectory(prefix="frontend-dist-") as temporary:
@@ -2163,15 +2163,15 @@ class WorkflowApiTests(unittest.TestCase):
             claimed = TestClient(app).post("/api/v1/render-agent/claim", headers=headers)
             self.assertEqual(claimed.status_code, 426, claimed.text)
             self.assertEqual(claimed.json()["detail"]["code"], "helper_update_required")
-            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.86")
+            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.87")
         finally:
             self.client.delete(f"/api/v1/render-devices/{paired.json()['device_id']}")
 
     def test_only_fixed_upload_helper_can_claim_render_jobs(self):
-        self.assertTrue(fastapi_app._helper_version_at_least("1.4.86", "1.4.86"))
-        self.assertTrue(fastapi_app._helper_version_at_least("1.4.87", "1.4.86"))
-        self.assertFalse(fastapi_app._helper_version_at_least("1.4.85", "1.4.86"))
-        self.assertFalse(fastapi_app._helper_version_at_least("invalid", "1.4.86"))
+        self.assertTrue(fastapi_app._helper_version_at_least("1.4.87", "1.4.87"))
+        self.assertTrue(fastapi_app._helper_version_at_least("1.4.88", "1.4.87"))
+        self.assertFalse(fastapi_app._helper_version_at_least("1.4.86", "1.4.87"))
+        self.assertFalse(fastapi_app._helper_version_at_least("invalid", "1.4.87"))
 
     def test_z_user_computer_can_pair_claim_and_return_native_mp4(self):
         pairing = self.client.post("/api/v1/render-devices/pairing-codes")
@@ -2256,6 +2256,25 @@ class WorkflowApiTests(unittest.TestCase):
                 self.assertIn("本机剪映草稿已经写入：ABC123", [item["message"] for item in progress_logs])
 
                 mp4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
+                with patch.dict(
+                    os.environ,
+                    {
+                        "R2_EXPORT_UPLOAD_URL": "https://media.example.test/exports",
+                        "R2_EXPORT_PUBLIC_BASE_URL": "https://media.example.test/exports",
+                        "R2_EXPORT_UPLOAD_TOKEN": "server-secret-not-for-device",
+                    },
+                    clear=False,
+                ):
+                    direct_upload = TestClient(app).post(
+                        f"/api/v1/render-agent/jobs/{job_id}/direct-upload",
+                        headers=headers,
+                        json={"filename": "result.mp4", "size_bytes": len(mp4)},
+                    )
+                self.assertEqual(direct_upload.status_code, 200, direct_upload.text)
+                direct_payload = direct_upload.json()
+                self.assertEqual(direct_payload["object_key"], f"exports/{job_id}-device-original-direct.mp4")
+                self.assertNotIn("server-secret-not-for-device", direct_payload["token"])
+                self.assertGreaterEqual(direct_payload["part_bytes"], 5 * 1024 * 1024)
                 completed = TestClient(app).post(
                     f"/api/v1/render-agent/jobs/{job_id}/complete",
                     headers=headers,

@@ -63,20 +63,69 @@ function publicKey(request) {
   return key;
 }
 
-function authorizedUpload(request, env) {
+function bearerToken(request) {
+  const header = String(request.headers.get("authorization") || "");
+  return header.startsWith("Bearer ") ? header.slice(7) : "";
+}
+
+function authorizedServer(request, env) {
   const secret = String(env.EXPORT_UPLOAD_TOKEN || "");
-  return secret && request.headers.get("authorization") === `Bearer ${secret}`;
+  return Boolean(secret && bearerToken(request) === secret);
+}
+
+function decodeBase64Url(value) {
+  const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+async function authorizedUpload(request, env, key) {
+  if (authorizedServer(request, env)) return { kind: "server" };
+  const secret = String(env.EXPORT_UPLOAD_TOKEN || "");
+  const [payloadSegment, signatureSegment, extra] = bearerToken(request).split(".");
+  if (!secret || !payloadSegment || !signatureSegment || extra) return null;
+  try {
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      cryptoKey,
+      decodeBase64Url(signatureSegment),
+      new TextEncoder().encode(payloadSegment),
+    );
+    if (!valid) return null;
+    const payload = JSON.parse(new TextDecoder().decode(decodeBase64Url(payloadSegment)));
+    const now = Math.floor(Date.now() / 1000);
+    if (
+      payload?.v !== 1 || payload?.op !== "upload" || payload?.key !== key ||
+      !Number.isInteger(payload?.exp) || payload.exp < now ||
+      !Number.isInteger(payload?.iat) || payload.iat > now + 60 ||
+      !Number.isInteger(payload?.size_bytes) || payload.size_bytes < 12 ||
+      payload.size_bytes > MAX_EXPORT_BYTES
+    ) return null;
+    return { kind: "scoped", payload };
+  } catch {
+    return null;
+  }
 }
 
 async function uploadExport(request, env, key) {
   if (!key.startsWith("exports/") || !key.toLowerCase().endsWith(".mp4")) {
     return errorResponse(404, "Not found");
   }
-  if (!authorizedUpload(request, env)) {
-    return errorResponse(401, "Unauthorized");
-  }
+  const authorization = await authorizedUpload(request, env, key);
+  if (!authorization) return errorResponse(401, "Unauthorized");
   const contentLength = Number(request.headers.get("content-length") || 0);
-  if (!request.body || contentLength <= 0 || contentLength > MAX_EXPORT_BYTES) {
+  if (
+    !request.body || contentLength <= 0 || contentLength > MAX_EXPORT_BYTES ||
+    (authorization.kind === "scoped" && contentLength !== authorization.payload.size_bytes)
+  ) {
     return errorResponse(413, "Invalid export size");
   }
   if ((request.headers.get("content-type") || "").split(";", 1)[0] !== "video/mp4") {
@@ -105,7 +154,7 @@ async function createMultipartExport(request, env, key) {
   if (!key.startsWith("exports/") || !key.toLowerCase().endsWith(".mp4")) {
     return errorResponse(404, "Not found");
   }
-  if (!authorizedUpload(request, env)) {
+  if (!(await authorizedUpload(request, env, key))) {
     return errorResponse(401, "Unauthorized");
   }
   const upload = await env.PUBLIC_BUCKET.createMultipartUpload(key, {
@@ -122,7 +171,8 @@ async function createMultipartExport(request, env, key) {
 }
 
 async function uploadMultipartExportPart(request, env, key, url) {
-  if (!authorizedUpload(request, env)) {
+  const authorization = await authorizedUpload(request, env, key);
+  if (!authorization) {
     return errorResponse(401, "Unauthorized");
   }
   const uploadId = url.searchParams.get("uploadId");
@@ -135,7 +185,8 @@ async function uploadMultipartExportPart(request, env, key, url) {
     partNumber < 1 ||
     partNumber > 10000 ||
     contentLength <= 0 ||
-    contentLength > MAX_MULTIPART_PART_BYTES
+    contentLength > MAX_MULTIPART_PART_BYTES ||
+    (authorization.kind === "scoped" && contentLength > authorization.payload.size_bytes)
   ) {
     return errorResponse(400, "Invalid multipart upload part");
   }
@@ -148,7 +199,7 @@ async function uploadMultipartExportPart(request, env, key, url) {
 }
 
 async function completeMultipartExport(request, env, key, url) {
-  if (!authorizedUpload(request, env)) {
+  if (!(await authorizedUpload(request, env, key))) {
     return errorResponse(401, "Unauthorized");
   }
   const uploadId = url.searchParams.get("uploadId");
@@ -179,7 +230,7 @@ async function completeMultipartExport(request, env, key, url) {
 }
 
 async function abortMultipartExport(request, env, key, url) {
-  if (!authorizedUpload(request, env)) {
+  if (!(await authorizedUpload(request, env, key))) {
     return errorResponse(401, "Unauthorized");
   }
   const uploadId = url.searchParams.get("uploadId");
@@ -196,7 +247,7 @@ async function deleteExport(request, env, key) {
   if (!key.startsWith("exports/") || !key.toLowerCase().endsWith(".mp4")) {
     return errorResponse(404, "Not found");
   }
-  if (!authorizedUpload(request, env)) {
+  if (!authorizedServer(request, env)) {
     return errorResponse(401, "Unauthorized");
   }
   await env.PUBLIC_BUCKET.delete(key);
@@ -204,7 +255,7 @@ async function deleteExport(request, env, key) {
 }
 
 async function listExports(request, env, url) {
-  if (!authorizedUpload(request, env)) {
+  if (!authorizedServer(request, env)) {
     return errorResponse(401, "Unauthorized");
   }
   const requestedLimit = Number(url.searchParams.get("limit") || 500);

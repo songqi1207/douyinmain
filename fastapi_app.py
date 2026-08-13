@@ -25,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 from business_workflows import find_preview_asset, find_workflow_downloads
+from direct_upload_tokens import create_direct_upload_token
 from desktop_bridge.helper_metadata import (
     HELPER_BINARY_NAME,
     HELPER_DOWNLOAD_NAME,
@@ -135,7 +136,7 @@ ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger("workflow.api")
 RUNTIME_ENV_PATH = ROOT / ".env"
 JIANYING_COMPAT_VERSION = "5.9.0.11632"
-MINIMUM_RENDER_HELPER_VERSION = "1.4.86"
+MINIMUM_RENDER_HELPER_VERSION = "1.4.87"
 DEVICE_UPLOAD_PART_MAX_BYTES = 40 * 1024 * 1024
 
 
@@ -1214,6 +1215,95 @@ def _finish_received_device_video(
             result_name,
             destination,
         )
+    heartbeat_device(device["id"])
+    return {"job": _public_job(get_job(job_id))}
+
+
+def _direct_device_upload_details(job_id: str, device_id: str, size_bytes: int) -> dict:
+    upload_base = (os.getenv("R2_EXPORT_UPLOAD_URL") or "").strip().rstrip("/")
+    public_base = (os.getenv("R2_EXPORT_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    secret = (os.getenv("R2_EXPORT_UPLOAD_TOKEN") or "").strip()
+    if not upload_base or not public_base or not secret:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "direct_upload_unavailable", "message": "R2 direct upload is not configured"},
+        )
+    object_name = f"{job_id}-device-original-direct.mp4"
+    object_key = f"exports/{object_name}"
+    ttl_seconds = int(os.getenv("R2_DEVICE_UPLOAD_TOKEN_TTL_SECONDS") or 7200)
+    return {
+        "upload_url": f"{upload_base}/{object_name}",
+        "public_url": f"{public_base}/{object_name}?stream=full",
+        "object_key": object_key,
+        "token": create_direct_upload_token(
+            secret,
+            object_key=object_key,
+            job_id=job_id,
+            device_id=device_id,
+            size_bytes=size_bytes,
+            ttl_seconds=ttl_seconds,
+        ),
+        "part_bytes": max(5 * 1024 * 1024, int(os.getenv("R2_DEVICE_UPLOAD_PART_BYTES") or 8 * 1024 * 1024)),
+        "parallel_uploads": max(1, min(6, int(os.getenv("R2_DEVICE_UPLOAD_PARALLEL_UPLOADS") or 4))),
+    }
+
+
+@app.post("/api/v1/render-agent/jobs/{job_id}/direct-upload")
+def api_create_direct_render_agent_upload(
+    job_id: str,
+    request: Request,
+    payload: dict = Body(default_factory=dict),
+):
+    device = _require_render_device(request)
+    job = get_job(job_id)
+    if not job or job.get("render_device_id") != device["id"] or job.get("status") != "rendering":
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "Export job not found"})
+    try:
+        size_bytes = int(payload.get("size_bytes") or 0)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail={"code": "invalid_upload", "message": "Invalid upload size"}) from exc
+    max_bytes = min(
+        int(os.getenv("DEVICE_RENDER_MAX_UPLOAD_BYTES") or 2 * 1024 * 1024 * 1024),
+        int(os.getenv("R2_DEVICE_DIRECT_MAX_UPLOAD_BYTES") or 512 * 1024 * 1024),
+    )
+    if size_bytes < 12 or size_bytes > max_bytes:
+        raise HTTPException(status_code=422, detail={"code": "invalid_upload", "message": "Invalid upload size"})
+    heartbeat_device(device["id"])
+    return _direct_device_upload_details(job_id, device["id"], size_bytes)
+
+
+@app.post("/api/v1/render-agent/jobs/{job_id}/direct-upload/complete")
+def api_complete_direct_render_agent_upload(
+    job_id: str,
+    request: Request,
+    payload: dict = Body(default_factory=dict),
+):
+    device = _require_render_device(request)
+    job = get_job(job_id)
+    owned_by_device = bool(job and job.get("render_device_id") == device["id"])
+    if owned_by_device and job.get("status") == "succeeded":
+        return {"job": _public_job(job)}
+    if not owned_by_device or job.get("status") != "rendering":
+        raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "Export job not found"})
+    try:
+        size_bytes = int(payload.get("size_bytes") or 0)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail={"code": "invalid_upload", "message": "Invalid upload size"}) from exc
+    details = _direct_device_upload_details(job_id, device["id"], size_bytes)
+    public_url = str(payload.get("public_url") or "").strip()
+    if public_url != details["public_url"]:
+        raise HTTPException(status_code=422, detail={"code": "invalid_upload_url", "message": "Unexpected upload URL"})
+    try:
+        verified = requests.head(public_url, timeout=(10, 30))
+        hosted_size = int(verified.headers.get("content-length") or 0)
+    except (requests.RequestException, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail={"code": "upload_verification_failed", "message": "R2 upload could not be verified"}) from exc
+    if verified.status_code != 200 or hosted_size != size_bytes or size_bytes < 12:
+        raise HTTPException(status_code=422, detail={"code": "upload_verification_failed", "message": "R2 object size does not match"})
+    if not complete_device_render_job(job_id, device["id"], result_url=public_url):
+        raise HTTPException(status_code=409, detail={"code": "job_not_rendering", "message": "Job state changed"})
+    record_video_storage(job_id, job["user_id"], public_url, public_url, size_bytes)
+    append_job_log(job_id, "Video uploaded directly to R2 by the export helper")
     heartbeat_device(device["id"])
     return {"job": _public_job(get_job(job_id))}
 
