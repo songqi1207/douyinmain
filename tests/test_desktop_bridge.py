@@ -264,6 +264,28 @@ class DesktopBridgeTests(unittest.TestCase):
                 direct.json.return_value["public_url"],
             )
 
+    def test_direct_r2_failure_does_not_fall_back_to_slow_site_upload(self):
+        with tempfile.TemporaryDirectory(prefix="device-direct-r2-failure-") as temporary:
+            output = Path(temporary) / "result.mp4"
+            output.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"v" * 1024))
+            direct = MagicMock(status_code=200)
+            direct.json.return_value = {
+                "upload_url": "https://media.example.test/exports/job-1.mp4",
+                "public_url": "https://media.example.test/exports/job-1.mp4?stream=full",
+                "token": "scoped.token",
+            }
+            agent = MagicMock()
+            agent._request.return_value = direct
+
+            with patch(
+                "desktop_bridge.device_agent._upload_device_result_direct_to_r2",
+                side_effect=requests.ConnectionError("direct upload interrupted"),
+            ):
+                with self.assertRaises(requests.ConnectionError):
+                    _upload_device_result(agent, "job-1", output)
+
+            self.assertEqual(len(agent._request.call_args_list), 1)
+
     def test_interaction_recorder_uses_window_relative_coordinates(self):
         point = normalize_recorded_point(1800, 900, (1000, 100, 2000, 1100))
 

@@ -1444,8 +1444,14 @@ def _upload_device_result(
             json={"filename": output_path.name, "size_bytes": size_bytes},
             timeout=30,
         )
+    except requests.RequestException as exc:
+        logger.warning("direct_r2_init_failed_using_site_fallback job_id=%s error=%s", job_id, exc)
+    else:
         if direct.status_code in {200, 201}:
             details = direct.json() or {}
+            # Once R2 has issued a scoped session, keep retries on that direct
+            # path. Falling back to a large API upload can wait half an hour on
+            # a dead connection before the outer retry gets another chance.
             _upload_device_result_direct_to_r2(output_path, details, job_id=job_id)
             completed = agent._request(
                 "POST",
@@ -1460,8 +1466,6 @@ def _upload_device_result(
             return completed
         if direct.status_code not in {404, 409, 503}:
             direct.raise_for_status()
-    except (requests.RequestException, TypeError, ValueError, KeyError) as exc:
-        logger.warning("direct_r2_upload_failed_using_site_fallback job_id=%s error=%s", job_id, exc)
 
     threshold = max(
         8 * 1024 * 1024,
@@ -1577,6 +1581,7 @@ def _upload_device_result_direct_to_r2(output_path: Path, details: dict, *, job_
     session.headers.update({"Authorization": f"Bearer {token}"})
     upload_id = ""
     timeout = int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800)
+    part_timeout = max(60, int(os.getenv("DEVICE_DIRECT_UPLOAD_PART_TIMEOUT_SECONDS") or 180))
     try:
         created = session.post(
             upload_url,
@@ -1598,36 +1603,42 @@ def _upload_device_result_direct_to_r2(output_path: Path, details: dict, *, job_
             if len(chunk) != expected_size:
                 raise requests.RequestException(f"R2 part {part_number} could not be read")
             last_error: requests.RequestException | None = None
-            for attempt in range(1, 6):
-                try:
-                    response = session.put(
-                        upload_url,
-                        params={
-                            "action": "mpu-uploadpart",
-                            "uploadId": upload_id,
-                            "partNumber": str(part_number),
-                        },
-                        headers={"Content-Type": "application/octet-stream"},
-                        data=chunk,
-                        timeout=(20, timeout),
-                    )
-                    response.raise_for_status()
-                    etag = str((response.json() or {}).get("etag") or "")
-                    if not etag:
-                        raise requests.RequestException(f"R2 part {part_number} did not return an ETag")
-                    return {"partNumber": part_number, "etag": etag}
-                except requests.RequestException as exc:
-                    last_error = exc
-                    logger.warning(
-                        "direct_r2_part_upload_failed job_id=%s part=%s/%s attempt=%s/5 error=%s",
-                        job_id,
-                        part_number,
-                        total_parts,
-                        attempt,
-                        exc,
-                    )
-                    if attempt < 5:
-                        time.sleep(min(8, attempt * 2))
+            part_session = requests.Session()
+            part_session.trust_env = False
+            part_session.headers.update({"Authorization": f"Bearer {token}"})
+            try:
+                for attempt in range(1, 6):
+                    try:
+                        response = part_session.put(
+                            upload_url,
+                            params={
+                                "action": "mpu-uploadpart",
+                                "uploadId": upload_id,
+                                "partNumber": str(part_number),
+                            },
+                            headers={"Content-Type": "application/octet-stream"},
+                            data=chunk,
+                            timeout=(20, part_timeout),
+                        )
+                        response.raise_for_status()
+                        etag = str((response.json() or {}).get("etag") or "")
+                        if not etag:
+                            raise requests.RequestException(f"R2 part {part_number} did not return an ETag")
+                        return {"partNumber": part_number, "etag": etag}
+                    except requests.RequestException as exc:
+                        last_error = exc
+                        logger.warning(
+                            "direct_r2_part_upload_failed job_id=%s part=%s/%s attempt=%s/5 error=%s",
+                            job_id,
+                            part_number,
+                            total_parts,
+                            attempt,
+                            exc,
+                        )
+                        if attempt < 5:
+                            time.sleep(min(8, attempt * 2))
+            finally:
+                part_session.close()
             raise last_error or requests.RequestException(f"R2 part {part_number} upload failed")
 
         logger.info(
