@@ -15,6 +15,7 @@ class DirectUploadTokenTests(unittest.TestCase):
             job_id="job-1",
             device_id="device-1",
             size_bytes=12345,
+            part_bytes=5000,
             ttl_seconds=600,
             now=1000,
         )
@@ -27,6 +28,8 @@ class DirectUploadTokenTests(unittest.TestCase):
         )
         self.assertEqual(payload["key"], "exports/job-1.mp4")
         self.assertEqual(payload["size_bytes"], 12345)
+        self.assertEqual(payload["part_bytes"], 5000)
+        self.assertEqual(payload["total_parts"], 3)
         self.assertEqual(payload["exp"], 1600)
 
 

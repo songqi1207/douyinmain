@@ -107,7 +107,11 @@ async function authorizedUpload(request, env, key) {
       !Number.isInteger(payload?.exp) || payload.exp < now ||
       !Number.isInteger(payload?.iat) || payload.iat > now + 60 ||
       !Number.isInteger(payload?.size_bytes) || payload.size_bytes < 12 ||
-      payload.size_bytes > MAX_EXPORT_BYTES
+      payload.size_bytes > MAX_EXPORT_BYTES ||
+      !Number.isInteger(payload?.part_bytes) || payload.part_bytes < 5 * 1024 * 1024 ||
+      payload.part_bytes > MAX_MULTIPART_PART_BYTES ||
+      !Number.isInteger(payload?.total_parts) || payload.total_parts < 1 ||
+      payload.total_parts !== Math.ceil(payload.size_bytes / payload.part_bytes)
     ) return null;
     return { kind: "scoped", payload };
   } catch {
@@ -122,6 +126,11 @@ async function uploadExport(request, env, key) {
   const authorization = await authorizedUpload(request, env, key);
   if (!authorization) return errorResponse(401, "Unauthorized");
   const contentLength = Number(request.headers.get("content-length") || 0);
+  const scopedExpectedLength = authorization.kind === "scoped"
+    ? (partNumber === authorization.payload.total_parts
+        ? authorization.payload.size_bytes - authorization.payload.part_bytes * (partNumber - 1)
+        : authorization.payload.part_bytes)
+    : null;
   if (
     !request.body || contentLength <= 0 || contentLength > MAX_EXPORT_BYTES ||
     (authorization.kind === "scoped" && contentLength !== authorization.payload.size_bytes)
@@ -186,7 +195,9 @@ async function uploadMultipartExportPart(request, env, key, url) {
     partNumber > 10000 ||
     contentLength <= 0 ||
     contentLength > MAX_MULTIPART_PART_BYTES ||
-    (authorization.kind === "scoped" && contentLength > authorization.payload.size_bytes)
+    (authorization.kind === "scoped" && (
+      partNumber > authorization.payload.total_parts || contentLength !== scopedExpectedLength
+    ))
   ) {
     return errorResponse(400, "Invalid multipart upload part");
   }
@@ -199,7 +210,8 @@ async function uploadMultipartExportPart(request, env, key, url) {
 }
 
 async function completeMultipartExport(request, env, key, url) {
-  if (!(await authorizedUpload(request, env, key))) {
+  const authorization = await authorizedUpload(request, env, key);
+  if (!authorization) {
     return errorResponse(401, "Unauthorized");
   }
   const uploadId = url.searchParams.get("uploadId");
@@ -214,7 +226,11 @@ async function completeMultipartExport(request, env, key, url) {
   if (
     parts.length < 1 ||
     parts.length > 10000 ||
-    parts.some((part) => !Number.isInteger(part?.partNumber) || !String(part?.etag || ""))
+    parts.some((part) => !Number.isInteger(part?.partNumber) || !String(part?.etag || "")) ||
+    (authorization.kind === "scoped" && (
+      parts.length !== authorization.payload.total_parts ||
+      parts.some((part, index) => part.partNumber !== index + 1)
+    ))
   ) {
     return errorResponse(400, "Invalid multipart completion parts");
   }

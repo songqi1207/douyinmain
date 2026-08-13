@@ -1231,6 +1231,10 @@ def _direct_device_upload_details(job_id: str, device_id: str, size_bytes: int) 
     object_name = f"{job_id}-device-original-direct.mp4"
     object_key = f"exports/{object_name}"
     ttl_seconds = int(os.getenv("R2_DEVICE_UPLOAD_TOKEN_TTL_SECONDS") or 7200)
+    part_bytes = max(
+        5 * 1024 * 1024,
+        min(64 * 1024 * 1024, int(os.getenv("R2_DEVICE_UPLOAD_PART_BYTES") or 8 * 1024 * 1024)),
+    )
     return {
         "upload_url": f"{upload_base}/{object_name}",
         "public_url": f"{public_base}/{object_name}?stream=full",
@@ -1241,9 +1245,10 @@ def _direct_device_upload_details(job_id: str, device_id: str, size_bytes: int) 
             job_id=job_id,
             device_id=device_id,
             size_bytes=size_bytes,
+            part_bytes=part_bytes,
             ttl_seconds=ttl_seconds,
         ),
-        "part_bytes": max(5 * 1024 * 1024, int(os.getenv("R2_DEVICE_UPLOAD_PART_BYTES") or 8 * 1024 * 1024)),
+        "part_bytes": part_bytes,
         "parallel_uploads": max(1, min(6, int(os.getenv("R2_DEVICE_UPLOAD_PARALLEL_UPLOADS") or 4))),
     }
 
