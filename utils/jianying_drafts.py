@@ -1587,7 +1587,7 @@ def extend_visual_tail_to_audio(draft_id: str, minimum_gap_us: int = 200_000) ->
         if isinstance(item, dict)
     }
     audio_end = 0
-    photo_segments: list[tuple[int, int, dict[str, Any], dict[str, Any]]] = []
+    photo_segments: list[tuple[int, int, int, dict[str, Any], dict[str, Any]]] = []
     for track in draft.get("tracks") or []:
         if not isinstance(track, dict):
             continue
@@ -1605,22 +1605,38 @@ def extend_visual_tail_to_audio(draft_id: str, minimum_gap_us: int = 200_000) ->
                 continue
             material = materials.get(str(segment.get("material_id") or "")) or {}
             if str(material.get("type") or "") == "photo":
-                photo_segments.append((end, int(segment.get("render_index") or 0), segment, material))
+                photo_segments.append(
+                    (start, end, int(segment.get("render_index") or 0), segment, material)
+                )
     if audio_end <= 0 or not photo_segments:
         return {"audio_end_us": audio_end, "visual_end_us": 0, "extended_us": 0}
-    # A static border/background often already spans the full audio. Ignore
-    # those full-length overlays and inspect the latest photo that actually
-    # ends early; otherwise the main story image can still leave a black hole.
-    tail_candidates = [item for item in photo_segments if item[0] < audio_end - minimum_gap_us]
+    # A static border/background often spans the full audio from time zero,
+    # so it cannot by itself prove that the story lane reaches the narration
+    # tail.  A later-starting photo that already reaches the audio end can.
+    # In that case extending an earlier photo would overlap and hide the real
+    # final image in JianYing 11.
+    if any(
+        start > minimum_gap_us and end >= audio_end - minimum_gap_us
+        for start, end, _render_index, _segment, _material in photo_segments
+    ):
+        return {
+            "audio_end_us": audio_end,
+            "visual_end_us": max(item[1] for item in photo_segments),
+            "extended_us": 0,
+        }
+
+    # Otherwise inspect the latest photo that actually ends early; this keeps
+    # a real gap from becoming a black tail while ignoring full-length decor.
+    tail_candidates = [item for item in photo_segments if item[1] < audio_end - minimum_gap_us]
     if not tail_candidates:
-        visual_end = max(item[0] for item in photo_segments)
+        visual_end = max(item[1] for item in photo_segments)
         return {"audio_end_us": audio_end, "visual_end_us": visual_end, "extended_us": 0}
-    visual_end = max(item[0] for item in tail_candidates)
+    visual_end = max(item[1] for item in tail_candidates)
     gap = audio_end - visual_end
     if gap <= minimum_gap_us:
         return {"audio_end_us": audio_end, "visual_end_us": visual_end, "extended_us": 0}
 
-    _, _, segment, material = max(tail_candidates, key=lambda item: (item[0], item[1]))
+    _, _, _, segment, material = max(tail_candidates, key=lambda item: (item[1], item[2]))
     timerange = segment.setdefault("target_timerange", {})
     timerange["duration"] = int(timerange.get("duration") or 0) + gap
     source_timerange = segment.get("source_timerange")

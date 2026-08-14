@@ -5,10 +5,53 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from utils.jianying_drafts import append_videos, create_draft
+from utils.jianying_drafts import (
+    append_audios,
+    append_images,
+    append_videos,
+    create_draft,
+    extend_visual_tail_to_audio,
+)
 
 
 class JianyingMediaMaterialTests(unittest.TestCase):
+    def test_visual_tail_does_not_extend_over_a_real_final_photo(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ, {"JIANYING_DRAFT_ROOT": temporary}
+        ):
+            from PIL import Image
+
+            first = Path(temporary) / "first.png"
+            final = Path(temporary) / "final.png"
+            Image.new("RGB", (16, 16), "red").save(first)
+            Image.new("RGB", (16, 16), "blue").save(final)
+            audio = Path(temporary) / "voice.mp3"
+            audio.write_bytes(b"audio-placeholder")
+            created = create_draft(1080, 1920, "book-tail-test")
+            append_audios(
+                created["draft_id"],
+                [{"audio_url": str(audio), "start": 0, "end": 4_000_000}],
+            )
+            append_images(
+                created["draft_id"],
+                [
+                    {"image_url": str(first), "start": 0, "end": 2_000_000},
+                    {"image_url": str(final), "start": 2_000_000, "end": 4_000_000},
+                ],
+            )
+
+            result = extend_visual_tail_to_audio(created["draft_id"])
+            draft = json.loads(
+                (Path(created["draft_dir"]) / "draft_content.json").read_text(encoding="utf-8")
+            )
+            video_segments = next(track for track in draft["tracks"] if track["type"] == "video")[
+                "segments"
+            ]
+
+            self.assertEqual(result["extended_us"], 0)
+            self.assertEqual(video_segments[0]["target_timerange"]["duration"], 2_000_000)
+            self.assertEqual(video_segments[1]["target_timerange"]["duration"], 2_000_000)
+
     def test_video_url_and_visual_properties_are_preserved(self):
         with tempfile.TemporaryDirectory() as temporary, patch.dict(
             os.environ, {"JIANYING_DRAFT_ROOT": temporary}

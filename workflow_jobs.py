@@ -2355,6 +2355,105 @@ def _strengthen_own01_image_motion(draft_key: dict) -> None:
         meta["book_image_motion_repaired_indexes"] = repaired_indexes
 
 
+def _separate_own01_final_image_track(draft_key: dict) -> None:
+    """Put the final book image above the preceding body-image lane.
+
+    Older helpers extend the latest early-ending photo to the narration tail
+    as black-screen protection.  With sequential book photos that can make the
+    penultimate photo overlap and hide the real final one in JianYing 11.  A
+    dedicated higher render lane keeps the final image and its camera move
+    visible even when that compatibility extension is applied.
+    """
+
+    calls = draft_key.get("calls") if isinstance(draft_key.get("calls"), list) else []
+    existing_tail = next(
+        (
+            call
+            for call in calls
+            if isinstance(call, dict) and call.get("call_id") == "call_191365_tail"
+        ),
+        None,
+    )
+    if existing_tail is not None:
+        existing_tail["track_name"] = "video_book_final"
+        existing_tail["render_index"] = 14500
+        return
+
+    image_call = next(
+        (
+            call
+            for call in calls
+            if isinstance(call, dict)
+            and call.get("call_id") == "call_191365"
+            and isinstance((call.get("params") or {}).get("image_infos"), list)
+        ),
+        None,
+    )
+    image_infos = ((image_call or {}).get("params") or {}).get("image_infos") or []
+    if len(image_infos) < 2:
+        return
+    keyframe_call = next(
+        (
+            call
+            for call in calls
+            if isinstance(call, dict)
+            and call.get("call_id") == "call_300101"
+            and isinstance((call.get("params") or {}).get("keyframes"), list)
+        ),
+        None,
+    )
+    if keyframe_call is None:
+        return
+
+    final_index = len(image_infos) - 1
+    final_image = dict(image_infos.pop())
+    retained_keyframes: list[dict[str, Any]] = []
+    tail_keyframes: list[dict[str, Any]] = []
+    for keyframe in keyframe_call["params"]["keyframes"]:
+        if not isinstance(keyframe, dict):
+            continue
+        copied = dict(keyframe)
+        ref = copied.get("segment_ref")
+        try:
+            ref_index = int(ref.get("index", -1)) if isinstance(ref, dict) else -1
+        except (TypeError, ValueError):
+            ref_index = -1
+        if (
+            isinstance(ref, dict)
+            and ref.get("call_id") == "call_191365"
+            and ref_index == final_index
+        ):
+            copied["segment_ref"] = {"call_id": "call_191365_tail", "index": 0}
+            tail_keyframes.append(copied)
+        else:
+            retained_keyframes.append(copied)
+    keyframe_call["params"]["keyframes"] = retained_keyframes
+
+    tail_image_call = {
+        "call_id": "call_191365_tail",
+        "tool": "add_images",
+        "source_node_id": "191365",
+        "source_node_title": "添加正文末图",
+        "track_name": "video_book_final",
+        "render_index": 14500,
+        "params": {"image_infos": [final_image], "scale_x": 1, "scale_y": 1},
+    }
+    tail_keyframe_call = {
+        "call_id": "call_300101_tail",
+        "tool": "add_keyframes",
+        "source_node_id": "300101",
+        "source_node_title": "添加正文末图关键帧",
+        "params": {"keyframes": tail_keyframes},
+    }
+    calls.insert(calls.index(image_call) + 1, tail_image_call)
+    calls.insert(calls.index(keyframe_call) + 1, tail_keyframe_call)
+
+    meta = draft_key.setdefault("meta", {})
+    if isinstance(meta, dict):
+        meta["book_final_image_separate_track"] = True
+        meta["recorded_operation_count"] = len(calls)
+
+
 def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
     workflow_code = str(job.get("workflow_code") or "").upper()
     if workflow_code == DRAFT_KEY_RENDER_CODE:
@@ -2528,6 +2627,7 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
     if workflow_code != "OWN01":
         return
     _strengthen_own01_image_motion(draft_key)
+    _separate_own01_final_image_track(draft_key)
     for call in draft_key.get("calls") or []:
         if not isinstance(call, dict):
             continue

@@ -1103,11 +1103,18 @@ class WorkflowApiTests(unittest.TestCase):
 
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN01"}, key)
 
-        frames = key["calls"][1]["params"]["keyframes"]
+        main_images = next(call for call in key["calls"] if call["call_id"] == "call_191365")
+        tail_images = next(call for call in key["calls"] if call["call_id"] == "call_191365_tail")
+        main_frames = next(
+            call for call in key["calls"] if call["call_id"] == "call_300101"
+        )["params"]["keyframes"]
+        tail_frames = next(
+            call for call in key["calls"] if call["call_id"] == "call_300101_tail"
+        )["params"]["keyframes"]
         final_frames = [
             frame
-            for frame in frames
-            if frame["segment_ref"] == {"call_id": "call_191365", "index": 1}
+            for frame in tail_frames
+            if frame["segment_ref"] == {"call_id": "call_191365_tail", "index": 0}
         ]
         self.assertEqual(len(final_frames), 6)
         self.assertTrue(all(frame["offset"] < 10_000_000 for frame in final_frames))
@@ -1119,12 +1126,16 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertGreater(max(x_values) - min(x_values), 0.10)
         first_frames = [
             frame
-            for frame in frames
+            for frame in main_frames
             if frame["segment_ref"] == {"call_id": "call_191365", "index": 0}
         ]
         self.assertEqual(len(first_frames), 6)
+        self.assertEqual(len(main_images["params"]["image_infos"]), 1)
+        self.assertEqual(len(tail_images["params"]["image_infos"]), 1)
+        self.assertEqual(tail_images["render_index"], 14500)
         self.assertEqual(key["meta"]["book_image_motion_repaired_indexes"], [0, 1])
         self.assertTrue(key["meta"]["final_image_motion_repaired"])
+        self.assertTrue(key["meta"]["book_final_image_separate_track"])
 
     def test_published_book_draft_prefers_semantic_caption_breaks(self):
         text = "师徒四人，就像四季里的风，春的炽热，夏的温润，秋的深沉。"
