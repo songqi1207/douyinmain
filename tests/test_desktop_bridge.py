@@ -143,6 +143,27 @@ class DesktopBridgeTests(unittest.TestCase):
             self.assertEqual(recovered, (output / "god-job.mp4").resolve())
             self.assertEqual(recovered.read_bytes(), exported.read_bytes())
 
+    def test_recover_recent_local_export_scans_onedrive_videos(self):
+        with tempfile.TemporaryDirectory(prefix="recover-onedrive-export-") as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            output = root / "output"
+            videos = home / "OneDrive" / "Videos"
+            videos.mkdir(parents=True)
+            exported = videos / "活着.mp4"
+            exported.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"v" * 100_000))
+            now = time.time()
+            os.utime(exported, (now, now))
+
+            recovered = _recover_recent_local_export(
+                {"job_id": "book-job", "recover_local_after": now - 10},
+                output,
+                home_dir=home,
+            )
+
+            self.assertEqual(recovered, (output / "book-job.mp4").resolve())
+            self.assertEqual(recovered.read_bytes(), exported.read_bytes())
+
     def test_recover_local_export_prefers_matching_job_over_newer_other_video(self):
         with tempfile.TemporaryDirectory(prefix="recover-matching-export-") as temporary:
             root = Path(temporary)

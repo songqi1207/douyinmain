@@ -1484,7 +1484,7 @@ def _upload_device_result(
         min(
             8 * 1024 * 1024,
             max(
-                int(os.getenv("DEVICE_RESULT_CHUNK_BYTES") or 1024 * 1024),
+                int(os.getenv("DEVICE_RESULT_CHUNK_BYTES") or 4 * 1024 * 1024),
                 (size_bytes + 511) // 512,
             ),
         ),
@@ -1501,9 +1501,14 @@ def _upload_device_result(
         timeout=30,
     )
     created.raise_for_status()
-    upload_id = str((created.json() or {}).get("upload_id") or "")
+    upload_details = created.json() or {}
+    upload_id = str(upload_details.get("upload_id") or "")
     if not upload_id:
         raise requests.RequestException("服务器没有返回分片上传编号")
+    upload_base_url = str(upload_details.get("upload_base_url") or agent.site_url).strip().rstrip("/")
+    upload_token = str(upload_details.get("upload_token") or "").strip()
+    if not upload_base_url.startswith(("http://", "https://")):
+        raise requests.RequestException("服务器返回的视频上传地址无效")
 
     parallel_uploads = max(
         1,
@@ -1521,12 +1526,15 @@ def _upload_device_result(
         last_part_error: requests.RequestException | None = None
         part_session = requests.Session()
         part_session.trust_env = False
-        part_session.headers.update({"Authorization": f"Bearer {agent.device_token}"})
+        if upload_token:
+            part_session.headers.update({"X-Device-Upload-Token": upload_token})
+        else:
+            part_session.headers.update({"Authorization": f"Bearer {agent.device_token}"})
         try:
             for attempt in range(1, 6):
                 try:
                     response = part_session.put(
-                        f"{agent.site_url}/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/{part_number}",
+                        f"{upload_base_url}/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/{part_number}",
                         files={"chunk": (f"part-{part_number}", chunk, "application/octet-stream")},
                         timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
                     )
@@ -1835,13 +1843,22 @@ class DeviceAgent:
             if output_path is not None:
                 task_progress("已找到剪映导出的本地视频，正在直接回传网站…")
             else:
-                output_path = _run_native_export(
-                    task,
-                    self.draft_root,
-                    self.jianying_exe,
-                    self.output_dir,
-                    task_progress,
-                )
+                export_started_at = time.time()
+                try:
+                    output_path = _run_native_export(
+                        task,
+                        self.draft_root,
+                        self.jianying_exe,
+                        self.output_dir,
+                        task_progress,
+                    )
+                except BridgeError:
+                    recovery_task = dict(task)
+                    recovery_task["recover_local_after"] = export_started_at - 5
+                    output_path = _recover_recent_local_export(recovery_task, self.output_dir)
+                    if output_path is None:
+                        raise
+                    task_progress("已从 OneDrive 视频目录找到剪映成片，正在继续回传网站…")
             task_progress("剪映导出完成，正在把视频传回网站…")
             upload_attempts = max(
                 1,

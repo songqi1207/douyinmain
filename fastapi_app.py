@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
 import os
 import re
 import shutil
+import secrets
 import threading
 import time
 import uuid
@@ -137,7 +139,7 @@ ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger("workflow.api")
 RUNTIME_ENV_PATH = ROOT / ".env"
 JIANYING_COMPAT_VERSION = "5.9.0.11632"
-MINIMUM_RENDER_HELPER_VERSION = "1.4.89"
+MINIMUM_RENDER_HELPER_VERSION = "1.4.90"
 DEVICE_UPLOAD_PART_MAX_BYTES = 40 * 1024 * 1024
 _LOCAL_VIDEO_CACHE_LOCK = threading.RLock()
 _ACTIVE_LOCAL_VIDEO_PATHS: set[Path] = set()
@@ -181,6 +183,17 @@ if (FRONTEND_DIST / "assets").is_dir():
 @app.on_event("startup")
 def _start_daily_health_checks() -> None:
     start_health_scheduler()
+
+
+@app.get("/.well-known/acme-challenge/{token}", include_in_schema=False)
+def api_acme_challenge(token: str):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", token):
+        raise HTTPException(status_code=404, detail="Not found")
+    root = (ROOT / ".well-known" / "acme-challenge").resolve()
+    candidate = (root / token).resolve()
+    if root not in candidate.parents or not candidate.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(candidate, media_type="text/plain")
 
 
 def _spa_index() -> FileResponse | HTMLResponse:
@@ -1253,6 +1266,15 @@ def _device_upload_directory(job_id: str, upload_id: str) -> Path:
     return candidate
 
 
+def _device_upload_token_matches(manifest: dict, supplied_token: str) -> bool:
+    expected = str(manifest.get("upload_token_sha256") or "")
+    supplied = str(supplied_token or "")
+    if not expected or not supplied:
+        return False
+    actual = hashlib.sha256(supplied.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(expected, actual)
+
+
 def _finish_received_device_video(
     job: dict,
     device: dict,
@@ -1393,6 +1415,7 @@ def api_create_render_agent_upload(job_id: str, request: Request, payload: dict 
     if size_bytes < 12 or size_bytes > max_bytes or total_parts < 1 or total_parts > 512:
         raise HTTPException(status_code=422, detail={"code": "invalid_upload", "message": "上传文件大小或分片数量无效"})
     upload_id = uuid.uuid4().hex
+    upload_token = secrets.token_urlsafe(32)
     directory = _device_upload_directory(job_id, upload_id)
     directory.mkdir(parents=True, exist_ok=False)
     manifest = {
@@ -1400,11 +1423,16 @@ def api_create_render_agent_upload(job_id: str, request: Request, payload: dict 
         "device_id": device["id"],
         "size_bytes": size_bytes,
         "total_parts": total_parts,
+        "upload_token_sha256": hashlib.sha256(upload_token.encode("utf-8")).hexdigest(),
         "created_at": time.time(),
     }
     (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     heartbeat_device(device["id"])
-    return {"upload_id": upload_id}
+    direct_base_url = (os.getenv("DEVICE_DIRECT_UPLOAD_BASE_URL") or "").strip().rstrip("/")
+    response = {"upload_id": upload_id, "upload_token": upload_token}
+    if direct_base_url.startswith(("http://", "https://")):
+        response["upload_base_url"] = direct_base_url
+    return response
 
 
 def _load_device_upload(job_id: str, upload_id: str, device_id: str) -> tuple[Path, dict]:
@@ -1426,11 +1454,24 @@ async def api_upload_render_agent_part(
     request: Request,
     chunk: UploadFile = File(...),
 ):
-    device = _require_render_device(request)
+    supplied_upload_token = request.headers.get("x-device-upload-token") or ""
+    directory = _device_upload_directory(job_id, upload_id)
+    try:
+        manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail={"code": "upload_not_found", "message": "上传任务不存在"}) from exc
+    if supplied_upload_token:
+        if not _device_upload_token_matches(manifest, supplied_upload_token):
+            raise HTTPException(status_code=401, detail={"code": "invalid_upload_token", "message": "上传凭证无效"})
+        device_id = str(manifest.get("device_id") or "")
+    else:
+        device = _require_render_device(request)
+        device_id = device["id"]
     job = get_job(job_id)
-    if not job or job.get("render_device_id") != device["id"] or job.get("status") != "rendering":
+    if not job or job.get("render_device_id") != device_id or job.get("status") != "rendering":
         raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "导出任务不存在"})
-    directory, manifest = _load_device_upload(job_id, upload_id, device["id"])
+    if manifest.get("job_id") != job_id or manifest.get("device_id") != device_id:
+        raise HTTPException(status_code=404, detail={"code": "upload_not_found", "message": "上传任务不存在"})
     if part_number < 1 or part_number > int(manifest["total_parts"]):
         raise HTTPException(status_code=422, detail={"code": "invalid_part", "message": "视频分片编号无效"})
     destination = directory / f"{part_number:04d}.part"
@@ -1448,7 +1489,7 @@ async def api_upload_render_agent_part(
         os.replace(temporary, destination)
     finally:
         temporary.unlink(missing_ok=True)
-    heartbeat_device(device["id"])
+    heartbeat_device(device_id)
     return {"part_number": part_number, "size_bytes": total}
 
 

@@ -199,9 +199,9 @@ class WorkflowApiTests(unittest.TestCase):
             with patch.object(fastapi_app, "ROOT", root):
                 response = fastapi_app.api_download_draft_bridge()
             self.assertEqual(Path(response.path), executable)
-            self.assertIn("AI-Video-Creator-v1.4.89.exe", response.headers["content-disposition"])
+            self.assertIn("AI-Video-Creator-v1.4.90.exe", response.headers["content-disposition"])
             self.assertIn("no-store", response.headers["cache-control"])
-            self.assertEqual(response.headers["x-helper-version"], "1.4.89")
+            self.assertEqual(response.headers["x-helper-version"], "1.4.90")
             self.assertEqual(
                 response.headers["x-content-sha256"],
                 hashlib.sha256(executable.read_bytes()).hexdigest(),
@@ -211,7 +211,7 @@ class WorkflowApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/draft-key-renders/status")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["latest_helper_version"], "1.4.89")
+        self.assertEqual(response.json()["latest_helper_version"], "1.4.90")
 
     def test_spa_index_must_revalidate_after_frontend_deploy(self):
         with tempfile.TemporaryDirectory(prefix="frontend-dist-") as temporary:
@@ -2195,7 +2195,7 @@ class WorkflowApiTests(unittest.TestCase):
             claimed = TestClient(app).post("/api/v1/render-agent/claim", headers=headers)
             self.assertEqual(claimed.status_code, 426, claimed.text)
             self.assertEqual(claimed.json()["detail"]["code"], "helper_update_required")
-            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.89")
+            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.90")
         finally:
             self.client.delete(f"/api/v1/render-devices/{paired.json()['device_id']}")
 
@@ -2332,11 +2332,13 @@ class WorkflowApiTests(unittest.TestCase):
                     json={"filename": "large.mp4", "size_bytes": len(mp4), "total_parts": 2},
                 )
                 self.assertEqual(upload.status_code, 201, upload.text)
-                upload_id = upload.json()["upload_id"]
+                upload_payload = upload.json()
+                upload_id = upload_payload["upload_id"]
+                self.assertTrue(upload_payload["upload_token"])
                 for number, content in enumerate((mp4[:split_at], mp4[split_at:]), start=1):
                     uploaded_part = TestClient(app).put(
                         f"/api/v1/render-agent/jobs/{chunked_job_id}/uploads/{upload_id}/{number}",
-                        headers=headers,
+                        headers={"X-Device-Upload-Token": upload_payload["upload_token"]},
                         files={"chunk": (f"part-{number}", content, "application/octet-stream")},
                     )
                     self.assertEqual(uploaded_part.status_code, 200, uploaded_part.text)
