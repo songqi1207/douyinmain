@@ -1583,18 +1583,13 @@ _EXPECTED_PUBLISHED_DRAFT_CALL_IDS = {
     },
 }
 
-# The original cigarette workflow contains an optional border-decoration
-# branch. Its formatter nodes legitimately return empty values, and the known
-# good Jianying draft omits all ten operations below. The recorder preserves
-# them when the branch produces data, but completeness must not require them.
+# Workflow-specific nodes that may legitimately be absent from a published
+# draft.  The book workflow deliberately has no optional image nodes: missing
+# body artwork would expose the source template's previous book throughout.
 _OPTIONAL_PUBLISHED_DRAFT_CALL_IDS = {
-    # The known-good book draft can omit body image and body keyframe nodes.
-    # Filling them from cover/opening images makes the intro visuals reappear
-    # in the body section, which is visually worse than leaving them absent.
-    "OWN01": {
-        "call_191365",
-        "call_300101",
-    },
+    # Book body images and their motion keyframes are required.  If they are
+    # missing, JianYing keeps the source template's old book artwork visible.
+    "OWN01": set(),
     "OWN02": {
         "call_501522",
         "call_731224",
@@ -1632,6 +1627,9 @@ def _validate_published_draft_completeness(job: dict, draft_key: dict) -> None:
             damaged_caption_ids.append(str(call.get("call_id") or "unknown"))
 
     required_image_call_ids = {
+        # A book draft without body images silently exposes the source
+        # template's previous title and artwork throughout the narration.
+        "OWN01": {"call_191365"},
         # Fixed intro/background artwork is not a substitute for the
         # generated mythology subject images used by the body.
         "OWN03": {"main_images"},

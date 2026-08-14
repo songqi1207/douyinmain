@@ -912,29 +912,52 @@ class WorkflowApiTests(unittest.TestCase):
             key,
         )
 
-    def test_empty_optional_book_body_images_are_kept_absent(self):
+    def test_missing_book_body_images_are_rejected(self):
         required = workflow_jobs._EXPECTED_PUBLISHED_DRAFT_CALL_IDS["OWN01"]
-        optional = workflow_jobs._OPTIONAL_PUBLISHED_DRAFT_CALL_IDS["OWN01"]
         key = {
             "calls": [
                 {"call_id": call_id, "tool": "test", "params": {"items": [{}]}}
-                for call_id in sorted(required - optional)
+                for call_id in sorted(required - {"call_191365", "call_300101"})
             ],
             "meta": {
                 "unresolved_segment_ids": [],
                 "skipped_empty_calls": [
-                    {"call_id": call_id}
-                    for call_id in sorted(optional)
+                    {"call_id": "call_191365", "source_node_title": "添加正文配图"},
+                    {"call_id": "call_300101", "source_node_title": "添加正文配图关键帧"},
                 ],
             },
         }
 
-        workflow_jobs._validate_published_draft_completeness(
-            {"workflow_code": "OWN01"},
-            key,
-        )
-        self.assertNotIn("call_191365", {call["call_id"] for call in key["calls"]})
-        self.assertNotIn("call_300101", {call["call_id"] for call in key["calls"]})
+        with self.assertRaises(workflow_jobs.ProviderError) as raised:
+            workflow_jobs._validate_published_draft_completeness(
+                {"workflow_code": "OWN01"},
+                key,
+            )
+
+        self.assertEqual(raised.exception.code, "incomplete_draft_key")
+        self.assertIn("配图", str(raised.exception))
+
+    def test_empty_book_body_image_call_is_rejected(self):
+        required = workflow_jobs._EXPECTED_PUBLISHED_DRAFT_CALL_IDS["OWN01"]
+        key = {
+            "calls": [
+                {
+                    "call_id": call_id,
+                    "tool": "add_images" if call_id == "call_191365" else "test",
+                    "params": {"image_infos": []} if call_id == "call_191365" else {"items": [{}]},
+                }
+                for call_id in sorted(required)
+            ],
+            "meta": {"unresolved_segment_ids": []},
+        }
+
+        with self.assertRaises(workflow_jobs.ProviderError) as raised:
+            workflow_jobs._validate_published_draft_completeness(
+                {"workflow_code": "OWN01"},
+                key,
+            )
+
+        self.assertEqual(raised.exception.code, "incomplete_draft_key")
 
     def test_complete_published_book_draft_accepts_two_space_watermark(self):
         expected = workflow_jobs._EXPECTED_PUBLISHED_DRAFT_CALL_IDS["OWN01"]
@@ -943,6 +966,12 @@ class WorkflowApiTests(unittest.TestCase):
             for call_id in sorted(expected)
         ]
         watermark = next(call for call in calls if call["call_id"] == "call_138594")
+        body_images = next(call for call in calls if call["call_id"] == "call_191365")
+        body_images["params"] = {
+            "image_infos": [
+                {"image_url": "https://example.test/book-body.png", "start": 0, "end": 1_000_000}
+            ]
+        }
         watermark.update(
             {
                 "tool": "add_captions",
