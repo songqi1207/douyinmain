@@ -1028,6 +1028,9 @@ class WorkflowApiTests(unittest.TestCase):
         }
 
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN01"}, key)
+        # Normalization may run again while a corrected job is requeued.  The
+        # already-separated final image must keep an equally visible move.
+        workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN01"}, key)
 
         captions = key["calls"][0]["params"]["captions"]
         self.assertGreater(len(captions), 1)
@@ -1124,6 +1127,12 @@ class WorkflowApiTests(unittest.TestCase):
             if frame["property"] == "KFTypePositionX"
         ]
         self.assertGreater(max(x_values) - min(x_values), 0.10)
+        scale_values = [
+            frame["value"]
+            for frame in final_frames
+            if frame["property"] == "UNIFORM_SCALE"
+        ]
+        self.assertGreaterEqual(max(scale_values) - min(scale_values), 0.30)
         first_frames = [
             frame
             for frame in main_frames
@@ -1136,6 +1145,7 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(key["meta"]["book_image_motion_repaired_indexes"], [0, 1])
         self.assertTrue(key["meta"]["final_image_motion_repaired"])
         self.assertTrue(key["meta"]["book_final_image_separate_track"])
+        self.assertTrue(key["meta"]["book_tail_motion_repaired"])
 
     def test_published_book_draft_prefers_semantic_caption_breaks(self):
         text = "师徒四人，就像四季里的风，春的炽热，夏的温润，秋的深沉。"
