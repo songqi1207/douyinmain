@@ -1511,10 +1511,7 @@ class WorkflowApiTests(unittest.TestCase):
 
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
 
-        old_frames = next(call for call in key["calls"] if call["call_id"] == "camera_kf")[
-            "params"
-        ]["keyframes"]
-        self.assertEqual(old_frames, [])
+        self.assertNotIn("camera_kf", {call["call_id"] for call in key["calls"]})
         continuous = next(
             call for call in key["calls"] if call["call_id"] == "camera_kf_continuous"
         )["params"]["keyframes"]

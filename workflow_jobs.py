@@ -2524,7 +2524,17 @@ def _strengthen_own03_image_motion(draft_key: dict) -> None:
     calls[:] = [
         call
         for call in calls
-        if not (isinstance(call, dict) and call.get("call_id") == "camera_kf_continuous")
+        if not (
+            isinstance(call, dict)
+            and (
+                call.get("call_id") == "camera_kf_continuous"
+                or (
+                    call.get("tool") == "add_keyframes"
+                    and isinstance((call.get("params") or {}).get("keyframes"), list)
+                    and not (call.get("params") or {}).get("keyframes")
+                )
+            )
+        )
     ]
     calls.append(
         {
