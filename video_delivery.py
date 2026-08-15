@@ -469,7 +469,6 @@ def publish_device_video(job_id: str, source: Path) -> tuple[str, str, int, int,
                 preview_url = upload_video_to_r2(
                     preview_source,
                     f"{job_id}-device-preview-{delivery_id}.mp4",
-                    stream_full=True,
                 )
                 try:
                     preview_1080_source = compress_video_for_web(
@@ -483,7 +482,6 @@ def publish_device_video(job_id: str, source: Path) -> tuple[str, str, int, int,
                     preview_1080_url = upload_video_to_r2(
                         preview_1080_source,
                         f"{job_id}-device-preview-1080-{delivery_id}.mp4",
-                        stream_full=True,
                     )
                     preview_1080_bytes = preview_1080_source.stat().st_size
                 except VideoDeliveryError:

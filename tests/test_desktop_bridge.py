@@ -255,7 +255,7 @@ class DesktopBridgeTests(unittest.TestCase):
             direct = MagicMock(status_code=200)
             direct.json.return_value = {
                 "upload_url": "https://media.example.test/exports/job-1.mp4",
-                "public_url": "https://media.example.test/exports/job-1.mp4?stream=full",
+                "public_url": "https://media.example.test/exports/job-1.mp4",
                 "token": "scoped.token",
                 "part_bytes": 5 * 1024 * 1024,
                 "parallel_uploads": 1,
@@ -291,7 +291,7 @@ class DesktopBridgeTests(unittest.TestCase):
             direct = MagicMock(status_code=200)
             direct.json.return_value = {
                 "upload_url": "https://media.example.test/exports/job-1.mp4",
-                "public_url": "https://media.example.test/exports/job-1.mp4?stream=full",
+                "public_url": "https://media.example.test/exports/job-1.mp4",
                 "token": "scoped.token",
             }
             agent = MagicMock()

@@ -1324,7 +1324,7 @@ def _direct_device_upload_details(job_id: str, device_id: str, size_bytes: int) 
     )
     return {
         "upload_url": f"{upload_base}/{object_name}",
-        "public_url": f"{public_base}/{object_name}?stream=full",
+        "public_url": f"{public_base}/{object_name}",
         "object_key": object_key,
         "token": create_direct_upload_token(
             secret,

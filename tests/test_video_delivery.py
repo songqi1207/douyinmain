@@ -253,7 +253,7 @@ class VideoDeliveryTests(unittest.TestCase):
                         "https://cdn.test/preview-720.mp4",
                         "https://cdn.test/preview-1080.mp4",
                     ],
-                ),
+                ) as upload,
             ):
                 result = video_delivery.publish_device_video("job-id", source)
 
@@ -261,6 +261,7 @@ class VideoDeliveryTests(unittest.TestCase):
             self.assertEqual(result[1], "https://cdn.test/original.mp4")
             self.assertEqual(result[5], "https://cdn.test/preview-1080.mp4")
             self.assertEqual([item[1]["width"] for item in outputs], [1280, 1920])
+            self.assertTrue(all("stream_full" not in call.kwargs for call in upload.call_args_list))
 
     def test_completed_device_job_can_reference_r2_url(self):
         job = {
