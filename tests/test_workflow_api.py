@@ -746,9 +746,15 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(params["audio"], "https://example.test/bgm.mp3")
         self.assertEqual(params["yinse"], "voice-1")
         self.assertIn("西王母为昆仑女仙之首", params["fengge"])
+        self.assertLessEqual(len(params["fengge"]), 260)
         self.assertEqual(params["mihe_key"], "server-side-mihe-key")
         for browser_name in ("god_name", "description", "scene_count", "script", "audio_url", "voice_id"):
             self.assertNotIn(browser_name, params)
+
+    def test_published_god_workflow_clamps_custom_style_for_image_provider(self):
+        params = _provider_inputs({"god_name": "嫦娥", "fengge": "画" * 500}, "OWN03")
+
+        self.assertEqual(len(params["fengge"]), 260)
 
     def test_published_book_and_cigarette_map_one_theme_to_private_parameters(self):
         with patch.dict(

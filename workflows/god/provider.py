@@ -34,6 +34,14 @@ _STYLE_BODY = (
 )
 
 
+_STYLE_BODY_COMPACT = (
+    "中国传统工笔重彩、永乐宫与敦煌壁画风，矿物颜料、宣纸肌理、低饱和赭石灰青。"
+    "横屏16:9超大全景，主神是远处居中点景小人，服饰、法器、姿态符合神格，场景随分镜变化。"
+    "相邻画面取景与动作明显不同。禁止近景特写、现代、二次元、3D、摄影、水印、文字和Logo。"
+)
+_MAX_PROVIDER_STYLE_CHARS = 260
+
+
 def build_god_provider_parameters(inputs: dict[str, Any]) -> dict[str, Any]:
     topic = str(inputs.get("god_name") or inputs.get("theme") or inputs.get("zhuti") or "").strip()
     appearance = str(inputs.get("description") or "").strip()
@@ -41,7 +49,8 @@ def build_god_provider_parameters(inputs: dict[str, Any]) -> dict[str, Any]:
         appearance = GOD_APPEARANCE_TRAITS.get(topic) or _GENERIC_APPEARANCE
     style = str(inputs.get("fengge") or "").strip()
     if not style:
-        style = f"你是一位中国神话绘画大师。请根据用户输入的神仙名称，生成一幅符合中国传统神话体系的神仙画像。主神形象必须贴合：{topic}为{appearance}。{_STYLE_BODY}"
+        style = f"你是一位中国神话绘画大师。主神形象必须贴合：{topic}为{appearance}。{_STYLE_BODY_COMPACT}"
+    style = style[:_MAX_PROVIDER_STYLE_CHARS]
 
     script = str(inputs.get("script") or inputs.get("wenan") or "").strip()
     if not script:
