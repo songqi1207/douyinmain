@@ -63,7 +63,7 @@ export function VideoPreview({
           poster={result.poster_url || undefined}
           controls
           playsInline
-          preload="metadata"
+          preload="auto"
           onLoadedMetadata={(event) => {
             const video = event.currentTarget;
             setOrientation(video.videoHeight > video.videoWidth ? "portrait" : "landscape");
