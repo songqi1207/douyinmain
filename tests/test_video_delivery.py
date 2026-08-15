@@ -239,7 +239,7 @@ class VideoDeliveryTests(unittest.TestCase):
 
             def encode(_source, destination, **kwargs):
                 outputs.append((Path(destination), kwargs))
-                Path(destination).write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"p" * (700 if kwargs["width"] == 1280 else 1400))
+                Path(destination).write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"p" * (700 if kwargs["width"] == 960 else 1400))
                 return Path(destination).resolve()
 
             with (
@@ -260,8 +260,13 @@ class VideoDeliveryTests(unittest.TestCase):
             self.assertEqual(result[0], "https://cdn.test/preview-720.mp4")
             self.assertEqual(result[1], "https://cdn.test/original.mp4")
             self.assertEqual(result[5], "https://cdn.test/preview-1080.mp4")
-            self.assertEqual([item[1]["width"] for item in outputs], [1280, 1920])
+            self.assertEqual([item[1]["width"] for item in outputs], [960, 1920])
+            self.assertEqual(outputs[0][1]["height"], 540)
+            self.assertEqual(outputs[0][1]["audio_bitrate"], "64k")
             self.assertTrue(all("stream_full" not in call.kwargs for call in upload.call_args_list))
+            cached = source.parent / "preview-cache" / "job-id.mp4"
+            self.assertTrue(cached.is_file())
+            self.assertEqual(cached.stat().st_size, 712)
 
     def test_completed_device_job_can_reference_r2_url(self):
         job = {

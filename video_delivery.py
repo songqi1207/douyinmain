@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -83,6 +84,7 @@ def compress_video_for_web(
     height: int | None = None,
     maxrate: str | None = None,
     bufsize: str | None = None,
+    audio_bitrate: str | None = None,
 ) -> Path:
     """Create a fast-start H.264 preview for smooth browser playback.
 
@@ -101,7 +103,9 @@ def compress_video_for_web(
         f".{destination.stem}.{uuid4().hex}.encoding.mp4"
     )
     preset = (os.getenv("R2_EXPORT_VIDEO_PRESET") or "medium").strip() or "medium"
-    audio_bitrate = (os.getenv("R2_EXPORT_PREVIEW_AUDIO_BITRATE") or "128k").strip() or "128k"
+    selected_audio_bitrate = (
+        audio_bitrate or os.getenv("R2_EXPORT_PREVIEW_AUDIO_BITRATE") or "128k"
+    ).strip() or "128k"
     video_bitrate = (maxrate or os.getenv("R2_EXPORT_PREVIEW_MAXRATE") or "5000k").strip() or "5000k"
     video_buffer = (bufsize or os.getenv("R2_EXPORT_PREVIEW_BUFSIZE") or "10000k").strip() or "10000k"
     preview_width = min(3840, max(640, int(width or _positive_int("R2_EXPORT_PREVIEW_WIDTH", 1920))))
@@ -148,7 +152,7 @@ def compress_video_for_web(
         "-c:a",
         "aac",
         "-b:a",
-        audio_bitrate,
+        selected_audio_bitrate,
         "-movflags",
         "+faststart",
         str(temporary),
@@ -181,6 +185,22 @@ def compress_video_for_web(
             raise VideoDeliveryError("视频压缩结果不是有效的 MP4")
 
     os.replace(temporary, destination)
+    return destination
+
+
+def cache_preview_for_local_stream(job_id: str, source: Path) -> Path:
+    """Atomically retain the lightweight preview for the authenticated player."""
+
+    source = Path(source).resolve()
+    cache_dir = source.parent / "preview-cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    destination = cache_dir / f"{job_id}.mp4"
+    temporary = cache_dir / f".{job_id}.{uuid4().hex}.part"
+    try:
+        shutil.copy2(source, temporary)
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
     return destination
 
 
@@ -461,11 +481,13 @@ def publish_device_video(job_id: str, source: Path) -> tuple[str, str, int, int,
                 preview_source = compress_video_for_web(
                     source,
                     preview_output,
-                    width=1280,
-                    height=720,
-                    maxrate=(os.getenv("R2_EXPORT_PREVIEW_720_MAXRATE") or "1800k"),
-                    bufsize=(os.getenv("R2_EXPORT_PREVIEW_720_BUFSIZE") or "3600k"),
+                    width=_positive_int("R2_EXPORT_FAST_PREVIEW_WIDTH", 960),
+                    height=_positive_int("R2_EXPORT_FAST_PREVIEW_HEIGHT", 540),
+                    maxrate=(os.getenv("R2_EXPORT_FAST_PREVIEW_MAXRATE") or "420k"),
+                    bufsize=(os.getenv("R2_EXPORT_FAST_PREVIEW_BUFSIZE") or "840k"),
+                    audio_bitrate=(os.getenv("R2_EXPORT_FAST_PREVIEW_AUDIO_BITRATE") or "64k"),
                 )
+                cache_preview_for_local_stream(job_id, preview_source)
                 preview_url = upload_video_to_r2(
                     preview_source,
                     f"{job_id}-device-preview-{delivery_id}.mp4",

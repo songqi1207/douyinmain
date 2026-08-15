@@ -27,8 +27,8 @@ export function VideoPreview({
   const [highUrl, setHighUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  // Preview is cached on the application server once, then FileResponse
-  // serves fast local Range responses. R2 remains the high-quality download.
+  // The default source is a small local fast-preview with Range support.
+  // R2 remains the high-quality download and unlocked 1080p source.
   const source = quality === "1080" ? highUrl : `/api/v1/jobs/${encodeURIComponent(jobId)}/preview-stream`;
 
   useEffect(() => {
@@ -80,7 +80,7 @@ export function VideoPreview({
       </div>
       <div className="video-quality-bar" role="group" aria-label="视频清晰度">
         <button type="button" className={quality === "720" ? "active" : ""} onClick={() => setQuality("720")}>
-          720P <small>流畅预览</small>
+          极速 <small>流畅预览</small>
         </button>
         <button type="button" className={quality === "1080" ? "active premium" : "premium"} disabled={busy} onClick={() => void choose1080()}>
           {busy ? <LoaderCircle className="spin" size={14} /> : highUrl ? <Sparkles size={14} /> : <LockKeyhole size={14} />}
