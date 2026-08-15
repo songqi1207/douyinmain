@@ -27,6 +27,7 @@ from desktop_bridge.device_agent import (
     _cloud_resource_wait_seconds,
     _device_progress_state,
     _font_verification_enabled,
+    _make_live_local_export_probe,
     _one_click_enhance_enabled,
     _prime_jianying_cloud_resources,
     _recover_recent_local_export,
@@ -160,6 +161,39 @@ class DesktopBridgeTests(unittest.TestCase):
                 output,
                 home_dir=home,
             )
+
+            self.assertEqual(recovered, (output / "book-job.mp4").resolve())
+            self.assertEqual(recovered.read_bytes(), exported.read_bytes())
+
+    def test_live_export_probe_waits_until_onedrive_file_is_stable(self):
+        with tempfile.TemporaryDirectory(prefix="live-onedrive-export-") as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            output = root / "output"
+            videos = home / "OneDrive" / "Videos"
+            videos.mkdir(parents=True)
+            exported = videos / "book-job (1).mp4"
+            exported.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"v" * 100_000))
+            now = time.time()
+            os.utime(exported, (now, now))
+            monotonic_now = [10.0]
+            probe = _make_live_local_export_probe(
+                {"job_id": "book-job", "recover_local_after": now - 10},
+                output,
+                home_dir=home,
+                scan_interval_seconds=1,
+                stable_seconds=2,
+                clock=lambda: monotonic_now[0],
+            )
+
+            self.assertIsNone(probe())
+            monotonic_now[0] = 11.0
+            exported.write_bytes(exported.read_bytes() + b"more")
+            self.assertIsNone(probe())
+            monotonic_now[0] = 12.0
+            self.assertIsNone(probe())
+            monotonic_now[0] = 14.0
+            recovered = probe()
 
             self.assertEqual(recovered, (output / "book-job.mp4").resolve())
             self.assertEqual(recovered.read_bytes(), exported.read_bytes())

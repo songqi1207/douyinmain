@@ -145,6 +145,7 @@ def _run_compatibility_process(
     log_prefix: str,
     job_id: str,
     progress: StatusCallback | None,
+    completion_probe: Callable[[], Path | None] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     """Run PowerShell while forwarding automation milestones immediately."""
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -193,8 +194,33 @@ def _run_compatibility_process(
     stderr_thread.start()
     started_at = time.monotonic()
     failure_reason = ""
+    recovered_output: Path | None = None
     while process.poll() is None:
         now = time.monotonic()
+        if completion_probe is not None:
+            try:
+                recovered_output = completion_probe()
+            except OSError as exc:
+                logger.debug(
+                    "%s_live_export_probe_failed job_id=%s error=%s",
+                    log_prefix,
+                    job_id,
+                    exc,
+                )
+            if recovered_output is not None:
+                logger.info(
+                    "%s_live_export_recovered job_id=%s output=%s",
+                    log_prefix,
+                    job_id,
+                    recovered_output,
+                )
+                stage_lines.append(
+                    "jianying_automation_stage stage=export_completed "
+                    "reason=live_local_export_scan"
+                )
+                if progress:
+                    progress("已实时找到剪映成片，正在结束等待并回传网站…")
+                break
         if now - started_at > max(60, int(timeout_seconds)):
             failure_reason = "剪映自动导出超过最长允许时间，已安全终止"
             break
@@ -202,7 +228,7 @@ def _run_compatibility_process(
             failure_reason = "剪映自动导出长时间没有阶段响应，已安全终止"
             break
         time.sleep(0.25)
-    if failure_reason:
+    if failure_reason or recovered_output is not None:
         _terminate_compatibility_process(process)
         process.wait(timeout=20)
     stdout_thread.join(timeout=5)
@@ -212,7 +238,7 @@ def _run_compatibility_process(
     return (
         subprocess.CompletedProcess(
             command_args,
-            int(process.returncode or 0),
+            0 if recovered_output is not None else int(process.returncode or 0),
             "".join(stdout_lines),
             "".join(stderr_lines),
         ),
@@ -978,6 +1004,12 @@ def _run_native_export_unlocked(
         min(1800, int(os.getenv("DEVICE_JIANYING_EXPORT_TIMEOUT_SECONDS") or 1800)),
     )
     job_id = str(task.get("job_id") or "-")
+    live_recovery_task = dict(task)
+    live_recovery_task["recover_local_after"] = time.time() - 5
+    live_export_probe = _make_live_local_export_probe(
+        live_recovery_task,
+        output_dir,
+    )
     jianying_version = detect_jianying_version(executable)
     modern_jianying = jianying_version_key(jianying_version) >= (7,)
     if modern_jianying:
@@ -1119,6 +1151,7 @@ def _run_native_export_unlocked(
             log_prefix=log_prefix,
             job_id=job_id,
             progress=progress,
+            completion_probe=live_export_probe,
         )
         logger.info(
             "%s_finished job_id=%s returncode=%s elapsed_seconds=%.3f",
@@ -1337,13 +1370,14 @@ def _run_native_export_unlocked(
     return output_path
 
 
-def _recover_recent_local_export(
+def _find_recent_local_export_source(
     task: dict,
     output_dir: Path,
     *,
     home_dir: Path | None = None,
+    quick_scan: bool = False,
 ) -> Path | None:
-    """Copy a recent JianYing export that used an unexpected name/path."""
+    """Find a recent JianYing export that used an unexpected name/path."""
 
     try:
         recover_after = float(task.get("recover_local_after") or 0)
@@ -1353,16 +1387,23 @@ def _recover_recent_local_export(
         return None
 
     home = (home_dir or Path.home()).resolve()
-    roots = [
-        output_dir,
-        home / "Downloads",
-        home / "Videos",
-        home / "Desktop",
-        home / "Documents",
-        home / "OneDrive" / "Videos",
-        home / "OneDrive" / "Desktop",
-        home / "OneDrive" / "Documents",
-    ]
+    if quick_scan:
+        roots = [
+            output_dir,
+            home / "Videos",
+            home / "OneDrive" / "Videos",
+        ]
+    else:
+        roots = [
+            output_dir,
+            home / "Downloads",
+            home / "Videos",
+            home / "Desktop",
+            home / "Documents",
+            home / "OneDrive" / "Videos",
+            home / "OneDrive" / "Desktop",
+            home / "OneDrive" / "Documents",
+        ]
     job_id = str(task.get("job_id") or "").strip().lower()
     draft_name = str(
         ((task.get("draft_key") or {}).get("draft") or {}).get("name") or ""
@@ -1412,6 +1453,16 @@ def _recover_recent_local_export(
         candidates,
         key=lambda item: (item[0], item[1], item[2]),
     )
+    return source
+
+
+def _copy_local_export(
+    task: dict,
+    output_dir: Path,
+    source: Path,
+) -> Path:
+    """Atomically copy one verified local export into the helper output path."""
+
     output_dir.mkdir(parents=True, exist_ok=True)
     target = (output_dir / f"{task['job_id']}.mp4").resolve()
     if source.resolve() != target:
@@ -1427,6 +1478,92 @@ def _recover_recent_local_export(
         target.stat().st_size,
     )
     return target
+
+
+def _recover_recent_local_export(
+    task: dict,
+    output_dir: Path,
+    *,
+    home_dir: Path | None = None,
+) -> Path | None:
+    """Copy a recent JianYing export that used an unexpected name/path."""
+
+    source = _find_recent_local_export_source(
+        task,
+        output_dir,
+        home_dir=home_dir,
+    )
+    if source is None:
+        return None
+    return _copy_local_export(task, output_dir, source)
+
+
+def _make_live_local_export_probe(
+    task: dict,
+    output_dir: Path,
+    *,
+    home_dir: Path | None = None,
+    scan_interval_seconds: float | None = None,
+    stable_seconds: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
+) -> Callable[[], Path | None]:
+    """Poll common video folders and recover an MP4 once it stops growing."""
+
+    interval = max(
+        0.25,
+        float(
+            scan_interval_seconds
+            if scan_interval_seconds is not None
+            else os.getenv("DEVICE_LOCAL_EXPORT_SCAN_INTERVAL_SECONDS") or 2
+        ),
+    )
+    required_stable = max(
+        0.0,
+        float(
+            stable_seconds
+            if stable_seconds is not None
+            else os.getenv("DEVICE_LOCAL_EXPORT_STABLE_SECONDS") or 3
+        ),
+    )
+    state: dict[str, Any] = {
+        "next_scan_at": 0.0,
+        "source": None,
+        "signature": None,
+        "unchanged_since": 0.0,
+        "completed": None,
+    }
+
+    def probe() -> Path | None:
+        if state["completed"] is not None:
+            return state["completed"]
+        now = clock()
+        if now < float(state["next_scan_at"]):
+            return None
+        state["next_scan_at"] = now + interval
+        source = _find_recent_local_export_source(
+            task,
+            output_dir,
+            home_dir=home_dir,
+            quick_scan=True,
+        )
+        if source is None:
+            state["source"] = None
+            state["signature"] = None
+            state["unchanged_since"] = now
+            return None
+        stat = source.stat()
+        signature = (stat.st_size, stat.st_mtime_ns)
+        if source != state["source"] or signature != state["signature"]:
+            state["source"] = source
+            state["signature"] = signature
+            state["unchanged_since"] = now
+            return None
+        if now - float(state["unchanged_since"]) < required_stable:
+            return None
+        state["completed"] = _copy_local_export(task, output_dir, source)
+        return state["completed"]
+
+    return probe
 
 
 def _upload_device_result(
