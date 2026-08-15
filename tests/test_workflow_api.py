@@ -746,6 +746,9 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(params["audio"], "https://example.test/bgm.mp3")
         self.assertEqual(params["yinse"], "voice-1")
         self.assertIn("西王母为昆仑女仙之首", params["fengge"])
+        self.assertIn("主神占画面高度25%至45%", params["fengge"])
+        self.assertIn("禁止大面积空白", params["fengge"])
+        self.assertNotIn("远处居中点景小人", params["fengge"])
         self.assertLessEqual(len(params["fengge"]), 260)
         self.assertEqual(params["mihe_key"], "server-side-mihe-key")
         for browser_name in ("god_name", "description", "scene_count", "script", "audio_url", "voice_id"):
