@@ -197,7 +197,16 @@ def _run_compatibility_process(
     recovered_output: Path | None = None
     while process.poll() is None:
         now = time.monotonic()
-        if completion_probe is not None:
+        live_scan_ready = any(
+            marker in line
+            for line in stage_lines
+            for marker in (
+                "stage=export_confirmed",
+                "stage=waiting_for_output_file",
+                "stage=output_file_growing",
+            )
+        )
+        if completion_probe is not None and live_scan_ready:
             try:
                 recovered_output = completion_probe()
             except OSError as exc:
@@ -1498,6 +1507,52 @@ def _recover_recent_local_export(
     return _copy_local_export(task, output_dir, source)
 
 
+def _is_finalized_mp4(path: Path) -> bool:
+    """Return whether an MP4 has a complete top-level box structure.
+
+    A file can stop growing briefly while JianYing is still rendering. The
+    final ``moov`` box is the reliable signal that the export is playable and
+    safe to copy. Parsing box headers avoids reading a potentially multi-GB
+    ``mdat`` payload into memory.
+    """
+
+    try:
+        file_size = path.stat().st_size
+        if file_size < 32:
+            return False
+        found: dict[bytes, tuple[int, int]] = {}
+        offset = 0
+        with path.open("rb") as stream:
+            while offset + 8 <= file_size:
+                stream.seek(offset)
+                header = stream.read(8)
+                if len(header) != 8:
+                    return False
+                box_size = int.from_bytes(header[:4], "big")
+                box_type = header[4:8]
+                header_size = 8
+                if box_size == 1:
+                    extended = stream.read(8)
+                    if len(extended) != 8:
+                        return False
+                    box_size = int.from_bytes(extended, "big")
+                    header_size = 16
+                elif box_size == 0:
+                    box_size = file_size - offset
+                if box_size < header_size or offset + box_size > file_size:
+                    return False
+                if box_type in {b"ftyp", b"mdat", b"moov"}:
+                    found[box_type] = (offset, offset + box_size)
+                offset += box_size
+        if offset != file_size or not {b"ftyp", b"mdat", b"moov"}.issubset(found):
+            return False
+        # JianYing writes its movie index last. Requiring that final box means
+        # a transient pause in a still-growing ``mdat`` cannot be accepted.
+        return found[b"moov"][0] > found[b"mdat"][0] and found[b"moov"][1] == file_size
+    except OSError:
+        return False
+
+
 def _make_live_local_export_probe(
     task: dict,
     output_dir: Path,
@@ -1507,7 +1562,7 @@ def _make_live_local_export_probe(
     stable_seconds: float | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> Callable[[], Path | None]:
-    """Poll common video folders and recover an MP4 once it stops growing."""
+    """Poll video folders and recover a finalized MP4 once it stays stable."""
 
     interval = max(
         0.25,
@@ -1522,7 +1577,7 @@ def _make_live_local_export_probe(
         float(
             stable_seconds
             if stable_seconds is not None
-            else os.getenv("DEVICE_LOCAL_EXPORT_STABLE_SECONDS") or 3
+            else os.getenv("DEVICE_LOCAL_EXPORT_STABLE_SECONDS") or 8
         ),
     )
     state: dict[str, Any] = {
@@ -1559,6 +1614,8 @@ def _make_live_local_export_probe(
             state["unchanged_since"] = now
             return None
         if now - float(state["unchanged_since"]) < required_stable:
+            return None
+        if not _is_finalized_mp4(source):
             return None
         state["completed"] = _copy_local_export(task, output_dir, source)
         return state["completed"]

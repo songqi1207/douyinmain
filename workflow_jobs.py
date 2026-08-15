@@ -2301,21 +2301,13 @@ def _strengthen_own01_image_motion(draft_key: dict) -> None:
             continue
 
         direction = -1.0 if index % 2 else 1.0
-        start_x, end_x = -0.08 * direction, 0.08 * direction
-        start_y, end_y = 0.06 * direction, -0.06 * direction
-        if direction > 0:
-            start_scale, end_scale = 1.20, 1.52
-        else:
-            start_scale, end_scale = 1.50, 1.20
-
-        safe_end = max(1, duration - min(300_000, max(1, duration // 20)))
         ref = {"call_id": "call_191365", "index": index}
-        for prop, start_value, end_value in (
-            ("KFTypePositionX", start_x, end_x),
-            ("KFTypePositionY", start_y, end_y),
-            ("UNIFORM_SCALE", start_scale, end_scale),
-        ):
-            for offset, value in ((0, start_value), (safe_end, end_value)):
+        for prop, points in _continuous_motion_points(
+            duration,
+            direction=direction,
+            strong=True,
+        ).items():
+            for offset, value in points:
                 retained.append(
                     {
                         "segment_ref": ref,
@@ -2390,23 +2382,160 @@ def _strengthen_own01_tail_motion(draft_key: dict) -> None:
             continue
         retained.append(keyframe)
 
-    safe_end = max(1, duration - min(300_000, max(1, duration // 20)))
     ref = {"call_id": "call_191365_tail", "index": 0}
-    for prop, start_value, end_value in (
-        ("KFTypePositionX", 0.08, -0.08),
-        ("KFTypePositionY", -0.06, 0.06),
-        ("UNIFORM_SCALE", 1.50, 1.20),
-    ):
-        retained.extend(
-            [
-                {"segment_ref": ref, "property": prop, "offset": 0, "value": start_value},
-                {"segment_ref": ref, "property": prop, "offset": safe_end, "value": end_value},
-            ]
-        )
+    for prop, points in _continuous_motion_points(
+        duration,
+        direction=-1.0,
+        strong=True,
+    ).items():
+        for offset, value in points:
+            retained.append(
+                {
+                    "segment_ref": ref,
+                    "property": prop,
+                    "offset": offset,
+                    "value": round(float(value), 4),
+                }
+            )
     keyframe_call["params"]["keyframes"] = retained
     meta = draft_key.setdefault("meta", {})
     if isinstance(meta, dict):
         meta["book_tail_motion_repaired"] = True
+
+
+def _continuous_motion_points(
+    duration: int,
+    *,
+    direction: float,
+    strong: bool = False,
+) -> dict[str, list[tuple[int, float]]]:
+    """Return an in-range three-point camera move for one image segment."""
+
+    safe_end = max(1, duration - min(300_000, max(1, duration // 20)))
+    midpoint = max(1, min(safe_end - 1, safe_end // 2))
+    pan_x = 0.10 if strong else 0.065
+    pan_y = 0.07 if strong else 0.045
+    low_scale = 1.18 if strong else 1.12
+    high_scale = 1.50 if strong else 1.26
+    settle_scale = 1.28 if strong else 1.16
+    return {
+        "KFTypePositionX": [
+            (0, -pan_x * direction),
+            (midpoint, pan_x * direction),
+            (safe_end, -pan_x * 0.4 * direction),
+        ],
+        "KFTypePositionY": [
+            (0, pan_y * direction),
+            (midpoint, -pan_y * direction),
+            (safe_end, pan_y * 0.4 * direction),
+        ],
+        "UNIFORM_SCALE": [
+            (0, low_scale),
+            (midpoint, high_scale),
+            (safe_end, settle_scale),
+        ],
+    }
+
+
+def _strengthen_own03_image_motion(draft_key: dict) -> None:
+    """Give every mythology scene, including its tail split, full-duration motion.
+
+    Some provider drafts contain camera offsets longer than the referenced
+    segment and omit the split tail entirely. JianYing may then stop applying
+    camera keyframes from that point onward. Replace only image camera motion
+    with bounded points while preserving the template's named animations.
+    """
+
+    calls = draft_key.get("calls") if isinstance(draft_key.get("calls"), list) else []
+    target_calls: list[tuple[str, list[dict[str, Any]]]] = []
+    for call_id in ("main_images", "main_tail_images"):
+        image_call = next(
+            (
+                call
+                for call in calls
+                if isinstance(call, dict)
+                and str(call.get("call_id") or "") == call_id
+                and isinstance((call.get("params") or {}).get("image_infos"), list)
+            ),
+            None,
+        )
+        if image_call is not None:
+            target_calls.append((call_id, image_call["params"]["image_infos"]))
+    if not target_calls:
+        return
+
+    target_ids = {call_id for call_id, _infos in target_calls}
+    target_properties = {
+        "KFTypePositionX",
+        "KFTypePositionY",
+        "UNIFORM_SCALE",
+        "KFTypeUniformScale",
+    }
+    for call in calls:
+        if not isinstance(call, dict) or call.get("tool") != "add_keyframes":
+            continue
+        params = call.get("params") if isinstance(call.get("params"), dict) else {}
+        keyframes = params.get("keyframes") if isinstance(params.get("keyframes"), list) else []
+        retained = []
+        for keyframe in keyframes:
+            if not isinstance(keyframe, dict):
+                continue
+            ref = keyframe.get("segment_ref")
+            prop = str(keyframe.get("property") or keyframe.get("property_type") or "")
+            if (
+                isinstance(ref, dict)
+                and str(ref.get("call_id") or "") in target_ids
+                and prop in target_properties
+            ):
+                continue
+            retained.append(keyframe)
+        params["keyframes"] = retained
+
+    continuous_frames: list[dict[str, Any]] = []
+    repaired_refs: list[str] = []
+    sequence_index = 0
+    for call_id, image_infos in target_calls:
+        for index, info in enumerate(image_infos):
+            if not isinstance(info, dict):
+                continue
+            duration = _draft_time_to_us(info.get("end")) - _draft_time_to_us(info.get("start"))
+            if duration < 500_000:
+                continue
+            direction = 1.0 if sequence_index % 2 == 0 else -1.0
+            ref = {"call_id": call_id, "index": index}
+            for prop, points in _continuous_motion_points(
+                duration,
+                direction=direction,
+            ).items():
+                for offset, value in points:
+                    continuous_frames.append(
+                        {
+                            "segment_ref": ref,
+                            "property": prop,
+                            "offset": offset,
+                            "value": round(float(value), 4),
+                        }
+                    )
+            repaired_refs.append(f"{call_id}:{index}")
+            sequence_index += 1
+
+    if not continuous_frames:
+        return
+    calls[:] = [
+        call
+        for call in calls
+        if not (isinstance(call, dict) and call.get("call_id") == "camera_kf_continuous")
+    ]
+    calls.append(
+        {
+            "call_id": "camera_kf_continuous",
+            "tool": "add_keyframes",
+            "params": {"keyframes": continuous_frames},
+        }
+    )
+    meta = draft_key.setdefault("meta", {})
+    if isinstance(meta, dict):
+        meta["god_continuous_motion_repaired_refs"] = repaired_refs
 
 
 def _separate_own01_final_image_track(draft_key: dict) -> None:
@@ -2677,6 +2806,7 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                     normalized_calls = list(calls)
                     normalized_calls.insert(normalized_calls.index(main_call) + 1, tail_call)
                     draft_key["calls"] = normalized_calls
+        _strengthen_own03_image_motion(draft_key)
         return
     if workflow_code != "OWN01":
         return

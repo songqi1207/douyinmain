@@ -27,6 +27,7 @@ from desktop_bridge.device_agent import (
     _cloud_resource_wait_seconds,
     _device_progress_state,
     _font_verification_enabled,
+    _is_finalized_mp4,
     _make_live_local_export_probe,
     _one_click_enhance_enabled,
     _prime_jianying_cloud_resources,
@@ -173,7 +174,13 @@ class DesktopBridgeTests(unittest.TestCase):
             videos = home / "OneDrive" / "Videos"
             videos.mkdir(parents=True)
             exported = videos / "book-job (1).mp4"
-            exported.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"v" * 100_000))
+            def finalized_mp4(payload: bytes) -> bytes:
+                def box(kind: bytes, body: bytes) -> bytes:
+                    return (len(body) + 8).to_bytes(4, "big") + kind + body
+
+                return box(b"ftyp", b"mp42isom") + box(b"mdat", payload) + box(b"moov", b"done")
+
+            exported.write_bytes(finalized_mp4(b"v" * 100_000))
             now = time.time()
             os.utime(exported, (now, now))
             monotonic_now = [10.0]
@@ -188,7 +195,7 @@ class DesktopBridgeTests(unittest.TestCase):
 
             self.assertIsNone(probe())
             monotonic_now[0] = 11.0
-            exported.write_bytes(exported.read_bytes() + b"more")
+            exported.write_bytes(finalized_mp4(b"v" * 100_100))
             self.assertIsNone(probe())
             monotonic_now[0] = 12.0
             self.assertIsNone(probe())
@@ -197,6 +204,37 @@ class DesktopBridgeTests(unittest.TestCase):
 
             self.assertEqual(recovered, (output / "book-job.mp4").resolve())
             self.assertEqual(recovered.read_bytes(), exported.read_bytes())
+
+    def test_live_export_probe_rejects_stable_mp4_without_final_moov(self):
+        with tempfile.TemporaryDirectory(prefix="live-incomplete-export-") as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            output = root / "output"
+            videos = home / "OneDrive" / "Videos"
+            videos.mkdir(parents=True)
+            exported = videos / "book-job.mp4"
+
+            def box(kind: bytes, body: bytes) -> bytes:
+                return (len(body) + 8).to_bytes(4, "big") + kind + body
+
+            exported.write_bytes(box(b"ftyp", b"mp42isom") + box(b"mdat", b"v" * 100_000))
+            now = time.time()
+            os.utime(exported, (now, now))
+            monotonic_now = [10.0]
+            probe = _make_live_local_export_probe(
+                {"job_id": "book-job", "recover_local_after": now - 10},
+                output,
+                home_dir=home,
+                scan_interval_seconds=1,
+                stable_seconds=2,
+                clock=lambda: monotonic_now[0],
+            )
+
+            self.assertIsNone(probe())
+            monotonic_now[0] = 13.0
+            self.assertIsNone(probe())
+            self.assertFalse(_is_finalized_mp4(exported))
+            self.assertFalse((output / "book-job.mp4").exists())
 
     def test_recover_local_export_prefers_matching_job_over_newer_other_video(self):
         with tempfile.TemporaryDirectory(prefix="recover-matching-export-") as temporary:

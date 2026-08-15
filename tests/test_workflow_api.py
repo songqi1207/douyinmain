@@ -199,9 +199,9 @@ class WorkflowApiTests(unittest.TestCase):
             with patch.object(fastapi_app, "ROOT", root):
                 response = fastapi_app.api_download_draft_bridge()
             self.assertEqual(Path(response.path), executable)
-            self.assertIn("AI-Video-Creator-v1.4.91.exe", response.headers["content-disposition"])
+            self.assertIn("AI-Video-Creator-v1.4.92.exe", response.headers["content-disposition"])
             self.assertIn("no-store", response.headers["cache-control"])
-            self.assertEqual(response.headers["x-helper-version"], "1.4.91")
+            self.assertEqual(response.headers["x-helper-version"], "1.4.92")
             self.assertEqual(
                 response.headers["x-content-sha256"],
                 hashlib.sha256(executable.read_bytes()).hexdigest(),
@@ -211,7 +211,7 @@ class WorkflowApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/draft-key-renders/status")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["latest_helper_version"], "1.4.91")
+        self.assertEqual(response.json()["latest_helper_version"], "1.4.92")
 
     def test_spa_index_must_revalidate_after_frontend_deploy(self):
         with tempfile.TemporaryDirectory(prefix="frontend-dist-") as temporary:
@@ -1128,7 +1128,7 @@ class WorkflowApiTests(unittest.TestCase):
             for frame in tail_frames
             if frame["segment_ref"] == {"call_id": "call_191365_tail", "index": 0}
         ]
-        self.assertEqual(len(final_frames), 6)
+        self.assertEqual(len(final_frames), 9)
         self.assertTrue(all(frame["offset"] < 10_000_000 for frame in final_frames))
         x_values = [
             frame["value"]
@@ -1147,7 +1147,7 @@ class WorkflowApiTests(unittest.TestCase):
             for frame in main_frames
             if frame["segment_ref"] == {"call_id": "call_191365", "index": 0}
         ]
-        self.assertEqual(len(first_frames), 6)
+        self.assertEqual(len(first_frames), 9)
         self.assertEqual(len(main_images["params"]["image_infos"]), 1)
         self.assertEqual(len(tail_images["params"]["image_infos"]), 1)
         self.assertEqual(tail_images["render_index"], 14500)
@@ -1473,6 +1473,74 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(tail_info["in_animation_resource_id"], "resource-main")
         self.assertEqual(tail_info["in_animation_effect_id"], "effect-main")
         self.assertEqual(tail_info["in_animation_duration"], 2_500_000)
+
+    def test_published_god_camera_motion_covers_every_scene_with_in_range_offsets(self):
+        key = {
+            "calls": [
+                {
+                    "call_id": "main_images",
+                    "tool": "add_images",
+                    "params": {
+                        "image_infos": [
+                            {"start": 0, "end": 5_000_000},
+                            {"start": 5_000_000, "end": 6_500_000},
+                        ]
+                    },
+                },
+                {
+                    "call_id": "camera_kf",
+                    "tool": "add_keyframes",
+                    "params": {
+                        "keyframes": [
+                            {
+                                "segment_ref": {"call_id": "main_images", "index": 1},
+                                "property": "KFTypePositionX",
+                                "offset": 6_840_000,
+                                "value": 0.2,
+                            }
+                        ]
+                    },
+                },
+                {
+                    "call_id": "main_tail_images",
+                    "tool": "add_images",
+                    "params": {"image_infos": [{"start": 6_500_000, "end": 10_000_000}]},
+                },
+            ]
+        }
+
+        workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
+
+        old_frames = next(call for call in key["calls"] if call["call_id"] == "camera_kf")[
+            "params"
+        ]["keyframes"]
+        self.assertEqual(old_frames, [])
+        continuous = next(
+            call for call in key["calls"] if call["call_id"] == "camera_kf_continuous"
+        )["params"]["keyframes"]
+        durations = {
+            ("main_images", 0): 5_000_000,
+            ("main_images", 1): 1_500_000,
+            ("main_tail_images", 0): 3_500_000,
+        }
+        self.assertEqual(len(continuous), 27)
+        for ref_key, duration in durations.items():
+            frames = [
+                frame
+                for frame in continuous
+                if (frame["segment_ref"]["call_id"], frame["segment_ref"]["index"])
+                == ref_key
+            ]
+            self.assertEqual(len(frames), 9)
+            self.assertTrue(all(0 <= frame["offset"] < duration for frame in frames))
+            self.assertEqual(
+                {frame["property"] for frame in frames},
+                {"KFTypePositionX", "KFTypePositionY", "UNIFORM_SCALE"},
+            )
+        self.assertEqual(
+            key["meta"]["god_continuous_motion_repaired_refs"],
+            ["main_images:0", "main_images:1", "main_tail_images:0"],
+        )
 
     def test_draft_with_unrepaired_encoding_damaged_caption_is_rejected(self):
         key = {
@@ -2254,7 +2322,7 @@ class WorkflowApiTests(unittest.TestCase):
             claimed = TestClient(app).post("/api/v1/render-agent/claim", headers=headers)
             self.assertEqual(claimed.status_code, 426, claimed.text)
             self.assertEqual(claimed.json()["detail"]["code"], "helper_update_required")
-            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.91")
+            self.assertEqual(claimed.json()["detail"]["latest_helper_version"], "1.4.92")
         finally:
             self.client.delete(f"/api/v1/render-devices/{paired.json()['device_id']}")
 
