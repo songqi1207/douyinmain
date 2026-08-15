@@ -2403,6 +2403,58 @@ def _strengthen_own01_tail_motion(draft_key: dict) -> None:
         meta["book_tail_motion_repaired"] = True
 
 
+def _bridge_own01_opening_body_gap(draft_key: dict) -> None:
+    """Hold the final opening frame until the first body image begins."""
+
+    calls = draft_key.get("calls") if isinstance(draft_key.get("calls"), list) else []
+    body_call_ids = {"call_191365", "call_191365_tail"}
+    body_starts: list[int] = []
+    for call in calls:
+        if not isinstance(call, dict) or str(call.get("call_id") or "") not in body_call_ids:
+            continue
+        params = call.get("params") if isinstance(call.get("params"), dict) else {}
+        for info in params.get("image_infos") or []:
+            if isinstance(info, dict):
+                start = _draft_time_to_us(info.get("start"))
+                if start > 0:
+                    body_starts.append(start)
+    if not body_starts:
+        return
+    first_body_start = min(body_starts)
+
+    latest_info: dict[str, Any] | None = None
+    latest_end = 0
+    latest_call_id = ""
+    for call in calls:
+        if not isinstance(call, dict) or call.get("tool") != "add_images":
+            continue
+        call_id = str(call.get("call_id") or "")
+        if call_id in body_call_ids:
+            continue
+        params = call.get("params") if isinstance(call.get("params"), dict) else {}
+        for info in params.get("image_infos") or []:
+            if not isinstance(info, dict):
+                continue
+            end = _draft_time_to_us(info.get("end"))
+            if latest_end < end <= first_body_start:
+                latest_info = info
+                latest_end = end
+                latest_call_id = call_id
+
+    gap = first_body_start - latest_end
+    if latest_info is None or gap <= 10_000 or gap > 2_000_000:
+        return
+    latest_info["end"] = first_body_start
+    meta = draft_key.setdefault("meta", {})
+    if isinstance(meta, dict):
+        meta["book_opening_gap_repaired"] = {
+            "call_id": latest_call_id,
+            "old_end": latest_end,
+            "new_end": first_body_start,
+            "gap_us": gap,
+        }
+
+
 def _continuous_motion_points(
     duration: int,
     *,
@@ -2820,6 +2872,7 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
         return
     if workflow_code != "OWN01":
         return
+    _bridge_own01_opening_body_gap(draft_key)
     _strengthen_own01_image_motion(draft_key)
     _separate_own01_final_image_track(draft_key)
     _strengthen_own01_tail_motion(draft_key)

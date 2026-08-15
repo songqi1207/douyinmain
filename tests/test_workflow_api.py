@@ -1156,6 +1156,45 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertTrue(key["meta"]["book_final_image_separate_track"])
         self.assertTrue(key["meta"]["book_tail_motion_repaired"])
 
+    def test_published_book_holds_last_opening_frame_until_body_starts(self):
+        key = {
+            "calls": [
+                {
+                    "call_id": "opening_frames",
+                    "tool": "add_images",
+                    "params": {
+                        "image_infos": [
+                            {"start": 2_000_000, "end": 3_500_000},
+                            {"start": 3_500_000, "end": 3_916_000},
+                        ]
+                    },
+                },
+                {
+                    "call_id": "call_191365",
+                    "tool": "add_images",
+                    "params": {
+                        "image_infos": [
+                            {"image_url": "https://example.test/body.jpg", "start": 4_616_000, "end": 10_000_000}
+                        ]
+                    },
+                },
+            ]
+        }
+
+        workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN01"}, key)
+
+        opening = next(call for call in key["calls"] if call["call_id"] == "opening_frames")
+        self.assertEqual(opening["params"]["image_infos"][-1]["end"], 4_616_000)
+        self.assertEqual(
+            key["meta"]["book_opening_gap_repaired"],
+            {
+                "call_id": "opening_frames",
+                "old_end": 3_916_000,
+                "new_end": 4_616_000,
+                "gap_us": 700_000,
+            },
+        )
+
     def test_published_book_draft_prefers_semantic_caption_breaks(self):
         text = "师徒四人，就像四季里的风，春的炽热，夏的温润，秋的深沉。"
 
