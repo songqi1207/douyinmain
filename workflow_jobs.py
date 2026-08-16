@@ -2747,25 +2747,33 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                 for info in params.get("image_infos") or []:
                     if not isinstance(info, dict):
                         continue
-                    for name_key, type_key in (("in_animation", "in"), ("out_animation", "out"), ("group_animation", "group")):
-                        _attach_animation_resource_ids(info, name_key, type_key, "video")
-                    # Some provider drafts stretch an entrance animation over
-                    # the complete narration scene. JianYing 11.2.5 can stop
-                    # rendering the photo when that animation resource reaches
-                    # its native end, leaving only captions and the border.
-                    # Keep the named template entrance short; the continuous
-                    # camera keyframes below provide full-scene movement.
-                    if str(call.get("call_id") or "") in {"main_images", "main_tail_images"}:
-                        start = _draft_time_to_us(info.get("start"))
-                        end = _draft_time_to_us(info.get("end"))
-                        segment_duration = max(1, end - start)
-                        entrance_duration = _draft_time_to_us(info.get("in_animation_duration"))
-                        if info.get("in_animation") and entrance_duration > 0:
-                            info["in_animation_duration"] = min(
-                                entrance_duration,
-                                segment_duration,
-                                800_000,
-                            )
+                    body_image = str(call.get("call_id") or "") in {
+                        "main_images",
+                        "main_tail_images",
+                    }
+                    if body_image:
+                        # JianYing 11.2.5 can hide a full-frame photo after a
+                        # named clip animation reaches its native end, even
+                        # when the segment itself continues. The result is a
+                        # black body scene with captions and the border still
+                        # visible. Body movement is supplied by the continuous
+                        # camera keyframes, so remove only these clip-animation
+                        # bindings and keep the full-scene motion intact.
+                        for prefix in ("in", "out", "group"):
+                            for suffix in (
+                                "animation",
+                                "animation_duration",
+                                "animation_resource_id",
+                                "animation_effect_id",
+                            ):
+                                info.pop(f"{prefix}_{suffix}", None)
+                    else:
+                        for name_key, type_key in (
+                            ("in_animation", "in"),
+                            ("out_animation", "out"),
+                            ("group_animation", "group"),
+                        ):
+                            _attach_animation_resource_ids(info, name_key, type_key, "video")
             elif call.get("tool") == "add_captions":
                 for info in params.get("captions") or []:
                     if not isinstance(info, dict):

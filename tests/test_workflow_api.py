@@ -1317,7 +1317,7 @@ class WorkflowApiTests(unittest.TestCase):
             "未成年人禁止吸烟",
         )
 
-    def test_published_god_draft_bounds_image_entrance_animation_duration(self):
+    def test_published_god_draft_removes_body_clip_animation(self):
         key = {
             "calls": [
                 {
@@ -1340,14 +1340,9 @@ class WorkflowApiTests(unittest.TestCase):
 
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
 
-        self.assertEqual(
-            key["calls"][0]["params"]["image_infos"][0]["in_animation"],
-            "light_zoom",
-        )
-        self.assertEqual(
-            key["calls"][0]["params"]["image_infos"][0]["in_animation_duration"],
-            800_000,
-        )
+        info = key["calls"][0]["params"]["image_infos"][0]
+        self.assertNotIn("in_animation", info)
+        self.assertNotIn("in_animation_duration", info)
 
     def test_published_god_draft_rejects_empty_main_image_urls(self):
         key = {
@@ -1403,7 +1398,7 @@ class WorkflowApiTests(unittest.TestCase):
         }
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, opening)
         self.assertEqual(opening["calls"][0]["params"]["image_infos"][0]["in_animation"], "Kira游动")
-        self.assertEqual(opening["calls"][1]["params"]["image_infos"][0]["in_animation"], "轻微放大")
+        self.assertNotIn("in_animation", opening["calls"][1]["params"]["image_infos"][0])
         self.assertEqual([call["call_id"] for call in opening["calls"]], ["intro_images", "main_images", "camera_kf"])
 
         exported = {
@@ -1420,9 +1415,9 @@ class WorkflowApiTests(unittest.TestCase):
             ["camera_kf", "opening_fx", "main_images"],
         )
         exported_main = next(call for call in exported["calls"] if call["call_id"] == "main_images")
-        self.assertEqual(exported_main["params"]["image_infos"][0]["in_animation"], "轻微放大")
+        self.assertNotIn("in_animation", exported_main["params"]["image_infos"][0])
 
-    def test_published_god_maps_newer_image_animation_aliases(self):
+    def test_published_god_removes_newer_body_image_animation_aliases(self):
         key = {
             "calls": [
                 {
@@ -1439,9 +1434,9 @@ class WorkflowApiTests(unittest.TestCase):
         }
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
         infos = key["calls"][0]["params"]["image_infos"]
-        self.assertEqual([item["in_animation"] for item in infos], ["动感缩小", "轻微放大"])
+        self.assertTrue(all("in_animation" not in item for item in infos))
 
-    def test_published_god_tail_keeps_animation_metadata(self):
+    def test_published_god_tail_uses_keyframes_without_clip_animation(self):
         key = {
             "calls": [
                 {
@@ -1471,10 +1466,10 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(main["params"]["image_infos"][0]["end"], 1_500_000)
         self.assertEqual(tail_info["start"], 1_500_000)
         self.assertEqual(tail_info["end"], 4_000_000)
-        self.assertEqual(tail_info["in_animation"], "light_zoom")
-        self.assertEqual(tail_info["out_animation"], "fade")
-        self.assertEqual(tail_info["in_animation_duration"], 800_000)
-        self.assertEqual(tail_info["out_animation_duration"], 800_000)
+        self.assertNotIn("in_animation", tail_info)
+        self.assertNotIn("out_animation", tail_info)
+        self.assertNotIn("in_animation_duration", tail_info)
+        self.assertNotIn("out_animation_duration", tail_info)
 
     def test_published_god_repairs_existing_static_tail(self):
         key = {
@@ -1508,12 +1503,12 @@ class WorkflowApiTests(unittest.TestCase):
 
         tail = next(call for call in key["calls"] if call["call_id"] == "main_tail_images")
         tail_info = tail["params"]["image_infos"][0]
-        self.assertEqual(tail_info["in_animation"], "轻微放大")
-        self.assertEqual(tail_info["in_animation_resource_id"], "resource-main")
-        self.assertEqual(tail_info["in_animation_effect_id"], "effect-main")
-        self.assertEqual(tail_info["in_animation_duration"], 800_000)
+        self.assertNotIn("in_animation", tail_info)
+        self.assertNotIn("in_animation_resource_id", tail_info)
+        self.assertNotIn("in_animation_effect_id", tail_info)
+        self.assertNotIn("in_animation_duration", tail_info)
 
-    def test_published_god_caps_long_body_animations_without_removing_motion(self):
+    def test_published_god_removes_body_clip_animations_without_removing_motion(self):
         key = {
             "calls": [
                 {
@@ -1544,8 +1539,8 @@ class WorkflowApiTests(unittest.TestCase):
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
 
         infos = key["calls"][0]["params"]["image_infos"]
-        self.assertEqual([item["in_animation"] for item in infos], ["轻微放大", "缩小"])
-        self.assertEqual([item["in_animation_duration"] for item in infos], [800_000, 800_000])
+        self.assertTrue(all("in_animation" not in item for item in infos))
+        self.assertTrue(all("in_animation_duration" not in item for item in infos))
         motion = next(call for call in key["calls"] if call["call_id"] == "camera_kf_continuous")
         self.assertEqual(len(motion["params"]["keyframes"]), 18)
 

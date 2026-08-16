@@ -434,7 +434,10 @@ def _open_home_draft_by_coordinate(
         search_query = _draft_search_query(draft_name)
         left, top, right, bottom = _window_rect(window)
         search_x = int(left + ((right - left) * 0.795))
-        search_y = int(top + ((bottom - top) * 0.672))
+        # JianYing 11.2 places the local-drafts search icon on the header of
+        # the draft grid.  67.2% lands below the field and can leave the old
+        # list unfiltered, causing the first unrelated card to be opened.
+        search_y = int(top + ((bottom - top) * 0.645))
         _emit(
             stage,
             "uia2_draft_search_coordinate_click",
