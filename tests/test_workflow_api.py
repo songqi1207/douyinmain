@@ -1346,7 +1346,7 @@ class WorkflowApiTests(unittest.TestCase):
         )
         self.assertEqual(
             key["calls"][0]["params"]["image_infos"][0]["in_animation_duration"],
-            7_224_000,
+            800_000,
         )
 
     def test_published_god_draft_rejects_empty_main_image_urls(self):
@@ -1473,7 +1473,7 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(tail_info["end"], 4_000_000)
         self.assertEqual(tail_info["in_animation"], "light_zoom")
         self.assertEqual(tail_info["out_animation"], "fade")
-        self.assertEqual(tail_info["in_animation_duration"], 2_500_000)
+        self.assertEqual(tail_info["in_animation_duration"], 800_000)
         self.assertEqual(tail_info["out_animation_duration"], 800_000)
 
     def test_published_god_repairs_existing_static_tail(self):
@@ -1511,7 +1511,43 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(tail_info["in_animation"], "轻微放大")
         self.assertEqual(tail_info["in_animation_resource_id"], "resource-main")
         self.assertEqual(tail_info["in_animation_effect_id"], "effect-main")
-        self.assertEqual(tail_info["in_animation_duration"], 2_500_000)
+        self.assertEqual(tail_info["in_animation_duration"], 800_000)
+
+    def test_published_god_caps_long_body_animations_without_removing_motion(self):
+        key = {
+            "calls": [
+                {
+                    "call_id": "main_images",
+                    "tool": "add_images",
+                    "params": {
+                        "image_infos": [
+                            {
+                                "image_url": "https://example.test/chang-e.png",
+                                "start": 10_860_000,
+                                "end": 16_332_000,
+                                "in_animation": "轻微放大",
+                                "in_animation_duration": 5_472_000,
+                            },
+                            {
+                                "image_url": "https://example.test/chang-e.png",
+                                "start": 16_332_000,
+                                "end": 17_832_000,
+                                "in_animation": "缩小",
+                                "in_animation_duration": 6_840_000,
+                            },
+                        ]
+                    },
+                }
+            ]
+        }
+
+        workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
+
+        infos = key["calls"][0]["params"]["image_infos"]
+        self.assertEqual([item["in_animation"] for item in infos], ["轻微放大", "缩小"])
+        self.assertEqual([item["in_animation_duration"] for item in infos], [800_000, 800_000])
+        motion = next(call for call in key["calls"] if call["call_id"] == "camera_kf_continuous")
+        self.assertEqual(len(motion["params"]["keyframes"]), 18)
 
     def test_published_god_camera_motion_covers_every_scene_with_in_range_offsets(self):
         key = {

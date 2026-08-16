@@ -2749,6 +2749,23 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                         continue
                     for name_key, type_key in (("in_animation", "in"), ("out_animation", "out"), ("group_animation", "group")):
                         _attach_animation_resource_ids(info, name_key, type_key, "video")
+                    # Some provider drafts stretch an entrance animation over
+                    # the complete narration scene. JianYing 11.2.5 can stop
+                    # rendering the photo when that animation resource reaches
+                    # its native end, leaving only captions and the border.
+                    # Keep the named template entrance short; the continuous
+                    # camera keyframes below provide full-scene movement.
+                    if str(call.get("call_id") or "") in {"main_images", "main_tail_images"}:
+                        start = _draft_time_to_us(info.get("start"))
+                        end = _draft_time_to_us(info.get("end"))
+                        segment_duration = max(1, end - start)
+                        entrance_duration = _draft_time_to_us(info.get("in_animation_duration"))
+                        if info.get("in_animation") and entrance_duration > 0:
+                            info["in_animation_duration"] = min(
+                                entrance_duration,
+                                segment_duration,
+                                800_000,
+                            )
             elif call.get("tool") == "add_captions":
                 for info in params.get("captions") or []:
                     if not isinstance(info, dict):
