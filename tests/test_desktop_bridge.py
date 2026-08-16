@@ -29,6 +29,7 @@ from desktop_bridge.device_agent import (
     _font_verification_enabled,
     _is_finalized_mp4,
     _make_live_local_export_probe,
+    _mp4_duration_us,
     _one_click_enhance_enabled,
     _prime_jianying_cloud_resources,
     _recover_recent_local_export,
@@ -259,6 +260,56 @@ class DesktopBridgeTests(unittest.TestCase):
 
             self.assertEqual(recovered.read_bytes(), expected.read_bytes())
 
+    def test_recover_local_export_rejects_wrong_draft_duration(self):
+        with tempfile.TemporaryDirectory(prefix="recover-duration-export-") as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            output = root / "output"
+            videos = home / "OneDrive" / "Videos"
+            videos.mkdir(parents=True)
+
+            def finalized_mp4(duration_seconds: int) -> bytes:
+                def box(kind: bytes, body: bytes) -> bytes:
+                    return (len(body) + 8).to_bytes(4, "big") + kind + body
+
+                timescale = 1_000
+                mvhd = (
+                    b"\x00\x00\x00\x00"
+                    + b"\x00" * 8
+                    + timescale.to_bytes(4, "big")
+                    + (duration_seconds * timescale).to_bytes(4, "big")
+                )
+                return (
+                    box(b"ftyp", b"mp42isom")
+                    + box(b"mdat", b"v" * 100_000)
+                    + box(b"moov", box(b"mvhd", mvhd))
+                )
+
+            correct = videos / "god-correct.mp4"
+            wrong = videos / "book-newer.mp4"
+            correct.write_bytes(finalized_mp4(23))
+            wrong.write_bytes(finalized_mp4(70))
+            now = time.time()
+            os.utime(correct, (now - 2, now - 2))
+            os.utime(wrong, (now, now))
+            task = {
+                "job_id": "god-job",
+                "recover_local_after": now - 10,
+                "draft_key": {
+                    "calls": [
+                        {
+                            "tool": "add_images",
+                            "params": {"image_infos": [{"start": 0, "end": 23_000_000}]},
+                        }
+                    ]
+                },
+            }
+
+            recovered = _recover_recent_local_export(task, output, home_dir=home)
+
+            self.assertEqual(_mp4_duration_us(correct), 23_000_000)
+            self.assertEqual(recovered.read_bytes(), correct.read_bytes())
+
     def test_device_progress_messages_map_to_truthful_online_stages(self):
         self.assertEqual(_device_progress_state("正在把任务写入本机剪映草稿…"), ("device_importing", 83))
         self.assertEqual(_device_progress_state("草稿已写入，正在验证文件结构……"), ("device_draft_ready", 85))
@@ -395,8 +446,8 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn("record_jianying_interactions", source)
         self.assertIn("完成后按 F8", source)
 
-    def test_uuid_draft_search_uses_first_three_characters(self):
-        self.assertEqual(_draft_search_query("EAB8433A-C232-4C5C-B10D"), "EAB")
+    def test_uuid_draft_search_uses_first_eight_characters(self):
+        self.assertEqual(_draft_search_query("EAB8433A-C232-4C5C-B10D"), "EAB8433A")
         self.assertEqual(_draft_search_query("named-draft"), "named-draft")
 
     def test_font_verification_is_strict_by_default(self):

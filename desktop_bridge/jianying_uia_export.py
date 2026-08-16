@@ -153,7 +153,7 @@ def _first_draft_card_point(left: int, top: int, right: int, bottom: int) -> tup
 def _draft_search_query(draft_name: str) -> str:
     prefix, separator, _rest = str(draft_name or "").partition("-")
     if separator and len(prefix) == 8 and all(character in "0123456789abcdefABCDEF" for character in prefix):
-        return prefix[:3]
+        return prefix
     return str(draft_name or "")
 
 

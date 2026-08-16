@@ -1446,6 +1446,15 @@ def _find_recent_local_export_source(
                     with candidate.open("rb") as stream:
                         if b"ftyp" not in stream.read(64):
                             continue
+                    if _is_finalized_mp4(candidate) and not _export_duration_matches_task(candidate, task):
+                        logger.warning(
+                            "local_export_duration_mismatch_rejected job_id=%s source=%s expected_us=%s actual_us=%s",
+                            task.get("job_id"),
+                            candidate,
+                            _expected_task_duration_us(task),
+                            _mp4_duration_us(candidate),
+                        )
+                        continue
                 except OSError:
                     continue
                 stem = candidate.stem.strip().lower()
@@ -1471,6 +1480,9 @@ def _copy_local_export(
     source: Path,
 ) -> Path:
     """Atomically copy one verified local export into the helper output path."""
+
+    if not _export_duration_matches_task(source, task):
+        raise BridgeError("检测到本地成片时长与当前草稿不一致，已阻止回传，避免上传错误视频")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     target = (output_dir / f"{task['job_id']}.mp4").resolve()
@@ -1551,6 +1563,112 @@ def _is_finalized_mp4(path: Path) -> bool:
         return found[b"moov"][0] > found[b"mdat"][0] and found[b"moov"][1] == file_size
     except OSError:
         return False
+
+
+def _expected_task_duration_us(task: dict) -> int:
+    """Return the draft timeline duration carried by a render task."""
+
+    draft_key = task.get("draft_key") if isinstance(task, dict) else None
+    if not isinstance(draft_key, dict):
+        return 0
+    explicit = (draft_key.get("draft") or {}).get("duration") if isinstance(draft_key.get("draft"), dict) else None
+    try:
+        explicit_us = int(float(explicit or 0))
+    except (TypeError, ValueError):
+        explicit_us = 0
+    maximum = max(0, explicit_us)
+    for call in draft_key.get("calls") or []:
+        if not isinstance(call, dict):
+            continue
+        params = call.get("params") if isinstance(call.get("params"), dict) else {}
+        for value in params.values():
+            if not isinstance(value, list):
+                continue
+            for item in value:
+                if not isinstance(item, dict) or "end" not in item:
+                    continue
+                try:
+                    maximum = max(maximum, int(float(item.get("end") or 0)))
+                except (TypeError, ValueError):
+                    continue
+    return maximum
+
+
+def _mp4_duration_us(path: Path) -> int | None:
+    """Read movie duration from the MP4 ``mvhd`` box without ffprobe."""
+
+    try:
+        file_size = path.stat().st_size
+        moov_payload = b""
+        offset = 0
+        with path.open("rb") as stream:
+            while offset + 8 <= file_size:
+                stream.seek(offset)
+                header = stream.read(8)
+                if len(header) != 8:
+                    return None
+                size = int.from_bytes(header[:4], "big")
+                kind = header[4:8]
+                header_size = 8
+                if size == 1:
+                    extended = stream.read(8)
+                    if len(extended) != 8:
+                        return None
+                    size = int.from_bytes(extended, "big")
+                    header_size = 16
+                elif size == 0:
+                    size = file_size - offset
+                if size < header_size or offset + size > file_size:
+                    return None
+                if kind == b"moov":
+                    moov_payload = stream.read(size - header_size)
+                    break
+                offset += size
+        cursor = 0
+        while cursor + 8 <= len(moov_payload):
+            size = int.from_bytes(moov_payload[cursor : cursor + 4], "big")
+            kind = moov_payload[cursor + 4 : cursor + 8]
+            header_size = 8
+            if size == 1:
+                if cursor + 16 > len(moov_payload):
+                    return None
+                size = int.from_bytes(moov_payload[cursor + 8 : cursor + 16], "big")
+                header_size = 16
+            elif size == 0:
+                size = len(moov_payload) - cursor
+            if size < header_size or cursor + size > len(moov_payload):
+                return None
+            if kind == b"mvhd":
+                payload = moov_payload[cursor + header_size : cursor + size]
+                if len(payload) < 20:
+                    return None
+                version = payload[0]
+                if version == 1:
+                    if len(payload) < 32:
+                        return None
+                    timescale = int.from_bytes(payload[20:24], "big")
+                    duration = int.from_bytes(payload[24:32], "big")
+                else:
+                    timescale = int.from_bytes(payload[12:16], "big")
+                    duration = int.from_bytes(payload[16:20], "big")
+                if timescale <= 0:
+                    return None
+                return int(round((duration * 1_000_000) / timescale))
+            cursor += size
+    except OSError:
+        return None
+    return None
+
+
+def _export_duration_matches_task(path: Path, task: dict) -> bool:
+    expected_us = _expected_task_duration_us(task)
+    if expected_us <= 0:
+        return True
+    actual_us = _mp4_duration_us(path)
+    if actual_us is None:
+        return False
+    tolerance_us = max(2_000_000, int(expected_us * 0.12))
+    return abs(actual_us - expected_us) <= tolerance_us
 
 
 def _make_live_local_export_probe(
@@ -2053,6 +2171,19 @@ class DeviceAgent:
                     if output_path is None:
                         raise
                     task_progress("已从 OneDrive 视频目录找到剪映成片，正在继续回传网站…")
+            if not _export_duration_matches_task(output_path, task):
+                expected_us = _expected_task_duration_us(task)
+                actual_us = _mp4_duration_us(output_path)
+                logger.error(
+                    "device_result_duration_mismatch job_id=%s output=%s expected_us=%s actual_us=%s",
+                    job_id,
+                    output_path,
+                    expected_us,
+                    actual_us,
+                )
+                raise BridgeError(
+                    "剪映导出的成片时长与当前草稿不一致，可能打开了错误草稿；已阻止上传"
+                )
             task_progress("剪映导出完成，正在把视频传回网站…")
             upload_attempts = max(
                 1,
