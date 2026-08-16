@@ -1071,7 +1071,11 @@ function Find-CandidateOutputFile([datetime]$WaitStartedAt) {
         foreach ($name in $names) {
             foreach ($item in (Get-ChildItem -LiteralPath $directory -Filter "$name*.mp4" -File -ErrorAction SilentlyContinue)) {
                 $escapedName = [regex]::Escape($name)
-                if ($item.BaseName -match "^$escapedName(?: \(\d+\))?$" -and $item.LastWriteTime -ge $threshold) {
+                # Jianying 11.2.5 may write repeated exports as either
+                # ``name (1).mp4`` or ``name(1).mp4``.  Accept both forms so
+                # the helper sees the file immediately instead of waiting for
+                # the broad recovery scan.
+                if ($item.BaseName -match "^$escapedName(?: ?\(\d+\))?$" -and $item.LastWriteTime -ge $threshold) {
                     $matches.Add($item)
                 }
             }

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -43,6 +44,14 @@ from desktop_bridge.paths import app_data_dir
 StatusCallback = Callable[[str], None]
 logger = logging.getLogger("douyin.render_agent")
 logger.addHandler(logging.NullHandler())
+
+
+def _matches_expected_export_stem(stem: str, expected: str) -> bool:
+    """Match Jianying duplicate names with or without a separating space."""
+
+    if not expected:
+        return False
+    return re.fullmatch(rf"{re.escape(expected)}(?: ?\(\d+\))?", stem) is not None
 _JIANYING_OPERATION_LOCK = threading.RLock()
 
 
@@ -1459,9 +1468,9 @@ def _find_recent_local_export_source(
                     continue
                 stem = candidate.stem.strip().lower()
                 priority = 1
-                if job_id and (stem == job_id or stem.startswith(f"{job_id} (")):
+                if _matches_expected_export_stem(stem, job_id):
                     priority = 3
-                elif draft_name and (stem == draft_name or stem.startswith(f"{draft_name} (")):
+                elif _matches_expected_export_stem(stem, draft_name):
                     priority = 2
                 candidates.append((priority, stat.st_mtime, stat.st_size, candidate))
     if not candidates:

@@ -245,7 +245,10 @@ class DesktopBridgeTests(unittest.TestCase):
             videos = home / "Videos"
             videos.mkdir(parents=True)
             now = time.time()
-            expected = videos / "target-job (1).mp4"
+            # Jianying 11.2.5 omits the space before the duplicate suffix on
+            # some machines.  The matching export must still outrank a newer
+            # unrelated video.
+            expected = videos / "target-job(1).mp4"
             unrelated = videos / "newer-other-job.mp4"
             expected.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"a" * 100_000))
             unrelated.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"b" * 100_000))
@@ -948,6 +951,7 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "export_confirm_retry"', script)
         self.assertIn('Write-Stage "export_blocking_popup_dismissed"', script)
         self.assertIn('Write-Stage "output_file_disappeared"', script)
+        self.assertIn('(?: ?\\(\\d+\\))?', script)
         self.assertIn('mode=keyboard_enter attempt=4', script)
         self.assertIn('$size -gt 0', script)
         self.assertNotIn('Write-Stage "export_confirm_not_accepted"', script)
