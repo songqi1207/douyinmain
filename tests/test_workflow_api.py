@@ -1538,9 +1538,19 @@ class WorkflowApiTests(unittest.TestCase):
 
         workflow_jobs._normalize_published_draft_key({"workflow_code": "OWN03"}, key)
 
-        infos = key["calls"][0]["params"]["image_infos"]
+        body_calls = [
+            call
+            for call in key["calls"]
+            if call["call_id"] == "main_images"
+            or call["call_id"].startswith("main_image_scene_")
+        ]
+        infos = [call["params"]["image_infos"][0] for call in body_calls]
         self.assertTrue(all("in_animation" not in item for item in infos))
         self.assertTrue(all("in_animation_duration" not in item for item in infos))
+        self.assertEqual(
+            [call["track_name"] for call in body_calls],
+            ["video_god_scene_00", "video_god_scene_01"],
+        )
         motion = next(call for call in key["calls"] if call["call_id"] == "camera_kf_continuous")
         self.assertEqual(len(motion["params"]["keyframes"]), 18)
 
@@ -1587,7 +1597,7 @@ class WorkflowApiTests(unittest.TestCase):
         )["params"]["keyframes"]
         durations = {
             ("main_images", 0): 5_000_000,
-            ("main_images", 1): 1_500_000,
+            ("main_image_scene_01", 0): 1_500_000,
             ("main_tail_images", 0): 3_500_000,
         }
         self.assertEqual(len(continuous), 27)
@@ -1606,7 +1616,11 @@ class WorkflowApiTests(unittest.TestCase):
             )
         self.assertEqual(
             key["meta"]["god_continuous_motion_repaired_refs"],
-            ["main_images:0", "main_images:1", "main_tail_images:0"],
+            ["main_images:0", "main_image_scene_01:0", "main_tail_images:0"],
+        )
+        self.assertEqual(
+            key["meta"]["god_body_tracks_split"],
+            ["main_images", "main_image_scene_01"],
         )
 
     def test_draft_with_unrepaired_encoding_damaged_caption_is_rejected(self):

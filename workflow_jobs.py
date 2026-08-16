@@ -2489,6 +2489,95 @@ def _continuous_motion_points(
     }
 
 
+def _split_own03_body_image_tracks(draft_key: dict) -> None:
+    """Isolate mythology body photos on separate JianYing video tracks.
+
+    JianYing 11.2.5 can stop rendering a multi-segment photo track partway
+    through its second segment even though both its source and target ranges
+    are valid.  Captions and the transparent border remain, which looks like
+    a black scene.  A one-photo-per-track layout avoids that renderer bug.
+    """
+
+    calls = draft_key.get("calls") if isinstance(draft_key.get("calls"), list) else []
+    main_call = next(
+        (
+            call
+            for call in calls
+            if isinstance(call, dict)
+            and str(call.get("call_id") or "") == "main_images"
+            and isinstance((call.get("params") or {}).get("image_infos"), list)
+        ),
+        None,
+    )
+    if main_call is None:
+        return
+
+    main_call["track_name"] = "video_god_scene_00"
+    infos = main_call["params"]["image_infos"]
+    if len(infos) <= 1:
+        return
+
+    calls[:] = [
+        call
+        for call in calls
+        if not (
+            isinstance(call, dict)
+            and str(call.get("call_id") or "").startswith("main_image_scene_")
+        )
+    ]
+    original_infos = list(infos)
+    main_call["params"]["image_infos"] = [original_infos[0]]
+    insertion_index = calls.index(main_call) + 1
+    ref_map: dict[int, str] = {}
+    for index, info in enumerate(original_infos[1:], start=1):
+        call_id = f"main_image_scene_{index:02d}"
+        ref_map[index] = call_id
+        split_call = {
+            key: value
+            for key, value in main_call.items()
+            if key not in {"call_id", "params", "track_name", "render_index"}
+        }
+        split_call.update(
+            {
+                "call_id": call_id,
+                "tool": "add_images",
+                "track_name": f"video_god_scene_{index:02d}",
+                "params": {
+                    key: value
+                    for key, value in main_call["params"].items()
+                    if key != "image_infos"
+                },
+            }
+        )
+        split_call["params"]["image_infos"] = [info]
+        calls.insert(insertion_index, split_call)
+        insertion_index += 1
+
+    for call in calls:
+        if not isinstance(call, dict) or call.get("tool") != "add_keyframes":
+            continue
+        params = call.get("params") if isinstance(call.get("params"), dict) else {}
+        for keyframe in params.get("keyframes") or []:
+            if not isinstance(keyframe, dict):
+                continue
+            ref = keyframe.get("segment_ref")
+            if not isinstance(ref, dict) or ref.get("call_id") != "main_images":
+                continue
+            try:
+                old_index = int(ref.get("index", 0))
+            except (TypeError, ValueError):
+                old_index = 0
+            if old_index in ref_map:
+                keyframe["segment_ref"] = {"call_id": ref_map[old_index], "index": 0}
+
+    meta = draft_key.setdefault("meta", {})
+    if isinstance(meta, dict):
+        meta["god_body_tracks_split"] = [
+            "main_images",
+            *(ref_map[index] for index in sorted(ref_map)),
+        ]
+
+
 def _strengthen_own03_image_motion(draft_key: dict) -> None:
     """Give every mythology scene, including its tail split, full-duration motion.
 
@@ -2500,19 +2589,17 @@ def _strengthen_own03_image_motion(draft_key: dict) -> None:
 
     calls = draft_key.get("calls") if isinstance(draft_key.get("calls"), list) else []
     target_calls: list[tuple[str, list[dict[str, Any]]]] = []
-    for call_id in ("main_images", "main_tail_images"):
-        image_call = next(
-            (
-                call
-                for call in calls
-                if isinstance(call, dict)
-                and str(call.get("call_id") or "") == call_id
-                and isinstance((call.get("params") or {}).get("image_infos"), list)
-            ),
-            None,
-        )
-        if image_call is not None:
-            target_calls.append((call_id, image_call["params"]["image_infos"]))
+    for call in calls:
+        if not isinstance(call, dict):
+            continue
+        call_id = str(call.get("call_id") or "")
+        if call_id not in {"main_images", "main_tail_images"} and not call_id.startswith(
+            "main_image_scene_"
+        ):
+            continue
+        params = call.get("params") if isinstance(call.get("params"), dict) else {}
+        if isinstance(params.get("image_infos"), list):
+            target_calls.append((call_id, params["image_infos"]))
     if not target_calls:
         return
 
@@ -2747,10 +2834,10 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                 for info in params.get("image_infos") or []:
                     if not isinstance(info, dict):
                         continue
-                    body_image = str(call.get("call_id") or "") in {
-                        "main_images",
-                        "main_tail_images",
-                    }
+                    call_id = str(call.get("call_id") or "")
+                    body_image = call_id in {"main_images", "main_tail_images"} or call_id.startswith(
+                        "main_image_scene_"
+                    )
                     if body_image:
                         # JianYing 11.2.5 can hide a full-frame photo after a
                         # named clip animation reaches its native end, even
@@ -2893,6 +2980,7 @@ def _normalize_published_draft_key(job: dict, draft_key: dict) -> None:
                     normalized_calls = list(calls)
                     normalized_calls.insert(normalized_calls.index(main_call) + 1, tail_call)
                     draft_key["calls"] = normalized_calls
+        _split_own03_body_image_tracks(draft_key)
         _strengthen_own03_image_motion(draft_key)
         return
     if workflow_code != "OWN01":
