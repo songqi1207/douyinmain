@@ -339,7 +339,11 @@ function Wait-EditorRoot([int]$ProcessId, [int]$Seconds) {
             return $root
         }
         if ((Get-Date) -ge $lastDismiss.AddSeconds(3)) {
-            Dismiss-JianyingPopups $ProcessId | Out-Null
+            # A JianyingPro SplashDialog can be the legitimate project-loading
+            # window after a draft card is clicked. During this phase dismiss
+            # only dialogs that expose an explicit safe-text button; closing a
+            # generic splash window can cancel the editor transition itself.
+            Dismiss-JianyingPopups $ProcessId -SafeOnly | Out-Null
             $lastDismiss = Get-Date
         }
         Start-Sleep -Milliseconds 500
@@ -1212,7 +1216,7 @@ function Minimize-JianyingWindow {
     }
 }
 
-function Dismiss-JianyingPopups([int]$ProcessId) {
+function Dismiss-JianyingPopups([int]$ProcessId, [switch]$SafeOnly) {
     $dismissPattern = '(放弃福利|暂不|以后再说|取消|跳过|我知道了|知道了|Not now|Later|Skip|Cancel)'
     $dismissed = 0
     for ($attempt = 0; $attempt -lt 4; $attempt += 1) {
@@ -1238,12 +1242,32 @@ function Dismiss-JianyingPopups([int]$ProcessId) {
                 Start-Sleep -Milliseconds 900
                 continue
             }
+            if ($SafeOnly) {
+                # Do not close a generic JianyingPro splash while a project is
+                # loading. Only an explicit “暂不/取消/跳过” control is safe in
+                # editor-wait mode.
+                continue
+            }
             $handle = [IntPtr]$blockingDialog.Current.NativeWindowHandle
             if ($handle -ne [IntPtr]::Zero) {
                 Write-Stage "popup_dismissed" "mode=window_close class=$($blockingDialog.Current.ClassName)"
                 [JianyingNative]::PostMessage($handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
                 $dismissed += 1
                 Start-Sleep -Milliseconds 600
+                $stillBlocking = Get-JianyingPopupRoots $ProcessId | Where-Object {
+                    $_.Current.ClassName -eq $blockingDialog.Current.ClassName
+                } | Select-Object -First 1
+                if (-not $stillBlocking) {
+                    continue
+                }
+                # Some QML dialogs ignore WM_CLOSE but expose an ordinary
+                # top-right close glyph without a UIA child. Try that point
+                # before the lower action row.
+                $closeX = [int]($rect.Right - [Math]::Min(32, [Math]::Max(18, $rect.Width * 0.025)))
+                $closeY = [int]($rect.Top + [Math]::Min(32, [Math]::Max(18, $rect.Height * 0.035)))
+                Write-Stage "popup_dismissed" "mode=top_right_close class=$($blockingDialog.Current.ClassName) x=$closeX y=$closeY"
+                Invoke-Point $closeX $closeY
+                Start-Sleep -Milliseconds 700
                 $stillBlocking = Get-JianyingPopupRoots $ProcessId | Where-Object {
                     $_.Current.ClassName -eq $blockingDialog.Current.ClassName
                 } | Select-Object -First 1
@@ -1283,6 +1307,9 @@ function Dismiss-JianyingPopups([int]$ProcessId) {
             $rect.Width -gt 200 -and $rect.Height -gt 120 -and $rect.Width -lt 1400 -and $rect.Height -lt 1000
         } | Select-Object -First 1
         if ($splash) {
+            if ($SafeOnly) {
+                continue
+            }
             $rect = $splash.Current.BoundingRectangle
             # Jianying marketing dialogs sometimes expose only the top-level
             # SplashDialog. The safe-dismiss button is near the lower-right,
@@ -1530,8 +1557,10 @@ $draftDescription = "HomePageDraftTitle:$DraftName"
 Write-Stage "waiting_for_draft_card"
 $draft = $null
 if ($coordinateDraftFallback) {
+    # Coordinate search must never click through a marketing/SVIP dialog. The
+    # Jianying 11 direct path previously skipped this last pre-click cleanup.
+    Dismiss-JianyingPopups $process.Id | Out-Null
     if (-not $directCoordinateDraftSearch) {
-        Dismiss-JianyingPopups $process.Id | Out-Null
         Clear-HomeSearchFields $process.Id | Out-Null
     }
     Set-HomeDraftSearchByCoordinate $process $DraftName

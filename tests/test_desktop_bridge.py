@@ -897,6 +897,10 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn("SplashDialog|LVInfoDialog", script)
         self.assertIn('mode=safe_text name=$safeName', script)
         self.assertIn("Get-JianyingPopupRoots $ProcessId", script)
+        self.assertIn("Dismiss-JianyingPopups $ProcessId -SafeOnly", script)
+        self.assertIn('mode=top_right_close', script)
+        coordinate_open = script.split("if ($coordinateDraftFallback) {", 1)[1].split("else {", 1)[0]
+        self.assertIn("Dismiss-JianyingPopups $process.Id", coordinate_open)
         self.assertIn("$ExportRoot.Current.BoundingRectangle", script)
         self.assertIn('if ($before -ne "off")', script)
         self.assertIn('Write-Stage "one_click_enhance_skipped"', script)
