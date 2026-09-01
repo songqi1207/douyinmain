@@ -7,7 +7,10 @@
     [string]$JianyingExe,
     [string]$LogPath = "",
     [int]$TimeoutSeconds = 1800,
-    [int]$NoOutputTimeoutSeconds = 210,
+    # Once JianYing really accepts export it normally creates the MP4 within
+    # 90 seconds.  A longer wait only hides a stuck export dialog/process and
+    # delays the automatic restart of the same draft.
+    [int]$NoOutputTimeoutSeconds = 90,
     [int]$ResourceWaitSeconds = 0,
     [double]$EditorExportXFromRightRatio = -1,
     [double]$EditorExportYFromTopRatio = -1,
@@ -112,13 +115,111 @@ function Get-FullDescription($Element) {
     return ""
 }
 
+function Get-JianyingProcessCandidates {
+    $resolvedExe = ""
+    try {
+        $resolvedExe = [System.IO.Path]::GetFullPath($JianyingExe)
+    }
+    catch {}
+    return @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        if ($_.ProcessName -match '(?i)(Jianying|CapCut)') {
+            return $true
+        }
+        if ($resolvedExe) {
+            try {
+                return [System.StringComparer]::OrdinalIgnoreCase.Equals(
+                    [System.IO.Path]::GetFullPath($_.Path),
+                    $resolvedExe
+                )
+            }
+            catch {}
+        }
+        return $false
+    })
+}
+
+function Test-JianyingProcessResponsive($Process) {
+    if (-not $Process) {
+        return $false
+    }
+    try {
+        $Process.Refresh()
+        if ($Process.HasExited) {
+            return $false
+        }
+        return [bool]$Process.Responding
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-JianyingWindowElement($Process) {
+    if (-not $Process) {
+        return $null
+    }
+    try {
+        $condition = New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
+            [int]$Process.Id
+        )
+        $roots = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+            [System.Windows.Automation.TreeScope]::Children,
+            $condition
+        )
+        $visible = @($roots | Where-Object {
+            $rect = $_.Current.BoundingRectangle
+            $_.Current.NativeWindowHandle -ne 0 -and
+            -not $_.Current.IsOffscreen -and
+            $rect.Width -gt 100 -and $rect.Height -gt 80
+        })
+        $preferred = @($visible | Where-Object {
+            $_.Current.ClassName -match '(?i)(HomePage|MainWindow|Jianying|CapCut)' -or
+            $_.Current.Name -match '(剪映|Jianying|CapCut)'
+        })
+        if ($preferred.Count -gt 0) {
+            return $preferred | Sort-Object {
+                $_.Current.BoundingRectangle.Width * $_.Current.BoundingRectangle.Height
+            } | Select-Object -Last 1
+        }
+        if ($visible.Count -gt 0) {
+            return $visible | Sort-Object {
+                $_.Current.BoundingRectangle.Width * $_.Current.BoundingRectangle.Height
+            } | Select-Object -Last 1
+        }
+    }
+    catch {}
+    return $null
+}
+
+function Get-JianyingWindowHandle($Process) {
+    if (-not $Process) {
+        return [IntPtr]::Zero
+    }
+    try {
+        $Process.Refresh()
+        if ($Process.MainWindowHandle -ne 0) {
+            return [IntPtr]$Process.MainWindowHandle
+        }
+    }
+    catch {}
+    $window = Get-JianyingWindowElement $Process
+    if ($window) {
+        try {
+            return [IntPtr]$window.Current.NativeWindowHandle
+        }
+        catch {}
+    }
+    return [IntPtr]::Zero
+}
+
 function Get-JianyingProcess {
-    $candidates = @(Get-Process | Where-Object {
-        $_.ProcessName -match '^(JianyingPro|CapCut)$' -and $_.MainWindowHandle -ne 0
+    $candidates = @(Get-JianyingProcessCandidates | Where-Object {
+        (Get-JianyingWindowHandle $_) -ne [IntPtr]::Zero
     })
     $preferred = @($candidates | Where-Object {
         try {
-            $window = [System.Windows.Automation.AutomationElement]::FromHandle($_.MainWindowHandle)
+            $window = Get-JianyingWindowElement $_
             $window -and $window.Current.ClassName -match '(HomePage|MainWindow)'
         }
         catch {
@@ -582,18 +683,19 @@ function Invoke-ExportConfirmationReliably([int]$ProcessId, $ExportRoot, [int]$X
 }
 
 function Invoke-WindowMessagePoint($Process, [int]$X, [int]$Y) {
+    $mainWindowHandle = Get-JianyingWindowHandle $Process
     $clientPoint = New-Object JianyingNative+POINT
     $clientPoint.X = $X
     $clientPoint.Y = $Y
-    if (-not [JianyingNative]::ScreenToClient($Process.MainWindowHandle, [ref]$clientPoint)) {
+    if (-not [JianyingNative]::ScreenToClient($mainWindowHandle, [ref]$clientPoint)) {
         Write-Stage "window_click_skipped" "reason=screen_to_client_failed x=$X y=$Y"
         return
     }
     $packed = (($clientPoint.Y -band 0xFFFF) -shl 16) -bor ($clientPoint.X -band 0xFFFF)
-    [JianyingNative]::PostMessage($Process.MainWindowHandle, 0x0200, [IntPtr]::Zero, [IntPtr]$packed) | Out-Null
-    [JianyingNative]::PostMessage($Process.MainWindowHandle, 0x0201, [IntPtr]1, [IntPtr]$packed) | Out-Null
+    [JianyingNative]::PostMessage($mainWindowHandle, 0x0200, [IntPtr]::Zero, [IntPtr]$packed) | Out-Null
+    [JianyingNative]::PostMessage($mainWindowHandle, 0x0201, [IntPtr]1, [IntPtr]$packed) | Out-Null
     Start-Sleep -Milliseconds 80
-    [JianyingNative]::PostMessage($Process.MainWindowHandle, 0x0202, [IntPtr]::Zero, [IntPtr]$packed) | Out-Null
+    [JianyingNative]::PostMessage($mainWindowHandle, 0x0202, [IntPtr]::Zero, [IntPtr]$packed) | Out-Null
     Write-Stage "window_click_sent" "screen_x=$X screen_y=$Y client_x=$($clientPoint.X) client_y=$($clientPoint.Y)"
 }
 
@@ -633,10 +735,10 @@ function Close-ExportSuccessDialogs([int]$ProcessId) {
 }
 
 function Set-JianyingForeground($Process) {
-    if (-not $Process -or $Process.MainWindowHandle -eq 0) {
+    $handle = Get-JianyingWindowHandle $Process
+    if (-not $Process -or $handle -eq [IntPtr]::Zero) {
         return
     }
-    $handle = $Process.MainWindowHandle
     [JianyingNative]::ShowWindow($handle, 9) | Out-Null
     [JianyingNative]::SetWindowPos($handle, [IntPtr](-1), 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0040) | Out-Null
     Start-Sleep -Milliseconds 120
@@ -647,15 +749,16 @@ function Set-JianyingForeground($Process) {
 
 function Get-WindowRect($Process) {
     Set-JianyingForeground $Process
+    $mainWindowHandle = Get-JianyingWindowHandle $Process
     $rect = New-Object JianyingNative+RECT
-    if (-not [JianyingNative]::GetWindowRect($Process.MainWindowHandle, [ref]$rect)) {
+    if (-not [JianyingNative]::GetWindowRect($mainWindowHandle, [ref]$rect)) {
         throw "无法读取剪映窗口位置"
     }
     if ($rect.Left -lt -30000 -or $rect.Top -lt -30000 -or ($rect.Right -le $rect.Left) -or ($rect.Bottom -le $rect.Top)) {
-        [JianyingNative]::ShowWindow($Process.MainWindowHandle, 3) | Out-Null
-        [JianyingNative]::SetForegroundWindow($Process.MainWindowHandle) | Out-Null
+        [JianyingNative]::ShowWindow($mainWindowHandle, 3) | Out-Null
+        [JianyingNative]::SetForegroundWindow($mainWindowHandle) | Out-Null
         Start-Sleep -Milliseconds 500
-        if (-not [JianyingNative]::GetWindowRect($Process.MainWindowHandle, [ref]$rect)) {
+        if (-not [JianyingNative]::GetWindowRect($mainWindowHandle, [ref]$rect)) {
             throw "无法读取剪映窗口位置"
         }
     }
@@ -753,9 +856,9 @@ function Set-HomeDraftSearchByCoordinate($Process, [string]$Query) {
     $width = [Math]::Max(1, $rect.Right - $rect.Left)
     $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
     $searchQuery = if ($Query -match '^[0-9A-Fa-f]{8}-') { $Query.Substring(0, 8) } else { $Query }
-    # JianYing 11.2 local-drafts search icon is at about 79.5% width / 64.5% height.
+    # JianYing 11.2 local-drafts search icon is at about 79.5% width / 67.2% height.
     $x = [int]($rect.Left + ($width * 0.795))
-    $y = [int]($rect.Top + ($height * 0.645))
+    $y = [int]($rect.Top + ($height * 0.672))
     Write-Stage "draft_search_coordinate_click" "x=$x y=$y query=$searchQuery draft_name=$Query"
     Invoke-Point $x $y
     Start-Sleep -Milliseconds 300
@@ -1024,9 +1127,8 @@ function Get-CandidateOutputPaths {
         (Join-Path $env:USERPROFILE "Documents"),
         (Join-Path $env:USERPROFILE "OneDrive\Documents")
     )
-    $names = @($outputName, $DraftName) | Where-Object { $_ } | Select-Object -Unique
+    $names = @($DraftName) | Where-Object { $_ } | Select-Object -Unique
     $paths = New-Object System.Collections.Generic.List[string]
-    $paths.Add($OutputPath)
     foreach ($directory in $directories) {
         if (-not $directory -or -not (Test-Path -LiteralPath $directory -PathType Container)) {
             continue
@@ -1055,7 +1157,7 @@ function Find-CandidateOutputFile([datetime]$WaitStartedAt) {
     ) | Where-Object {
         $_ -and (Test-Path -LiteralPath $_ -PathType Container)
     } | Select-Object -Unique
-    $names = @($outputName, $DraftName) | Where-Object { $_ } | Select-Object -Unique
+    $names = @($DraftName) | Where-Object { $_ } | Select-Object -Unique
 
     foreach ($candidate in (Get-CandidateOutputPaths)) {
         if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
@@ -1071,11 +1173,7 @@ function Find-CandidateOutputFile([datetime]$WaitStartedAt) {
         foreach ($name in $names) {
             foreach ($item in (Get-ChildItem -LiteralPath $directory -Filter "$name*.mp4" -File -ErrorAction SilentlyContinue)) {
                 $escapedName = [regex]::Escape($name)
-                # Jianying 11.2.5 may write repeated exports as either
-                # ``name (1).mp4`` or ``name(1).mp4``.  Accept both forms so
-                # the helper sees the file immediately instead of waiting for
-                # the broad recovery scan.
-                if ($item.BaseName -match "^$escapedName(?: ?\(\d+\))?$" -and $item.LastWriteTime -ge $threshold) {
+                if ($item.BaseName -match "^$escapedName(?: \(\d+\))?$" -and $item.LastWriteTime -ge $threshold) {
                     $matches.Add($item)
                 }
             }
@@ -1094,9 +1192,10 @@ function Minimize-JianyingWindow {
     }
     try {
         $currentProcess = Get-Process -Id $Process.Id -ErrorAction SilentlyContinue
-        if ($currentProcess -and $currentProcess.MainWindowHandle -ne 0) {
+        $mainWindowHandle = Get-JianyingWindowHandle $currentProcess
+        if ($currentProcess -and $mainWindowHandle -ne [IntPtr]::Zero) {
             [JianyingNative]::SetWindowPos(
-                $currentProcess.MainWindowHandle,
+                $mainWindowHandle,
                 [IntPtr](-2),
                 0,
                 0,
@@ -1104,7 +1203,7 @@ function Minimize-JianyingWindow {
                 0,
                 0x0001 -bor 0x0002 -bor 0x0040
             ) | Out-Null
-            [JianyingNative]::ShowWindow($currentProcess.MainWindowHandle, 6) | Out-Null
+            [JianyingNative]::ShowWindow($mainWindowHandle, 6) | Out-Null
             Write-Stage "jianying_minimized" "reason=$Reason"
         }
     }
@@ -1281,18 +1380,17 @@ $jianyingVersion = ([string]$jianyingVersion).Replace(" ", "_")
 $startedJianying = $false
 Write-Stage "jianying_version_detected" "version=$jianyingVersion"
 $process = Get-JianyingProcess
-if ($RestartExisting -and $process) {
-    Write-Stage "restarting_existing_jianying" "process_id=$($process.Id)"
-    try {
-        $process.CloseMainWindow() | Out-Null
-        $closeDeadline = (Get-Date).AddSeconds(8)
-        while (-not $process.HasExited -and (Get-Date) -lt $closeDeadline) {
-            Start-Sleep -Milliseconds 250
-            $process.Refresh()
+$allJianyingProcesses = @(Get-JianyingProcessCandidates)
+if ($RestartExisting -and $allJianyingProcesses.Count -gt 0) {
+    Write-Stage "restarting_existing_jianying" "process_ids=$(@($allJianyingProcesses.Id) -join ',')"
+    foreach ($existing in $allJianyingProcesses) {
+        try {
+            $existing.CloseMainWindow() | Out-Null
         }
+        catch {}
     }
-    catch {}
-    foreach ($remaining in @(Get-Process -Name "JianyingPro", "CapCut" -ErrorAction SilentlyContinue)) {
+    Start-Sleep -Seconds 2
+    foreach ($remaining in @(Get-JianyingProcessCandidates)) {
         try {
             Stop-Process -Id $remaining.Id -Force -ErrorAction Stop
         }
@@ -1302,12 +1400,22 @@ if ($RestartExisting -and $process) {
     $process = $null
     Write-Stage "existing_jianying_stopped"
 }
+elseif (-not $process) {
+    $headlessProcesses = @($allJianyingProcesses | Where-Object {
+        (Get-JianyingWindowHandle $_) -eq [IntPtr]::Zero
+    })
+    if ($headlessProcesses.Count -gt 0) {
+        Write-Stage "headless_jianying_detected" "process_ids=$(@($headlessProcesses.Id) -join ',') action=wait_without_termination"
+    }
+}
 if (-not $process) {
     Write-Stage "starting_jianying" "accessibility=forced"
-    Start-Process `
+    $launchedProcess = Start-Process `
         -FilePath $JianyingExe `
         -ArgumentList @("--force-renderer-accessibility", "--enable-accessibility") `
-        -WorkingDirectory ([System.IO.Path]::GetDirectoryName($JianyingExe))
+        -WorkingDirectory ([System.IO.Path]::GetDirectoryName($JianyingExe)) `
+        -PassThru
+    Write-Stage "jianying_process_spawned" "process_id=$($launchedProcess.Id)"
     $startedJianying = $true
 }
 else {
@@ -1315,17 +1423,32 @@ else {
 }
 
 $deadline = (Get-Date).AddSeconds([Math]::Min(120, $TimeoutSeconds))
+$restartDeadline = (Get-Date).AddSeconds([Math]::Min(35, [Math]::Max(10, [int]($TimeoutSeconds / 3))))
+$launchRetried = $false
 while (-not $process -and (Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 500
     $process = Get-JianyingProcess
+    if (-not $process -and -not $launchRetried -and (Get-Date) -ge $restartDeadline) {
+        $launchRetried = $true
+        $retryCandidates = @(Get-JianyingProcessCandidates)
+        $retrySummary = @($retryCandidates | ForEach-Object {
+            "$($_.ProcessName):$($_.Id):native=$($_.MainWindowHandle):uia=$(Get-JianyingWindowHandle $_)"
+        }) -join ';'
+        Write-Stage "jianying_launch_still_waiting" "candidates=$retrySummary action=no_forced_restart"
+    }
 }
 if (-not $process) {
-    Write-Stage "failed" "reason=jianying_start_timeout"
-    throw "剪映启动超时"
+    $finalCandidates = @(Get-JianyingProcessCandidates)
+    $finalSummary = @($finalCandidates | ForEach-Object {
+        "$($_.ProcessName):$($_.Id):native=$($_.MainWindowHandle):uia=$(Get-JianyingWindowHandle $_)"
+    }) -join ';'
+    Write-Stage "failed" "reason=jianying_start_timeout candidates=$finalSummary"
+    throw "剪映启动超时；进程诊断：$finalSummary"
 }
 
 try {
-    $windowElement = [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
+    $mainWindowHandle = Get-JianyingWindowHandle $process
+    $windowElement = [System.Windows.Automation.AutomationElement]::FromHandle($mainWindowHandle)
     $windowClass = [string]$windowElement.Current.ClassName
 }
 catch {
@@ -1333,7 +1456,7 @@ catch {
 }
 Write-Stage "jianying_window_ready" "process_id=$($process.Id) class=$windowClass"
 Set-JianyingForeground $process
-Start-Sleep -Seconds 2
+Start-Sleep -Milliseconds 500
 Dismiss-JianyingPopups $process.Id | Out-Null
 Close-ExportSuccessDialogs $process.Id | Out-Null
 Clear-HomeSearchFields $process.Id | Out-Null
@@ -1365,13 +1488,14 @@ if ($localDrafts) {
 }
 [System.Windows.Forms.SendKeys]::SendWait("{F5}")
 Write-Stage "draft_home_refreshed"
-Start-Sleep -Seconds 3
+Start-Sleep -Seconds 1
 Dismiss-JianyingPopups $process.Id | Out-Null
 Clear-HomeSearchFields $process.Id | Out-Null
 
 $treeDeadline = (Get-Date).AddSeconds(8)
 $treeElements = @()
 $coordinateDraftFallback = $false
+$directCoordinateDraftSearch = $false
 while ((Get-Date) -lt $treeDeadline) {
     $treeElements = @(Get-VisibleElements $process.Id)
     if ($treeElements.Count -gt 1) {
@@ -1389,17 +1513,30 @@ if ($treeElements.Count -le 1) {
     }
     $coordinateDraftFallback = $true
 }
+# Jianying 11 can expose a healthy-looking home-page UI tree while blocking
+# indefinitely when Windows UI Automation enumerates individual draft cards.
+# Search the imported draft UUID through the home-page search box and open the
+# first filtered card by coordinate instead. This is the same guarded fallback
+# used when the UI tree is unavailable, but avoids the unbounded UIA call that
+# otherwise leaves Jianying open without any visible action.
+if ($jianyingVersion -match '^11\.') {
+    $coordinateDraftFallback = $true
+    $directCoordinateDraftSearch = $true
+    Write-Stage "draft_card_search_mode" "mode=coordinate reason=jianying_11_uia_card_enumeration_unreliable"
+}
 
 $draftPattern = [regex]::Escape($DraftName)
 $draftDescription = "HomePageDraftTitle:$DraftName"
 Write-Stage "waiting_for_draft_card"
 $draft = $null
 if ($coordinateDraftFallback) {
-    Dismiss-JianyingPopups $process.Id | Out-Null
-    Clear-HomeSearchFields $process.Id | Out-Null
+    if (-not $directCoordinateDraftSearch) {
+        Dismiss-JianyingPopups $process.Id | Out-Null
+        Clear-HomeSearchFields $process.Id | Out-Null
+    }
     Set-HomeDraftSearchByCoordinate $process $DraftName
     Invoke-HomeDraftCardByCoordinate $process
-    Start-Sleep -Seconds 8
+    Start-Sleep -Milliseconds 500
 }
 else {
     try {
@@ -1424,7 +1561,7 @@ else {
         }
         else {
             Invoke-HomeDraftCardByCoordinate $process
-            Start-Sleep -Seconds 8
+            Start-Sleep -Milliseconds 500
             $coordinateDraftFallback = $true
         }
     }
@@ -1543,7 +1680,7 @@ if (-not $exportRoot) {
     $exportRoot = Get-ExportDialogRoot $process.Id
 }
 Write-Stage "export_dialog_opening"
-Start-Sleep -Seconds 2
+Start-Sleep -Milliseconds 300
 try {
     if (-not $exportRoot) {
         $exportRoot = Wait-ExportDialogRoot $process.Id 30
@@ -1568,9 +1705,8 @@ $pathEdit = $edits | Where-Object {
 Write-Stage "export_dialog_ready" "editable_fields=$($edits.Count)"
 
 if ($EnableOneClickEnhance) {
-    $NoOutputTimeoutSeconds = [Math]::Max($NoOutputTimeoutSeconds, 600)
     Enable-OneClickEnhanceInDialog $process.Id $exportRoot
-    Write-Stage "one_click_enhance_wait_extended" "no_output_timeout_seconds=$NoOutputTimeoutSeconds"
+    Write-Stage "one_click_enhance_enabled" "no_output_timeout_seconds=$NoOutputTimeoutSeconds"
 }
 
 if ($edits.Count -eq 0) {
@@ -1593,7 +1729,7 @@ if (-not $nameEdit) {
         throw "当前剪映版本未暴露可识别的[作品名称]输入框；请运行 inspect_jianying_ui.ps1 获取控件树"
     }
 }
-if (-not (Set-ElementValue $nameEdit $outputName)) {
+if (-not (Set-ElementValue $nameEdit $DraftName)) {
     throw "无法填写剪映导出作品名称"
 }
 Write-Stage "output_name_set"
@@ -1671,16 +1807,32 @@ $lastProgressLog = (Get-Date).AddSeconds(-15)
 $waitStartedAt = (Get-Date).AddSeconds(-5)
 $outputStarted = $false
 $lastSourceSeenAt = $null
+$unresponsiveSince = $null
+$minimumStartedOutputBytes = 262144L
+$hungWindowTimeoutSeconds = 45
 $confirmRetryCount = 0
 $nextConfirmRetry = (Get-Date).AddSeconds(12)
 $candidateOutputPaths = @(Get-CandidateOutputPaths)
 Write-Stage "waiting_for_output_file"
 while ((Get-Date) -lt $fileDeadline) {
+    if (-not $outputStarted) {
+        if (Test-JianyingProcessResponsive $process) {
+            $unresponsiveSince = $null
+        }
+        elseif (-not $unresponsiveSince) {
+            $unresponsiveSince = Get-Date
+            Write-Stage "jianying_unresponsive_detected" "action=watch timeout_seconds=$hungWindowTimeoutSeconds"
+        }
+        elseif ((Get-Date) -ge $unresponsiveSince.AddSeconds($hungWindowTimeoutSeconds)) {
+            Write-Stage "jianying_unresponsive" "seconds=$hungWindowTimeoutSeconds action=restart_required"
+            break
+        }
+    }
     $source = Find-CandidateOutputFile $waitStartedAt
     if ($source) {
         $lastSourceSeenAt = Get-Date
         $size = $source.Length
-        if (-not $outputStarted -and $size -gt 0) {
+        if (-not $outputStarted -and $size -ge $minimumStartedOutputBytes) {
             $outputStarted = $true
             Minimize-JianyingWindow $process "output_started"
         }
@@ -1692,7 +1844,7 @@ while ((Get-Date) -lt $fileDeadline) {
         if ($sourcePath -ne $lastPath) {
             $stable = 0
         }
-        elseif ($size -gt 0 -and $size -eq $lastSize) {
+        elseif ($size -ge $minimumStartedOutputBytes -and $size -eq $lastSize) {
             $stable += 1
             if ($stable -ge 3) {
                 if ($sourcePath -ne $OutputPath) {
@@ -1720,6 +1872,10 @@ while ((Get-Date) -lt $fileDeadline) {
         }
         $lastSize = $size
         $lastPath = $sourcePath
+        if (-not $outputStarted -and (Get-Date) -ge $noOutputDeadline) {
+            Write-Stage "output_file_not_started" "wait_seconds=$NoOutputTimeoutSeconds candidate_size_bytes=$size"
+            break
+        }
     }
     elseif ($outputStarted -and $lastSourceSeenAt -and (Get-Date) -ge $lastSourceSeenAt.AddSeconds(8)) {
         Write-Stage "output_file_disappeared" "action=restart_without_enhance"

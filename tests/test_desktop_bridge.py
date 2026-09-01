@@ -29,7 +29,6 @@ from desktop_bridge.device_agent import (
     _font_verification_enabled,
     _is_finalized_mp4,
     _make_live_local_export_probe,
-    _mp4_duration_us,
     _one_click_enhance_enabled,
     _prime_jianying_cloud_resources,
     _recover_recent_local_export,
@@ -59,6 +58,13 @@ from desktop_bridge.app import DraftBridgeApp
 import desktop_bridge.windows_integration as windows_integration
 import desktop_bridge.updater as updater
 from desktop_bridge.windows_integration import parse_protocol_url
+
+
+def _finalized_mp4_bytes(payload: bytes) -> bytes:
+    def box(kind: bytes, body: bytes) -> bytes:
+        return (len(body) + 8).to_bytes(4, "big") + kind + body
+
+    return box(b"ftyp", b"mp42isom") + box(b"mdat", payload) + box(b"moov", b"done")
 
 
 class DesktopBridgeTests(unittest.TestCase):
@@ -125,7 +131,7 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertLess(physical, send_input)
         self.assertLess(send_input, window_message)
 
-    def test_recover_recent_local_export_finds_nested_unexpected_filename(self):
+    def test_recover_recent_local_export_ignores_unmatched_filename(self):
         with tempfile.TemporaryDirectory(prefix="recover-local-export-") as temporary:
             root = Path(temporary)
             home = root / "home"
@@ -133,18 +139,21 @@ class DesktopBridgeTests(unittest.TestCase):
             nested = home / "Videos" / "JianyingPro" / "exports"
             nested.mkdir(parents=True)
             exported = nested / "妈祖成片.mp4"
-            exported.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"v" * 100_000))
+            exported.write_bytes(_finalized_mp4_bytes(b"v" * 100_000))
             now = time.time()
             os.utime(exported, (now, now))
 
             recovered = _recover_recent_local_export(
-                {"job_id": "god-job", "recover_local_after": now - 10},
+                {
+                    "job_id": "god-job",
+                    "imported_draft_name": "DRAFT-UUID",
+                    "recover_local_after": now - 10,
+                },
                 output,
                 home_dir=home,
             )
 
-            self.assertEqual(recovered, (output / "god-job.mp4").resolve())
-            self.assertEqual(recovered.read_bytes(), exported.read_bytes())
+            self.assertIsNone(recovered)
 
     def test_recover_recent_local_export_scans_onedrive_videos(self):
         with tempfile.TemporaryDirectory(prefix="recover-onedrive-export-") as temporary:
@@ -153,18 +162,22 @@ class DesktopBridgeTests(unittest.TestCase):
             output = root / "output"
             videos = home / "OneDrive" / "Videos"
             videos.mkdir(parents=True)
-            exported = videos / "活着.mp4"
-            exported.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"v" * 100_000))
+            exported = videos / "DRAFT-UUID.mp4"
+            exported.write_bytes(_finalized_mp4_bytes(b"v" * 100_000))
             now = time.time()
             os.utime(exported, (now, now))
 
             recovered = _recover_recent_local_export(
-                {"job_id": "book-job", "recover_local_after": now - 10},
+                {
+                    "job_id": "book-job",
+                    "imported_draft_name": "DRAFT-UUID",
+                    "recover_local_after": now - 10,
+                },
                 output,
                 home_dir=home,
             )
 
-            self.assertEqual(recovered, (output / "book-job.mp4").resolve())
+            self.assertEqual(recovered, exported.resolve())
             self.assertEqual(recovered.read_bytes(), exported.read_bytes())
 
     def test_live_export_probe_waits_until_onedrive_file_is_stable(self):
@@ -172,21 +185,19 @@ class DesktopBridgeTests(unittest.TestCase):
             root = Path(temporary)
             home = root / "home"
             output = root / "output"
-            videos = home / "OneDrive" / "Videos"
+            videos = output
             videos.mkdir(parents=True)
-            exported = videos / "book-job (1).mp4"
-            def finalized_mp4(payload: bytes) -> bytes:
-                def box(kind: bytes, body: bytes) -> bytes:
-                    return (len(body) + 8).to_bytes(4, "big") + kind + body
-
-                return box(b"ftyp", b"mp42isom") + box(b"mdat", payload) + box(b"moov", b"done")
-
-            exported.write_bytes(finalized_mp4(b"v" * 100_000))
+            exported = videos / "DRAFT-UUID (1).mp4"
+            exported.write_bytes(_finalized_mp4_bytes(b"v" * 100_000))
             now = time.time()
             os.utime(exported, (now, now))
             monotonic_now = [10.0]
             probe = _make_live_local_export_probe(
-                {"job_id": "book-job", "recover_local_after": now - 10},
+                {
+                    "job_id": "book-job",
+                    "imported_draft_name": "DRAFT-UUID",
+                    "recover_local_after": now - 10,
+                },
                 output,
                 home_dir=home,
                 scan_interval_seconds=1,
@@ -196,24 +207,25 @@ class DesktopBridgeTests(unittest.TestCase):
 
             self.assertIsNone(probe())
             monotonic_now[0] = 11.0
-            exported.write_bytes(finalized_mp4(b"v" * 100_100))
+            expected_payload = _finalized_mp4_bytes(b"v" * 100_100)
+            exported.write_bytes(expected_payload)
             self.assertIsNone(probe())
             monotonic_now[0] = 12.0
             self.assertIsNone(probe())
             monotonic_now[0] = 14.0
             recovered = probe()
 
-            self.assertEqual(recovered, (output / "book-job.mp4").resolve())
-            self.assertEqual(recovered.read_bytes(), exported.read_bytes())
+            self.assertEqual(recovered, (output / "DRAFT-UUID.mp4").resolve())
+            self.assertEqual(recovered.read_bytes(), expected_payload)
 
     def test_live_export_probe_rejects_stable_mp4_without_final_moov(self):
         with tempfile.TemporaryDirectory(prefix="live-incomplete-export-") as temporary:
             root = Path(temporary)
             home = root / "home"
             output = root / "output"
-            videos = home / "OneDrive" / "Videos"
+            videos = output
             videos.mkdir(parents=True)
-            exported = videos / "book-job.mp4"
+            exported = videos / "DRAFT-UUID (1).mp4"
 
             def box(kind: bytes, body: bytes) -> bytes:
                 return (len(body) + 8).to_bytes(4, "big") + kind + body
@@ -223,7 +235,11 @@ class DesktopBridgeTests(unittest.TestCase):
             os.utime(exported, (now, now))
             monotonic_now = [10.0]
             probe = _make_live_local_export_probe(
-                {"job_id": "book-job", "recover_local_after": now - 10},
+                {
+                    "job_id": "book-job",
+                    "imported_draft_name": "DRAFT-UUID",
+                    "recover_local_after": now - 10,
+                },
                 output,
                 home_dir=home,
                 scan_interval_seconds=1,
@@ -235,7 +251,7 @@ class DesktopBridgeTests(unittest.TestCase):
             monotonic_now[0] = 13.0
             self.assertIsNone(probe())
             self.assertFalse(_is_finalized_mp4(exported))
-            self.assertFalse((output / "book-job.mp4").exists())
+            self.assertFalse((output / "DRAFT-UUID.mp4").exists())
 
     def test_recover_local_export_prefers_matching_job_over_newer_other_video(self):
         with tempfile.TemporaryDirectory(prefix="recover-matching-export-") as temporary:
@@ -250,68 +266,22 @@ class DesktopBridgeTests(unittest.TestCase):
             # unrelated video.
             expected = videos / "target-job(1).mp4"
             unrelated = videos / "newer-other-job.mp4"
-            expected.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"a" * 100_000))
-            unrelated.write_bytes(b"\x00\x00\x00\x18ftypmp42" + (b"b" * 100_000))
+            expected.write_bytes(_finalized_mp4_bytes(b"a" * 100_000))
+            unrelated.write_bytes(_finalized_mp4_bytes(b"b" * 100_000))
             os.utime(expected, (now - 5, now - 5))
             os.utime(unrelated, (now, now))
 
             recovered = _recover_recent_local_export(
-                {"job_id": "target-job", "recover_local_after": now - 10},
+                {
+                    "job_id": "job-id",
+                    "imported_draft_name": "target-job",
+                    "recover_local_after": now - 10,
+                },
                 output,
                 home_dir=home,
             )
 
             self.assertEqual(recovered.read_bytes(), expected.read_bytes())
-
-    def test_recover_local_export_rejects_wrong_draft_duration(self):
-        with tempfile.TemporaryDirectory(prefix="recover-duration-export-") as temporary:
-            root = Path(temporary)
-            home = root / "home"
-            output = root / "output"
-            videos = home / "OneDrive" / "Videos"
-            videos.mkdir(parents=True)
-
-            def finalized_mp4(duration_seconds: int) -> bytes:
-                def box(kind: bytes, body: bytes) -> bytes:
-                    return (len(body) + 8).to_bytes(4, "big") + kind + body
-
-                timescale = 1_000
-                mvhd = (
-                    b"\x00\x00\x00\x00"
-                    + b"\x00" * 8
-                    + timescale.to_bytes(4, "big")
-                    + (duration_seconds * timescale).to_bytes(4, "big")
-                )
-                return (
-                    box(b"ftyp", b"mp42isom")
-                    + box(b"mdat", b"v" * 100_000)
-                    + box(b"moov", box(b"mvhd", mvhd))
-                )
-
-            correct = videos / "god-correct.mp4"
-            wrong = videos / "book-newer.mp4"
-            correct.write_bytes(finalized_mp4(23))
-            wrong.write_bytes(finalized_mp4(70))
-            now = time.time()
-            os.utime(correct, (now - 2, now - 2))
-            os.utime(wrong, (now, now))
-            task = {
-                "job_id": "god-job",
-                "recover_local_after": now - 10,
-                "draft_key": {
-                    "calls": [
-                        {
-                            "tool": "add_images",
-                            "params": {"image_infos": [{"start": 0, "end": 23_000_000}]},
-                        }
-                    ]
-                },
-            }
-
-            recovered = _recover_recent_local_export(task, output, home_dir=home)
-
-            self.assertEqual(_mp4_duration_us(correct), 23_000_000)
-            self.assertEqual(recovered.read_bytes(), correct.read_bytes())
 
     def test_device_progress_messages_map_to_truthful_online_stages(self):
         self.assertEqual(_device_progress_state("正在把任务写入本机剪映草稿…"), ("device_importing", 83))
@@ -885,11 +855,11 @@ class DesktopBridgeTests(unittest.TestCase):
 
             self.assertEqual(result.read_bytes(), b"mp4")
             run_pyjianying.assert_not_called()
-            self.assertIn("-RestartExisting", run_compatibility_export.call_args.args[0])
             command = run_compatibility_export.call_args.args[0]
+            self.assertNotIn("-RestartExisting", command)
             self.assertEqual(command[command.index("-ResourceWaitSeconds") + 1], "0")
             self.assertNotIn("-EnableOneClickEnhance", command)
-            self.assertNotIn("-NoOutputTimeoutSeconds", command)
+            self.assertEqual(command[command.index("-NoOutputTimeoutSeconds") + 1], "150")
 
     def test_jianying_automation_uses_full_description_controls(self):
         script = (
@@ -922,7 +892,6 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn("Invoke-ExportConfirmationReliably", script)
         self.assertIn('Write-Stage "export_dialog_coordinate_confirm_only"', script)
         self.assertIn('Write-Stage "one_click_enhance_enabled"', script)
-        self.assertIn('Write-Stage "one_click_enhance_wait_extended"', script)
         self.assertIn("[Console]::Out.WriteLine($message)", script)
         self.assertIn("function Get-JianyingPopupRoots", script)
         self.assertIn("SplashDialog|LVInfoDialog", script)
@@ -951,14 +920,13 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertIn('Write-Stage "export_confirm_retry"', script)
         self.assertIn('Write-Stage "export_blocking_popup_dismissed"', script)
         self.assertIn('Write-Stage "output_file_disappeared"', script)
-        self.assertIn('(?: ?\\(\\d+\\))?', script)
         self.assertIn('mode=keyboard_enter attempt=4', script)
-        self.assertIn('$size -gt 0', script)
+        self.assertIn('$size -ge $minimumStartedOutputBytes', script)
         self.assertNotIn('Write-Stage "export_confirm_not_accepted"', script)
         self.assertIn('Write-Stage "window_click_sent"', script)
         self.assertIn('Write-Stage "editor_export_calibration_loaded"', script)
         self.assertIn('Write-Stage "draft_search_applied"', script)
-        self.assertIn("$height * 0.645", script)
+        self.assertIn("$height * 0.672", script)
         self.assertIn("$Query.Substring(0, 8)", script)
         self.assertIn('Write-Stage "export_confirm_calibration_loaded"', script)
         self.assertIn("$width * 0.105", script)

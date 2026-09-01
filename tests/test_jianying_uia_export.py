@@ -46,7 +46,7 @@ class JianyingUIAExportTests(unittest.TestCase):
     def test_uuid_draft_search_uses_unique_prefix(self):
         self.assertEqual(
             _draft_search_query("EAB8433A-C232-4C5C-B10D-9EDCB3A5D69C"),
-            "EAB",
+            "EAB8433A",
         )
         self.assertEqual(_draft_search_query("神话故事草稿"), "神话故事草稿")
 

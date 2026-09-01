@@ -81,6 +81,10 @@ _AUTOMATION_PROGRESS_MESSAGES = {
     "starting_jianying": "正在启动剪映专业版…",
     "jianying_window_ready": "剪映窗口已启动，正在打开视频草稿…",
     "waiting_for_draft_card": "剪映已启动，正在查找视频草稿…",
+    "draft_card_search_mode": "剪映 11 正在按草稿号搜索…",
+    "draft_search_applied": "已输入草稿号，正在打开搜索结果…",
+    "draft_card_opened": "已点击目标草稿，正在等待编辑页…",
+    "draft_open_retry": "草稿首次打开未响应，正在自动重试…",
     "draft_opened": "剪映草稿已打开，正在进入编辑页…",
     "editor_ready": "剪映编辑页已打开，正在准备导出…",
     "export_dialog_ready": "剪映导出窗口已打开，正在确认参数…",
@@ -171,6 +175,7 @@ def _run_compatibility_process(
     stderr_lines: list[str] = []
     stage_lines: list[str] = []
     last_output_at = [time.monotonic()]
+    progress_error: list[BaseException | None] = [None]
 
     def consume(stream, destination: list[str], *, report_stages: bool) -> None:
         if stream is None:
@@ -185,7 +190,11 @@ def _run_compatibility_process(
             logger.info("%s_output job_id=%s %s", log_prefix, job_id, line)
             message = _automation_progress_message(line)
             if message and progress:
-                progress(message)
+                try:
+                    progress(message)
+                except BaseException as exc:
+                    progress_error[0] = exc
+                    break
 
     stdout_thread = threading.Thread(
         target=consume,
@@ -205,17 +214,16 @@ def _run_compatibility_process(
     failure_reason = ""
     recovered_output: Path | None = None
     while process.poll() is None:
+        if progress_error[0] is not None:
+            break
         now = time.monotonic()
-        live_scan_ready = any(
-            marker in line
-            for line in stage_lines
-            for marker in (
-                "stage=export_confirmed",
-                "stage=waiting_for_output_file",
-                "stage=output_file_growing",
-            )
-        )
-        if completion_probe is not None and live_scan_ready:
+        # Jianying 11 can finish writing the MP4 while its accessibility tree
+        # still reports an unverified export-confirm state.  Gating the local
+        # scan on a later automation marker made a completed export wait for
+        # the ten-minute UI timeout before the recovery scan ran.  The probe
+        # already matches the unique imported draft UUID and requires a stable,
+        # structurally complete MP4, so it is safe to run throughout export.
+        if completion_probe is not None:
             try:
                 recovered_output = completion_probe()
             except OSError as exc:
@@ -246,13 +254,15 @@ def _run_compatibility_process(
             failure_reason = "剪映自动导出长时间没有阶段响应，已安全终止"
             break
         time.sleep(0.25)
-    if failure_reason or recovered_output is not None:
+    if failure_reason or recovered_output is not None or progress_error[0] is not None:
         _terminate_compatibility_process(process)
         process.wait(timeout=20)
     stdout_thread.join(timeout=5)
     stderr_thread.join(timeout=5)
     if failure_reason:
         raise BridgeError(failure_reason)
+    if progress_error[0] is not None:
+        raise progress_error[0]
     return (
         subprocess.CompletedProcess(
             command_args,
@@ -266,6 +276,23 @@ def _run_compatibility_process(
 
 class FontResourceUnavailable(BridgeError):
     """Raised when Jianying did not download a required cloud font."""
+
+
+class RenderTaskInterrupted(BridgeError):
+    """Raised when the server pauses, releases, or removes this render lease."""
+
+
+def _raise_for_render_control(response: requests.Response) -> None:
+    if response.status_code not in {404, 409}:
+        return
+    try:
+        detail = (response.json() or {}).get("detail") or {}
+    except ValueError:
+        detail = {}
+    code = str(detail.get("code") or "") if isinstance(detail, dict) else ""
+    if code in {"job_paused", "render_lease_released", "job_not_found", "job_not_rendering"}:
+        message = str(detail.get("message") or "任务已由管理员停止或暂停")
+        raise RenderTaskInterrupted(message)
 
 
 def agent_log_path() -> Path:
@@ -831,6 +858,8 @@ def _prepare_export_fonts(
     font_resources = font_resources_from_import_report(report)
     if not font_resources:
         return []
+    jianying_version = detect_jianying_version(jianying_exe)
+    modern_font_cache = jianying_version_key(jianying_version) >= (11,)
 
     missing = [
         item
@@ -857,6 +886,24 @@ def _prepare_export_fonts(
                 ),
             )
         except BridgeError as exc:
+            if modern_font_cache:
+                logger.warning(
+                    "font_preflight_cache_unobservable version=%s fonts=%s action=defer_to_editor error=%s",
+                    jianying_version or "unknown",
+                    names,
+                    exc,
+                )
+                if progress:
+                    progress(
+                        f"剪映 v{jianying_version or '11'} 已能识别字体 {names}，"
+                        "新版缓存路径不可直接读取，将在正式草稿中加载"
+                    )
+                # Jianying 11 stores downloaded fonts outside the legacy
+                # Cache/effect/<resource-id> layout. Keep the requested font
+                # resource ID in the draft and let the real editor resolve it.
+                # Returning an empty verification list avoids a false failure
+                # after export without changing the font to a fallback.
+                return []
             raise FontResourceUnavailable(
                 f"剪映未能自动下载字体：{names}。请确认剪映已登录且会员资源可用；原始错误：{exc}"
             ) from exc
@@ -868,6 +915,18 @@ def _prepare_export_fonts(
     )
     still_missing = [str(item) for item in binding.get("missing") or []]
     if still_missing:
+        if modern_font_cache:
+            logger.warning(
+                "font_binding_cache_unobservable version=%s fonts=%s action=defer_to_editor",
+                jianying_version or "unknown",
+                ",".join(still_missing),
+            )
+            if progress:
+                progress(
+                    "剪映新版字体缓存已由编辑器管理，将按草稿字体资源直接导出："
+                    + "、".join(still_missing)
+                )
+            return []
         raise FontResourceUnavailable(
             "字体资源不可用，已停止导出：" + "、".join(still_missing)
         )
@@ -940,6 +999,11 @@ def _run_native_export_unlocked(
     draft_name = str(report.get("draft_name") or "").strip()
     if not draft_name:
         raise BridgeError("草稿导入成功，但没有得到剪映草稿名称")
+    # JianYing exports with the generated UUID when the dialog path field is
+    # not exposed.  Keep that real imported name on the task so all live and
+    # post-failure scans can find the MP4 even though the website job id and
+    # provider draft name are different.
+    task["imported_draft_name"] = draft_name
     logger.info(
         "draft_import_finished job_id=%s draft_id=%s draft_dir=%s tracks=%s segments=%s warnings=%s elapsed_seconds=%.3f",
         task.get("job_id"),
@@ -1010,10 +1074,11 @@ def _run_native_export_unlocked(
     resource_wait_seconds = _cloud_resource_wait_seconds(len(cloud_resources))
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = (output_dir / f"{task['job_id']}.mp4").resolve()
+    # Keep the local MP4 name identical to the real Jianying draft UUID.  The
+    # website job id is carried by the upload API and must not become a second
+    # local filename or a fake Jianying draft name.
+    output_path = (output_dir / f"{draft_name}.mp4").resolve()
     automation = _resource_path("scripts/run_jianying_export_automation.ps1")
-    if output_path.exists():
-        output_path.unlink()
 
     if progress:
         progress(f"正在用剪映专业版导出“{draft_name}”…")
@@ -1110,24 +1175,30 @@ def _run_native_export_unlocked(
         str(resource_wait_seconds),
     ]
     enable_one_click_enhance = _one_click_enhance_enabled()
+    default_no_output_timeout = 720 if enable_one_click_enhance else 150
+    no_output_timeout_seconds = max(
+        30,
+        min(
+            900,
+            int(
+                os.getenv("DEVICE_JIANYING_NO_OUTPUT_TIMEOUT_SECONDS")
+                or (
+                    os.getenv("DEVICE_JIANYING_ENHANCE_NO_OUTPUT_TIMEOUT_SECONDS")
+                    if enable_one_click_enhance
+                    else ""
+                )
+                or default_no_output_timeout
+            ),
+        ),
+    )
+    command.extend(
+        [
+            "-NoOutputTimeoutSeconds",
+            str(no_output_timeout_seconds),
+        ]
+    )
     if enable_one_click_enhance:
-        command.extend(
-            [
-                "-EnableOneClickEnhance",
-                "-NoOutputTimeoutSeconds",
-                str(
-                    max(
-                        600,
-                        int(
-                            os.getenv(
-                                "DEVICE_JIANYING_ENHANCE_NO_OUTPUT_TIMEOUT_SECONDS"
-                            )
-                            or 600
-                        ),
-                    )
-                ),
-            ]
-        )
+        command.append("-EnableOneClickEnhance")
     settings_path = app_data_dir() / "settings.json"
     export_calibration = load_export_calibration(settings_path)
     export_confirm_calibration = load_export_confirm_calibration(settings_path)
@@ -1183,7 +1254,7 @@ def _run_native_export_unlocked(
     fast_compatibility_path = (
         os.getenv("DEVICE_JIANYING_SKIP_PY_EXPORT") or "0"
     ).strip().lower() in {"1", "true", "yes", "on"}
-    restart_first = (os.getenv("DEVICE_JIANYING_RESTART_FIRST") or "1").strip().lower() in {
+    restart_first = (os.getenv("DEVICE_JIANYING_RESTART_FIRST") or "0").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -1191,7 +1262,7 @@ def _run_native_export_unlocked(
     }
     initial_command = (
         [*command, "-RestartExisting"]
-        if (modern_jianying or fast_compatibility_path or restart_first)
+        if fast_compatibility_path or restart_first
         else command
     )
     if fast_compatibility_path:
@@ -1241,28 +1312,31 @@ def _run_native_export_unlocked(
             log_prefix="jianying_draft_refresh_restart",
         )
     stage_output = "\n".join(stage_lines)
-    enhance_output_timeout = (
+    export_restart_required = (
         completed.returncode != 0
-        and enable_one_click_enhance
         and (
             "stage=output_file_not_started" in stage_output
             or "stage=output_file_disappeared" in stage_output
             or "stage=failed reason=output_file_timeout" in stage_output
+            or "stage=jianying_unresponsive" in stage_output
         )
     )
-    if enhance_output_timeout:
+    if export_restart_required:
         logger.warning(
-            "jianying_enhance_timeout_retrying_plain_export job_id=%s",
+            "jianying_stalled_retrying_after_restart job_id=%s",
             job_id,
         )
         if output_path.exists():
             output_path.unlink()
         if progress:
-            progress("一键超清长时间未开始生成，正在关闭增强并自动重试导出…")
+            if "stage=jianying_unresponsive" in stage_output:
+                progress("检测到剪映无响应，正在结束剪映并重开同一草稿…")
+            else:
+                progress("剪映长时间未生成有效 MP4，正在重启剪映并自动重试…")
         plain_command = _without_one_click_enhance(command)
         completed, stage_lines = run_compatibility_export(
             [*plain_command, "-RestartExisting"],
-            log_prefix="jianying_plain_export_retry",
+            log_prefix="jianying_stall_restart_retry",
         )
     if completed.returncode != 0:
         stage_output = "\n".join(stage_lines)
@@ -1395,22 +1469,20 @@ def _find_recent_local_export_source(
     home_dir: Path | None = None,
     quick_scan: bool = False,
 ) -> Path | None:
-    """Find a recent JianYing export that used an unexpected name/path."""
+    """Find a completed JianYing export by its imported draft UUID.
 
-    try:
-        recover_after = float(task.get("recover_local_after") or 0)
-    except (TypeError, ValueError):
-        return None
-    if recover_after <= 0:
-        return None
+    The website job ID is unrelated to JianYing's local export name.  The
+    imported draft UUID is unique for this render and remains stable across
+    repeated exports such as ``<draft UUID> (1).mp4``.  Matching only that UUID
+    avoids both false negatives from duration heuristics and false positives
+    from unrelated task-scoped files.
+    """
 
     home = (home_dir or Path.home()).resolve()
     if quick_scan:
-        roots = [
-            output_dir,
-            home / "Videos",
-            home / "OneDrive" / "Videos",
-        ]
+        # Poll only the formal helper output folder during a live export. The
+        # broader folders are retained for the one-time recovery scan below.
+        roots = [output_dir]
     else:
         roots = [
             output_dir,
@@ -1422,11 +1494,12 @@ def _find_recent_local_export_source(
             home / "OneDrive" / "Desktop",
             home / "OneDrive" / "Documents",
         ]
-    job_id = str(task.get("job_id") or "").strip().lower()
-    draft_name = str(
-        ((task.get("draft_key") or {}).get("draft") or {}).get("name") or ""
+    imported_draft_name = str(
+        task.get("imported_draft_name") or ""
     ).strip().lower()
-    candidates: list[tuple[int, float, int, Path]] = []
+    if not imported_draft_name:
+        return None
+    candidates: list[tuple[float, int, Path]] = []
     visited: set[Path] = set()
     for raw_root in roots:
         try:
@@ -1442,7 +1515,11 @@ def _find_recent_local_export_source(
                 depth = len(current.relative_to(root).parts)
             except ValueError:
                 continue
-            if depth >= 4:
+            # Live probes run every few seconds. Search the common save folder
+            # and one child level so an unexpected JianYing filename is found
+            # quickly without repeatedly walking an entire Documents tree.
+            max_depth = 1 if quick_scan else 4
+            if depth >= max_depth:
                 directory_names[:] = []
             for file_name in file_names:
                 if not file_name.lower().endswith(".mp4"):
@@ -1450,64 +1527,57 @@ def _find_recent_local_export_source(
                 candidate = current / file_name
                 try:
                     stat = candidate.stat()
-                    if stat.st_mtime < recover_after - 5 or stat.st_size < 100_000:
+                    stem = candidate.stem.strip().lower()
+                    if not _matches_expected_export_stem(
+                        stem, imported_draft_name
+                    ):
+                        continue
+                    if stat.st_size < 100_000:
                         continue
                     with candidate.open("rb") as stream:
                         if b"ftyp" not in stream.read(64):
                             continue
-                    if _is_finalized_mp4(candidate) and not _export_duration_matches_task(candidate, task):
-                        logger.warning(
-                            "local_export_duration_mismatch_rejected job_id=%s source=%s expected_us=%s actual_us=%s",
-                            task.get("job_id"),
-                            candidate,
-                            _expected_task_duration_us(task),
-                            _mp4_duration_us(candidate),
-                        )
+                    if not _is_finalized_mp4(candidate):
                         continue
                 except OSError:
                     continue
-                stem = candidate.stem.strip().lower()
-                priority = 1
-                if _matches_expected_export_stem(stem, job_id):
-                    priority = 3
-                elif _matches_expected_export_stem(stem, draft_name):
-                    priority = 2
-                candidates.append((priority, stat.st_mtime, stat.st_size, candidate))
+                candidates.append((stat.st_mtime, stat.st_size, candidate))
     if not candidates:
         return None
 
-    _priority, _modified_at, _size, source = max(
+    _modified_at, _size, source = max(
         candidates,
-        key=lambda item: (item[0], item[1], item[2]),
+        key=lambda item: (item[0], item[1]),
     )
     return source
 
 
-def _copy_local_export(
+def _prepare_local_export_for_upload(
     task: dict,
     output_dir: Path,
     source: Path,
 ) -> Path:
-    """Atomically copy one verified local export into the helper output path."""
-
-    if not _export_duration_matches_task(source, task):
-        raise BridgeError("检测到本地成片时长与当前草稿不一致，已阻止回传，避免上传错误视频")
+    """Return one verified draft-named MP4 without creating a job-id copy."""
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    target = (output_dir / f"{task['job_id']}.mp4").resolve()
-    if source.resolve() != target:
-        temporary = target.with_suffix(".mp4.recovering")
-        temporary.unlink(missing_ok=True)
-        shutil.copy2(source, temporary)
-        temporary.replace(target)
+    source = source.resolve()
+    imported_draft_name = str(task.get("imported_draft_name") or "").strip()
+    target = (output_dir / f"{imported_draft_name}.mp4").resolve()
+    # Repeated Jianying exports use ``Draft UUID (1).mp4``.  Once the new file
+    # is complete, normalize it back to the exact draft UUID inside the helper
+    # output directory so only one local MP4 remains for that draft.
+    if source.parent == output_dir.resolve() and source != target:
+        target.unlink(missing_ok=True)
+        source.replace(target)
+        source = target
     logger.info(
-        "local_export_recovered job_id=%s source=%s target=%s size_bytes=%s",
+        "local_export_selected job_id=%s draft_id=%s path=%s size_bytes=%s",
         task.get("job_id"),
+        imported_draft_name,
         source,
-        target,
-        target.stat().st_size,
+        source.stat().st_size,
     )
-    return target
+    return source
 
 
 def _recover_recent_local_export(
@@ -1516,7 +1586,7 @@ def _recover_recent_local_export(
     *,
     home_dir: Path | None = None,
 ) -> Path | None:
-    """Copy a recent JianYing export that used an unexpected name/path."""
+    """Select a recent JianYing export by its imported draft UUID."""
 
     source = _find_recent_local_export_source(
         task,
@@ -1525,7 +1595,7 @@ def _recover_recent_local_export(
     )
     if source is None:
         return None
-    return _copy_local_export(task, output_dir, source)
+    return _prepare_local_export_for_upload(task, output_dir, source)
 
 
 def _is_finalized_mp4(path: Path) -> bool:
@@ -1542,6 +1612,7 @@ def _is_finalized_mp4(path: Path) -> bool:
         if file_size < 32:
             return False
         found: dict[bytes, tuple[int, int]] = {}
+        has_open_ended_box = False
         offset = 0
         with path.open("rb") as stream:
             while offset + 8 <= file_size:
@@ -1559,125 +1630,27 @@ def _is_finalized_mp4(path: Path) -> bool:
                     box_size = int.from_bytes(extended, "big")
                     header_size = 16
                 elif box_size == 0:
+                    has_open_ended_box = True
                     box_size = file_size - offset
                 if box_size < header_size or offset + box_size > file_size:
                     return False
                 if box_type in {b"ftyp", b"mdat", b"moov"}:
                     found[box_type] = (offset, offset + box_size)
                 offset += box_size
-        if offset != file_size or not {b"ftyp", b"mdat", b"moov"}.issubset(found):
+        if (
+            offset != file_size
+            or has_open_ended_box
+            or not {b"ftyp", b"mdat", b"moov"}.issubset(found)
+        ):
             return False
-        # JianYing writes its movie index last. Requiring that final box means
-        # a transient pause in a still-growing ``mdat`` cannot be accepted.
-        return found[b"moov"][0] > found[b"mdat"][0] and found[b"moov"][1] == file_size
-    except OSError:
-        return False
-
-
-def _expected_task_duration_us(task: dict) -> int:
-    """Return the draft timeline duration carried by a render task."""
-
-    draft_key = task.get("draft_key") if isinstance(task, dict) else None
-    if not isinstance(draft_key, dict):
-        return 0
-    explicit = (draft_key.get("draft") or {}).get("duration") if isinstance(draft_key.get("draft"), dict) else None
-    try:
-        explicit_us = int(float(explicit or 0))
-    except (TypeError, ValueError):
-        explicit_us = 0
-    maximum = max(0, explicit_us)
-    for call in draft_key.get("calls") or []:
-        if not isinstance(call, dict):
-            continue
-        params = call.get("params") if isinstance(call.get("params"), dict) else {}
-        for value in params.values():
-            if not isinstance(value, list):
-                continue
-            for item in value:
-                if not isinstance(item, dict) or "end" not in item:
-                    continue
-                try:
-                    maximum = max(maximum, int(float(item.get("end") or 0)))
-                except (TypeError, ValueError):
-                    continue
-    return maximum
-
-
-def _mp4_duration_us(path: Path) -> int | None:
-    """Read movie duration from the MP4 ``mvhd`` box without ffprobe."""
-
-    try:
-        file_size = path.stat().st_size
-        moov_payload = b""
-        offset = 0
-        with path.open("rb") as stream:
-            while offset + 8 <= file_size:
-                stream.seek(offset)
-                header = stream.read(8)
-                if len(header) != 8:
-                    return None
-                size = int.from_bytes(header[:4], "big")
-                kind = header[4:8]
-                header_size = 8
-                if size == 1:
-                    extended = stream.read(8)
-                    if len(extended) != 8:
-                        return None
-                    size = int.from_bytes(extended, "big")
-                    header_size = 16
-                elif size == 0:
-                    size = file_size - offset
-                if size < header_size or offset + size > file_size:
-                    return None
-                if kind == b"moov":
-                    moov_payload = stream.read(size - header_size)
-                    break
-                offset += size
-        cursor = 0
-        while cursor + 8 <= len(moov_payload):
-            size = int.from_bytes(moov_payload[cursor : cursor + 4], "big")
-            kind = moov_payload[cursor + 4 : cursor + 8]
-            header_size = 8
-            if size == 1:
-                if cursor + 16 > len(moov_payload):
-                    return None
-                size = int.from_bytes(moov_payload[cursor + 8 : cursor + 16], "big")
-                header_size = 16
-            elif size == 0:
-                size = len(moov_payload) - cursor
-            if size < header_size or cursor + size > len(moov_payload):
-                return None
-            if kind == b"mvhd":
-                payload = moov_payload[cursor + header_size : cursor + size]
-                if len(payload) < 20:
-                    return None
-                version = payload[0]
-                if version == 1:
-                    if len(payload) < 32:
-                        return None
-                    timescale = int.from_bytes(payload[20:24], "big")
-                    duration = int.from_bytes(payload[24:32], "big")
-                else:
-                    timescale = int.from_bytes(payload[12:16], "big")
-                    duration = int.from_bytes(payload[16:20], "big")
-                if timescale <= 0:
-                    return None
-                return int(round((duration * 1_000_000) / timescale))
-            cursor += size
-    except OSError:
-        return None
-    return None
-
-
-def _export_duration_matches_task(path: Path, task: dict) -> bool:
-    expected_us = _expected_task_duration_us(task)
-    if expected_us <= 0:
+        # Jianying 11 may append valid metadata/free boxes after ``moov`` or
+        # place ``moov`` before ``mdat`` for fast-start playback. A complete
+        # top-level box table plus the probe's stable-size window is the safe
+        # completion signal; requiring ``moov`` to be the final box caused
+        # finished OneDrive exports to wait until the automation timed out.
         return True
-    actual_us = _mp4_duration_us(path)
-    if actual_us is None:
+    except OSError:
         return False
-    tolerance_us = max(2_000_000, int(expected_us * 0.12))
-    return abs(actual_us - expected_us) <= tolerance_us
 
 
 def _make_live_local_export_probe(
@@ -1696,7 +1669,7 @@ def _make_live_local_export_probe(
         float(
             scan_interval_seconds
             if scan_interval_seconds is not None
-            else os.getenv("DEVICE_LOCAL_EXPORT_SCAN_INTERVAL_SECONDS") or 2
+            else os.getenv("DEVICE_LOCAL_EXPORT_SCAN_INTERVAL_SECONDS") or 0.5
         ),
     )
     required_stable = max(
@@ -1704,7 +1677,7 @@ def _make_live_local_export_probe(
         float(
             stable_seconds
             if stable_seconds is not None
-            else os.getenv("DEVICE_LOCAL_EXPORT_STABLE_SECONDS") or 8
+            else os.getenv("DEVICE_LOCAL_EXPORT_STABLE_SECONDS") or 2
         ),
     )
     state: dict[str, Any] = {
@@ -1744,7 +1717,9 @@ def _make_live_local_export_probe(
             return None
         if not _is_finalized_mp4(source):
             return None
-        state["completed"] = _copy_local_export(task, output_dir, source)
+        state["completed"] = _prepare_local_export_for_upload(
+            task, output_dir, source
+        )
         return state["completed"]
 
     return probe
@@ -1770,6 +1745,7 @@ def _upload_device_result(
         except requests.RequestException as exc:
             logger.warning("direct_r2_init_failed_using_site_fallback job_id=%s error=%s", job_id, exc)
         else:
+            _raise_for_render_control(direct)
             if direct.status_code in {200, 201}:
                 details = direct.json() or {}
                 _upload_device_result_direct_to_r2(output_path, details, job_id=job_id)
@@ -1782,6 +1758,7 @@ def _upload_device_result(
                     },
                     timeout=60,
                 )
+                _raise_for_render_control(completed)
                 completed.raise_for_status()
                 return completed
             if direct.status_code not in {404, 409, 503}:
@@ -1793,19 +1770,21 @@ def _upload_device_result(
     )
     if output_path.stat().st_size <= threshold:
         with output_path.open("rb") as stream:
-            return agent._request(
+            response = agent._request(
                 "POST",
                 f"/api/v1/render-agent/jobs/{job_id}/complete",
                 files={"video": (output_path.name, stream, "video/mp4")},
                 timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
             )
+            _raise_for_render_control(response)
+            return response
 
     part_bytes = max(
         512 * 1024,
         min(
             8 * 1024 * 1024,
             max(
-                int(os.getenv("DEVICE_RESULT_CHUNK_BYTES") or 4 * 1024 * 1024),
+                int(os.getenv("DEVICE_RESULT_CHUNK_BYTES") or 8 * 1024 * 1024),
                 (size_bytes + 511) // 512,
             ),
         ),
@@ -1821,6 +1800,7 @@ def _upload_device_result(
         },
         timeout=30,
     )
+    _raise_for_render_control(created)
     created.raise_for_status()
     upload_details = created.json() or {}
     upload_id = str(upload_details.get("upload_id") or "")
@@ -1859,6 +1839,7 @@ def _upload_device_result(
                         files={"chunk": (f"part-{part_number}", chunk, "application/octet-stream")},
                         timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
                     )
+                    _raise_for_render_control(response)
                     if response.status_code in {200, 201, 204}:
                         return part_number
                     response.raise_for_status()
@@ -1894,11 +1875,13 @@ def _upload_device_result(
         for future in as_completed(futures):
             future.result()
 
-    return agent._request(
+    response = agent._request(
         "POST",
         f"/api/v1/render-agent/jobs/{job_id}/uploads/{upload_id}/complete",
         timeout=int(os.getenv("DEVICE_RESULT_UPLOAD_TIMEOUT_SECONDS") or 1800),
     )
+    _raise_for_render_control(response)
+    return response
 
 
 def _upload_device_result_direct_to_r2(output_path: Path, details: dict, *, job_id: str) -> None:
@@ -2081,9 +2064,18 @@ class DeviceAgent:
                 "POST",
                 f"/api/v1/render-agent/jobs/{job_id}/progress",
                 json={"stage": stage, "progress": progress, "message": message},
-                timeout=10,
+                timeout=max(
+                    2,
+                    min(
+                        10,
+                        int(os.getenv("DEVICE_PROGRESS_REPORT_TIMEOUT_SECONDS") or 5),
+                    ),
+                ),
             )
+            _raise_for_render_control(response)
             response.raise_for_status()
+        except RenderTaskInterrupted:
+            raise
         except requests.RequestException as exc:
             logger.warning(
                 "device_task_progress_report_failed job_id=%s stage=%s error=%s",
@@ -2098,7 +2090,15 @@ class DeviceAgent:
             try:
                 response = self._request("POST", "/api/v1/render-agent/claim")
                 if response.status_code == 204:
-                    self._stop.wait(4)
+                    self._stop.wait(
+                        max(
+                            0.5,
+                            min(
+                                10.0,
+                                float(os.getenv("DEVICE_TASK_CLAIM_INTERVAL_SECONDS") or 1),
+                            ),
+                        )
+                    )
                     continue
                 if response.status_code == 401:
                     self._set_status("设备授权已失效，请重新输入配对码")
@@ -2106,7 +2106,15 @@ class DeviceAgent:
                 response.raise_for_status()
                 task = (response.json() or {}).get("task")
                 if not isinstance(task, dict):
-                    self._stop.wait(4)
+                    self._stop.wait(
+                        max(
+                            0.5,
+                            min(
+                                10.0,
+                                float(os.getenv("DEVICE_TASK_CLAIM_INTERVAL_SECONDS") or 1),
+                            ),
+                        )
+                    )
                     continue
                 logger.info(
                     "device_task_claimed job_id=%s workflow=%s",
@@ -2117,11 +2125,27 @@ class DeviceAgent:
             except requests.RequestException as exc:
                 logger.warning("agent_request_failed error=%s", exc)
                 self._set_status(f"网站暂时无法连接，稍后自动重试：{exc}")
-                self._stop.wait(10)
+                self._stop.wait(
+                    max(
+                        2.0,
+                        min(
+                            30.0,
+                            float(os.getenv("DEVICE_REQUEST_RETRY_SECONDS") or 3),
+                        ),
+                    )
+                )
             except Exception as exc:
                 logger.exception("agent_loop_failed error=%s", exc)
                 self._set_status(f"本机助手异常，稍后自动重试：{exc}")
-                self._stop.wait(10)
+                self._stop.wait(
+                    max(
+                        2.0,
+                        min(
+                            30.0,
+                            float(os.getenv("DEVICE_REQUEST_RETRY_SECONDS") or 3),
+                        ),
+                    )
+                )
 
     def _heartbeat_loop(self) -> None:
         session = requests.Session()
@@ -2160,9 +2184,35 @@ class DeviceAgent:
                 self._report_task_progress(job_id, message)
 
             task_progress("助手已收到任务数据，正在等待本机执行")
+            if task.get("discard_existing_job_output"):
+                stale_output = (self.output_dir / f"{job_id}.mp4").resolve()
+                if stale_output.is_file():
+                    quarantined = self.output_dir / (
+                        f"{job_id}.invalidated-{int(time.time())}"
+                    )
+                    try:
+                        stale_output.replace(quarantined)
+                    except OSError as exc:
+                        raise BridgeError(
+                            "无法隔离本机旧任务成片，已停止处理以避免再次回传错误视频"
+                        ) from exc
+                    logger.warning(
+                        "stale_job_output_quarantined job_id=%s source=%s target=%s",
+                        job_id,
+                        stale_output,
+                        quarantined,
+                    )
+                task_progress("已清除本机旧任务号成片缓存")
             output_path = _recover_recent_local_export(task, self.output_dir)
             if output_path is not None:
-                task_progress("已找到剪映导出的本地视频，正在直接回传网站…")
+                logger.info(
+                    "recovered_local_export job_id=%s source=%s mode=startup_scan",
+                    job_id,
+                    output_path,
+                )
+                task_progress(
+                    f"已扫描到剪映成片，本机完整路径：{output_path}；正在直接回传网站…"
+                )
             else:
                 export_started_at = time.time()
                 try:
@@ -2173,27 +2223,25 @@ class DeviceAgent:
                         self.output_dir,
                         task_progress,
                     )
+                except RenderTaskInterrupted:
+                    raise
                 except BridgeError:
                     recovery_task = dict(task)
                     recovery_task["recover_local_after"] = export_started_at - 5
                     output_path = _recover_recent_local_export(recovery_task, self.output_dir)
                     if output_path is None:
                         raise
-                    task_progress("已从 OneDrive 视频目录找到剪映成片，正在继续回传网站…")
-            if not _export_duration_matches_task(output_path, task):
-                expected_us = _expected_task_duration_us(task)
-                actual_us = _mp4_duration_us(output_path)
-                logger.error(
-                    "device_result_duration_mismatch job_id=%s output=%s expected_us=%s actual_us=%s",
-                    job_id,
-                    output_path,
-                    expected_us,
-                    actual_us,
-                )
-                raise BridgeError(
-                    "剪映导出的成片时长与当前草稿不一致，可能打开了错误草稿；已阻止上传"
-                )
-            task_progress("剪映导出完成，正在把视频传回网站…")
+                    logger.info(
+                        "recovered_local_export job_id=%s source=%s mode=post_export_scan",
+                        job_id,
+                        output_path,
+                    )
+                    task_progress(
+                        f"已扫描到剪映成片，本机完整路径：{output_path}；正在继续回传网站…"
+                    )
+            task_progress(
+                f"剪映导出完成，本机成片路径：{output_path}；正在把视频传回网站…"
+            )
             upload_attempts = max(
                 1,
                 min(5, int(os.getenv("DEVICE_RESULT_UPLOAD_ATTEMPTS") or 3)),
@@ -2223,6 +2271,9 @@ class DeviceAgent:
                 raise last_upload_error
             logger.info("device_task_completed job_id=%s", job_id)
             self._set_status("视频已传回网站，可以直接预览和下载")
+        except RenderTaskInterrupted as exc:
+            logger.info("device_task_interrupted job_id=%s reason=%s", job_id, exc)
+            self._set_status(f"当前视频任务已暂停：{exc}")
         except Exception as exc:
             message = str(exc) or "本机剪映导出失败"
             logger.exception("device_task_failed job_id=%s error=%s", job_id, message)
