@@ -150,6 +150,43 @@ def _terminate_compatibility_process(process: subprocess.Popen[str]) -> None:
         pass
 
 
+def _terminate_jianying_processes(
+    *,
+    reason: str,
+    progress: StatusCallback | None = None,
+) -> None:
+    """Force-close Jianying's full process tree after an interrupted export."""
+
+    if os.name != "nt":
+        return
+    terminated: list[str] = []
+    for image_name in ("JianyingPro.exe", "Jianying.exe", "CapCut.exe"):
+        try:
+            completed = subprocess.run(
+                ["taskkill.exe", "/IM", image_name, "/T", "/F"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if completed.returncode == 0:
+                terminated.append(image_name)
+        except Exception as exc:
+            logger.warning(
+                "jianying_process_cleanup_command_failed reason=%s image=%s error=%s",
+                reason,
+                image_name,
+                exc,
+            )
+    logger.warning(
+        "jianying_process_cleanup_finished reason=%s terminated=%s",
+        reason,
+        ",".join(terminated) or "none",
+    )
+    if progress:
+        progress("已自动结束卡住的剪映进程，助手可以继续领取下一任务")
+
+
 def _run_compatibility_process(
     command_args: list[str],
     *,
@@ -1271,6 +1308,7 @@ def _run_native_export_unlocked(
             job_id,
             draft_name,
         )
+    task["_jianying_automation_started"] = True
     completed, stage_lines = run_compatibility_export(
         initial_command,
         log_prefix="jianying_export",
@@ -2223,6 +2261,7 @@ class DeviceAgent:
                         self.output_dir,
                         task_progress,
                     )
+                    task["_jianying_automation_started"] = False
                 except RenderTaskInterrupted:
                     raise
                 except BridgeError:
@@ -2231,6 +2270,7 @@ class DeviceAgent:
                     output_path = _recover_recent_local_export(recovery_task, self.output_dir)
                     if output_path is None:
                         raise
+                    task["_jianying_automation_started"] = False
                     logger.info(
                         "recovered_local_export job_id=%s source=%s mode=post_export_scan",
                         job_id,
@@ -2272,9 +2312,21 @@ class DeviceAgent:
             logger.info("device_task_completed job_id=%s", job_id)
             self._set_status("视频已传回网站，可以直接预览和下载")
         except RenderTaskInterrupted as exc:
+            if task.get("_jianying_automation_started"):
+                _terminate_jianying_processes(
+                    reason="task_interrupted",
+                    progress=task_progress,
+                )
+                task["_jianying_automation_started"] = False
             logger.info("device_task_interrupted job_id=%s reason=%s", job_id, exc)
             self._set_status(f"当前视频任务已暂停：{exc}")
         except Exception as exc:
+            if task.get("_jianying_automation_started"):
+                _terminate_jianying_processes(
+                    reason="task_failed",
+                    progress=task_progress,
+                )
+                task["_jianying_automation_started"] = False
             message = str(exc) or "本机剪映导出失败"
             logger.exception("device_task_failed job_id=%s error=%s", job_id, message)
             try:

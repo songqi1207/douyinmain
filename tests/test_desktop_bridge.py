@@ -34,6 +34,7 @@ from desktop_bridge.device_agent import (
     _recover_recent_local_export,
     _run_native_export,
     _run_pyjianying_export,
+    _terminate_jianying_processes,
     _upload_device_result,
     _without_one_click_enhance,
     normalize_site_url,
@@ -68,6 +69,32 @@ def _finalized_mp4_bytes(payload: bytes) -> bytes:
 
 
 class DesktopBridgeTests(unittest.TestCase):
+    def test_failed_export_cleanup_kills_all_supported_jianying_process_trees(self):
+        progress_messages = []
+        results = [MagicMock(returncode=0), MagicMock(returncode=128), MagicMock(returncode=0)]
+        with patch("desktop_bridge.device_agent.os.name", "nt"), patch(
+            "desktop_bridge.device_agent.subprocess.run",
+            side_effect=results,
+        ) as run:
+            _terminate_jianying_processes(
+                reason="test_failure",
+                progress=progress_messages.append,
+            )
+
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(
+            [call.args[0] for call in run.call_args_list],
+            [
+                ["taskkill.exe", "/IM", "JianyingPro.exe", "/T", "/F"],
+                ["taskkill.exe", "/IM", "Jianying.exe", "/T", "/F"],
+                ["taskkill.exe", "/IM", "CapCut.exe", "/T", "/F"],
+            ],
+        )
+        self.assertEqual(
+            progress_messages,
+            ["已自动结束卡住的剪映进程，助手可以继续领取下一任务"],
+        )
+
     def test_one_click_enhance_is_opt_in(self):
         with patch.dict(os.environ, {}, clear=True):
             self.assertFalse(_one_click_enhance_enabled())
